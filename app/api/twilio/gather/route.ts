@@ -27,7 +27,12 @@ function translateStatus(status: string) {
     review: "בביקורת",
     ready: "מוכן לאיסוף",
     delivered: "נמסר",
-    issue: "דרוש טיפול",export async function POST(req: NextRequest) {
+    issue: "דרוש טיפול",
+  };
+  return map[status] || status;
+}
+
+export async function POST(req: NextRequest) {
   const origin = req.nextUrl.origin;
   try {
     let digits = "";
