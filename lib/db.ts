@@ -138,7 +138,16 @@ export async function getAdminSettings(): Promise<AdminSettings> {
 }
 
 export async function saveAdminSettings(settings: AdminSettings): Promise<void> {
+  console.log("Saving admin settings:", settings);
   if (isConfigured && db) {
-    await setDoc(doc(db, SETTINGS_COLLECTION, "admin"), settings);
+    try {
+      await setDoc(doc(db, SETTINGS_COLLECTION, "admin"), settings);
+      console.log("Admin settings saved successfully");
+    } catch (error) {
+      console.error("Error saving admin settings:", error);
+      throw error;
+    }
+  } else {
+    console.warn("Firebase not configured, settings not saved to DB");
   }
 }

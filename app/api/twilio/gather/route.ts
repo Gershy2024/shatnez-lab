@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings } from "@/lib/db";
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
-
-function say(text: string, lang = "en-US") {
-  return `<Say voice="man" language="${lang}">${text}</Say>`;
+function say(en: string, he: string) {
+  return `<Say voice="Polly.Matthew" language="en-US">${en}</Say>` +
+         `<Say voice="Polly.Madi" language="he-IL">${he}</Say>`;
 }
 
 function gather(action: string, numDigits: number | string, timeout = 10, innerXml: string) {
@@ -22,8 +21,16 @@ function xmlResponse(inner: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const form = await req.formData();
-  const digits = (form.get("Digits") as string) || "";
+  let digits = "";
+  try {
+    const form = await req.formData();
+    digits = (form.get("Digits") as string) || "";
+  } catch (e) {
+    // If not form data, try query params
+    const url = new URL(req.url);
+    digits = url.searchParams.get("Digits") || "";
+  }
+  
   const url = new URL(req.url);
   const step = url.searchParams.get("step") || "menu";
 
@@ -35,31 +42,35 @@ export async function POST(req: NextRequest) {
     if (digits === "1") {
       return xmlResponse(
         gather(
-          `${BASE_URL}/api/twilio/gather?step=order_lookup`,
+          "/api/twilio/gather?step=order_lookup",
           10,
           10,
-          say("Please enter your order number, or your ten digit phone number, followed by pound.")
+          say(
+            "Please enter your order number, or your ten digit phone number, followed by pound.",
+            "אנא הקש את מספר ההזמנה, או את מספר הטלפון שלך בן עשר ספרות, ולאחר מכן סולמית."
+          )
         ) +
-        say("No input received. Returning to main menu.") +
-        redirect(`${BASE_URL}/api/twilio/voice`)
+        say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+        redirect("/api/twilio/voice")
       );
     }
-    if (digits === "2") {
+    // Option 9 for admin access
+    if (digits === "9") {
       return xmlResponse(
         gather(
-          `${BASE_URL}/api/twilio/gather?step=admin_pin`,
+          "/api/twilio/gather?step=admin_pin",
           4,
           10,
-          say("Please enter your 4 digit admin PIN.")
+          say("Please enter your 4 digit admin PIN.", "אנא הקש את קוד המנהל בן 4 הספרות.")
         ) +
-        say("No input received. Returning to main menu.") +
-        redirect(`${BASE_URL}/api/twilio/voice`)
+        say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+        redirect("/api/twilio/voice")
       );
     }
     if (digits === "3") {
       const num = settings.forwardingNumber || "8457092022";
       return xmlResponse(
-        say("Connecting you to a representative. Please wait.") +
+        say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
         `<Dial>${num}</Dial>`
       );
     }
@@ -69,8 +80,8 @@ export async function POST(req: NextRequest) {
       return await lookupOrder(clean);
     }
     return xmlResponse(
-      say("Invalid selection. Returning to main menu.") +
-      redirect(`${BASE_URL}/api/twilio/voice`)
+      say("Invalid selection. Returning to main menu.", "בחירה לא תקינה. חוזר לתפריט הראשי.") +
+      redirect("/api/twilio/voice")
     );
   }
 
@@ -79,8 +90,8 @@ export async function POST(req: NextRequest) {
     const clean = digits.replace(/#$/, "").trim().toUpperCase();
     if (!clean) {
       return xmlResponse(
-        say("No order number entered. Returning to main menu.") +
-        redirect(`${BASE_URL}/api/twilio/voice`)
+        say("No order number entered. Returning to main menu.", "לא הוקש מספר הזמנה. חוזר לתפריט הראשי.") +
+        redirect("/api/twilio/voice")
       );
     }
     return await lookupOrder(clean);
@@ -91,25 +102,27 @@ export async function POST(req: NextRequest) {
     if (digits === ADMIN_PIN) {
       return xmlResponse(
         gather(
-          `${BASE_URL}/api/twilio/gather?step=admin_menu`,
+          "/api/twilio/gather?step=admin_menu",
           1,
-          10,
+          15,
           say(
-            "Admin menu. Press 1 to hear recent orders. Press 2 to update an order status. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu."
+            "Admin menu. Press 1 to hear recent orders. Press 2 to update an order status. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu.",
+            "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון סטטוס הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש כוכבית לחזרה לתפריט הראשי."
           )
         ) +
-        say("No input received. Goodbye.")
+        say("No input received. Goodbye.", "לא התקבל קלט. שלום.")
       );
     }
     return xmlResponse(
-      say("Incorrect PIN. Returning to main menu.") + redirect(`${BASE_URL}/api/twilio/voice`)
+      say("Incorrect PIN. Returning to main menu.", "קוד שגוי. חוזר לתפריט הראשי.") + 
+      redirect("/api/twilio/voice")
     );
   }
 
   // ── Admin Menu ──
   if (step === "admin_menu") {
     if (digits === "*") {
-      return xmlResponse(redirect(`${BASE_URL}/api/twilio/voice`));
+      return xmlResponse(redirect("/api/twilio/voice"));
     }
     if (digits === "1") {
       // Recent orders
@@ -117,61 +130,66 @@ export async function POST(req: NextRequest) {
       const recent = orders.slice(-5).reverse();
       if (recent.length === 0) {
         return xmlResponse(
-          say("No orders found.") + redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+          say("No orders found.", "לא נמצאו הזמנות.") + 
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
-      let msg = `You have ${orders.length} total orders. Here are the latest 5. `;
+      let enMsg = `You have ${orders.length} total orders. Here are the latest 5. `;
+      let heMsg = `יש לך ${orders.length} הזמנות בסך הכל. הנה ה-5 האחרונות. `;
+      
       for (const o of recent) {
-        msg += `Order ${o.id.replace(/-/g, " dash ")}, ${o.customerName}, status ${o.status}. `;
+        enMsg += `Order ${o.id.replace(/-/g, " dash ")}, ${o.customerName}, status ${o.status}. `;
+        heMsg += `הזמנה ${o.id.replace(/-/g, " מקף ")}, ${o.customerName}, סטטוס ${translateStatus(o.status)}. `;
       }
       return xmlResponse(
-        say(msg) +
+        say(enMsg, heMsg) +
         gather(
-          `${BASE_URL}/api/twilio/gather?step=admin_menu`,
+          "/api/twilio/gather?step=admin_menu",
           1,
           10,
-          say("Press any key to return to admin menu, or star for main menu.")
+          say("Press any key to return to admin menu, or star for main menu.", "הקש על מקש כלשהו לחזרה לתפריט המנהל, או כוכבית לתפריט הראשי.")
         )
       );
     }
     if (digits === "2") {
       return xmlResponse(
         gather(
-          `${BASE_URL}/api/twilio/gather?step=status_update_ask_id`,
+          "/api/twilio/gather?step=status_update_ask_id",
           10,
           10,
-          say("Enter the order number to update, followed by pound.")
+          say("Enter the order number to update, followed by pound.", "הקש את מספר ההזמנה לעדכון, ולאחריו סולמית.")
         ) +
-        say("No input received.") +
-        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("No input received.", "לא התקבל קלט.") +
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     if (digits === "3") {
       return xmlResponse(
         gather(
-          `${BASE_URL}/api/twilio/gather?step=lookup_by_phone`,
+          "/api/twilio/gather?step=lookup_by_phone",
           10,
           10,
-          say("Enter the phone number, followed by pound.")
+          say("Enter the phone number, followed by pound.", "הקש את מספר הטלפון, ולאחריו סולמית.")
         ) +
-        say("No input received.") +
-        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("No input received.", "לא התקבל קלט.") +
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     if (digits === "4") {
       return xmlResponse(
         gather(
-          `${BASE_URL}/api/twilio/gather?step=admin_add_order`,
+          "/api/twilio/gather?step=admin_add_order",
           10,
           10,
-          say("Enter the customer phone number for the new order, followed by pound.")
+          say("Enter the customer phone number for the new order, followed by pound.", "הקש את מספר הטלפון של הלקוח עבור ההזמנה החדשה, ולאחריו סולמית.")
         ) +
-        say("No input received.") +
-        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("No input received.", "לא התקבל קלט.") +
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     return xmlResponse(
-      say("Invalid option.") + redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+      say("Invalid option.", "אופציה לא תקינה.") + 
+      redirect("/api/twilio/gather?step=admin_menu")
     );
   }
 
@@ -181,17 +199,22 @@ export async function POST(req: NextRequest) {
     const order = await getOrderById(clean);
     if (!order) {
       return xmlResponse(
-        say("Order not found.") + redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("Order not found.", "הזמנה לא נמצאה.") + 
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     return xmlResponse(
-      say(`Order ${order.id.replace(/-/g, " dash ")} is currently ${order.status}.`) +
+      say(
+        `Order ${order.id.replace(/-/g, " dash ")} is currently ${order.status}.`,
+        `הזמנה ${order.id.replace(/-/g, " מקף ")} כרגע בסטטוס ${translateStatus(order.status)}.`
+      ) +
       gather(
-        `${BASE_URL}/api/twilio/gather?step=status_update_set&orderId=${order.id}`,
+        `/api/twilio/gather?step=status_update_set&orderId=${order.id}`,
         1,
-        10,
+        15,
         say(
-          "Press 1 for received. 2 for in testing. 3 for under review. 4 for ready for pickup. 5 for delivered. 6 for attention needed. Star to cancel."
+          "Press 1 for received. 2 for in testing. 3 for under review. 4 for ready for pickup. 5 for delivered. 6 for attention needed. Star to cancel.",
+          "הקש 1 עבור התקבל. 2 עבור בבדיקה. 3 עבור בביקורת. 4 עבור מוכן לאיסוף. 5 עבור נמסר. 6 עבור דרוש טיפול. כוכבית לביטול."
         )
       )
     );
@@ -202,8 +225,8 @@ export async function POST(req: NextRequest) {
     const orderId = url.searchParams.get("orderId");
     if (digits === "*") {
       return xmlResponse(
-        say("Cancelled. Returning to admin menu.") +
-        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("Cancelled. Returning to admin menu.", "בוטל. חוזר לתפריט המנהל.") +
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     const statusMap: Record<string, string> = {
@@ -217,19 +240,21 @@ export async function POST(req: NextRequest) {
     const newStatus = statusMap[digits];
     if (!newStatus || !orderId) {
       return xmlResponse(
-        say("Invalid option.") + redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("Invalid option.", "אופציה לא תקינה.") + 
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     const order = await getOrderById(orderId);
     if (!order) {
       return xmlResponse(
-        say("Order not found.") + redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("Order not found.", "הזמנה לא נמצאה.") + 
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     await saveOrder({ ...order, status: newStatus as any });
     return xmlResponse(
-      say(`Status updated to ${newStatus}.`) +
-      redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+      say(`Status updated to ${newStatus}.`, `הסטטוס עודכן ל-${translateStatus(newStatus as any)}.`) +
+      redirect("/api/twilio/gather?step=admin_menu")
     );
   }
 
@@ -239,21 +264,23 @@ export async function POST(req: NextRequest) {
     const orders = await getOrdersByPhone(clean);
     if (orders.length === 0) {
       return xmlResponse(
-        say("No orders found for that phone number.") +
-        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("No orders found for that phone number.", "לא נמצאו הזמנות עבור מספר הטלפון הזה.") +
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
-    let msg = `Found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
+    let enMsg = `Found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
+    let heMsg = `נמצאו ${orders.length} הזמנות. `;
     for (const o of orders) {
-      msg += `Order ${o.id.replace(/-/g, " dash ")}, ${o.customerName}, status ${o.status}. `;
+      enMsg += `Order ${o.id.replace(/-/g, " dash ")}, ${o.customerName}, status ${o.status}. `;
+      heMsg += `הזמנה ${o.id.replace(/-/g, " מקף ")}, ${o.customerName}, סטטוס ${translateStatus(o.status)}. `;
     }
     return xmlResponse(
-      say(msg) +
+      say(enMsg, heMsg) +
       gather(
-        `${BASE_URL}/api/twilio/gather?step=admin_menu`,
+        "/api/twilio/gather?step=admin_menu",
         1,
         10,
-        say("Press any key to return to admin menu, or star for main menu.")
+        say("Press any key to return to admin menu, or star for main menu.", "הקש על מקש כלשהו לחזרה לתפריט המנהל, או כוכבית לתפריט הראשי.")
       )
     );
   }
@@ -263,12 +290,11 @@ export async function POST(req: NextRequest) {
     const phone = digits.replace(/#$/, "").trim();
     if (!phone) {
       return xmlResponse(
-        say("No phone number entered.") +
-        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+        say("No phone number entered.", "לא הוקש מספר טלפון.") +
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
     
-    // Generate a simple numeric ID for phone orders or use phone as suffix
     const orders = await getAllOrders();
     const nextNum = orders.length + 1;
     const newId = `ORD-P${nextNum.toString().padStart(3, "0")}`;
@@ -285,18 +311,31 @@ export async function POST(req: NextRequest) {
     });
 
     return xmlResponse(
-      say(`Order created successfully. The order ID is ${newId.replace(/-/g, " dash ")}.`) +
-      redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+      say(
+        `Order created successfully. The order ID is ${newId.replace(/-/g, " dash ")}.`,
+        `ההזמנה נוצרה בהצלחה. מספר ההזמנה הוא ${newId.replace(/-/g, " מקף ")}.`
+      ) +
+      redirect("/api/twilio/gather?step=admin_menu")
     );
   }
 
   // Fallback
-  return xmlResponse(redirect(`${BASE_URL}/api/twilio/voice`));
+  return xmlResponse(redirect("/api/twilio/voice"));
+}
+
+function translateStatus(status: string) {
+  const map: Record<string, string> = {
+    received: "התקבל",
+    testing: "בבדיקה",
+    review: "בביקורת",
+    ready: "מוכן לאיסוף",
+    delivered: "נמסר",
+    issue: "דרוש טיפול",
+  };
+  return map[status] || status;
 }
 
 async function lookupOrder(input: string) {
-  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
-
   // Try exact order ID match first
   let order = await getOrderById(input);
 
@@ -306,17 +345,19 @@ async function lookupOrder(input: string) {
     if (byPhone.length === 1) {
       order = byPhone[0];
     } else if (byPhone.length > 1) {
-      let msg = `Found ${byPhone.length} orders. `;
+      let enMsg = `Found ${byPhone.length} orders. `;
+      let heMsg = `נמצאו ${byPhone.length} הזמנות. `;
       for (const o of byPhone) {
-        msg += `Order ${o.id.replace(/-/g, " dash ")}, status ${o.status}. `;
+        enMsg += `Order ${o.id.replace(/-/g, " dash ")}, status ${o.status}. `;
+        heMsg += `הזמנה ${o.id.replace(/-/g, " מקף ")}, סטטוס ${translateStatus(o.status)}. `;
       }
       return xmlResponse(
-        say(msg) +
+        say(enMsg, heMsg) +
         gather(
-          `${BASE_URL}/api/twilio/gather?step=menu`,
+          "/api/twilio/gather?step=menu",
           1,
           10,
-          say("Press 1 to return to main menu.")
+          say("Press 1 to return to main menu.", "הקש 1 לחזרה לתפריט הראשי.")
         )
       );
     }
@@ -324,12 +365,15 @@ async function lookupOrder(input: string) {
 
   if (!order) {
     return xmlResponse(
-      say("We could not find an order with that number. Please try again.") +
-      redirect(`${BASE_URL}/api/twilio/voice`)
+      say(
+        "We could not find an order with that number. Please try again.",
+        "לא מצאנו הזמנה עם המספר הזה. אנא נסה שוב."
+      ) +
+      redirect("/api/twilio/voice")
     );
   }
 
-  const statusMsg =
+  const enStatus =
     order.status === "received"
       ? "received and logged"
       : order.status === "testing"
@@ -342,17 +386,22 @@ async function lookupOrder(input: string) {
       ? "delivered"
       : "needs attention";
 
-  let msg = `Order ${order.id.replace(/-/g, " dash ")} is currently ${statusMsg}. `;
+  const heStatus = translateStatus(order.status);
+
+  let enMsg = `Order ${order.id.replace(/-/g, " dash ")} is currently ${enStatus}. `;
+  let heMsg = `הזמנה ${order.id.replace(/-/g, " מקף ")} היא כרגע ${heStatus}. `;
+  
   if (order.estimatedCompletion) {
-    msg += `Estimated completion is ${order.estimatedCompletion}. `;
+    enMsg += `Estimated completion is ${order.estimatedCompletion}. `;
+    heMsg += `תאריך סיום משוער הוא ${order.estimatedCompletion}. `;
   }
   if (order.result) {
-    msg += `Test result: ${order.result}. `;
+    enMsg += `Test result: ${order.result}. `;
+    heMsg += `תוצאת הבדיקה: ${order.result}. `;
   }
-  if (order.notes) {
-    msg += `Notes: ${order.notes}. `;
-  }
-  msg += "Thank you for calling The Shatnez Lab. Goodbye.";
+  
+  enMsg += "Thank you for calling The Shatnez Lab. Goodbye.";
+  heMsg += "תודה שהתקשרת למעבדת השעטנז. שלום.";
 
-  return xmlResponse(say(msg));
+  return xmlResponse(say(enMsg, heMsg));
 }

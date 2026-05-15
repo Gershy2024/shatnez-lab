@@ -43,8 +43,19 @@ export default function AdminPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
+    // Check for persistent authentication
+    const persistedAuth = localStorage.getItem("admin_authenticated");
+    if (persistedAuth === "true") {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated) return;
     setLoading(true);
+    
+    // Save authentication state
+    localStorage.setItem("admin_authenticated", "true");
     
     // Fetch settings
     getAdminSettings().then(s => {
@@ -78,20 +89,28 @@ export default function AdminPage() {
   };
 
   const handleUpdateSettings = async () => {
-    const updatedPin = newPin.length === 4 ? newPin : adminPin;
-    const updatedForwarding = newForwardingNumber || forwardingNumber;
-    
-    await saveAdminSettings({ 
-      pin: updatedPin,
-      forwardingNumber: updatedForwarding
-    });
-    
-    setAdminPin(updatedPin);
-    setForwardingNumber(updatedForwarding);
-    setNewPin("");
-    setNewForwardingNumber("");
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    try {
+      const updatedPin = newPin.length === 4 ? newPin : adminPin;
+      const updatedForwarding = newForwardingNumber || forwardingNumber;
+      
+      console.log("Attempting to save:", { updatedPin, updatedForwarding });
+      
+      await saveAdminSettings({ 
+        pin: updatedPin,
+        forwardingNumber: updatedForwarding
+      });
+      
+      setAdminPin(updatedPin);
+      setForwardingNumber(updatedForwarding);
+      setNewPin("");
+      setNewForwardingNumber("");
+      setSaveSuccess(true);
+      alert("Settings updated successfully!");
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to update settings:", err);
+      alert("Error updating settings. See console for details.");
+    }
   };
 
   const generateNextId = (): string => {
@@ -224,7 +243,10 @@ export default function AdminPage() {
               Phone Settings
             </button>
             <button
-              onClick={() => setIsAuthenticated(false)}
+              onClick={() => {
+                setIsAuthenticated(false);
+                localStorage.removeItem("admin_authenticated");
+              }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-primary-600 hover:text-navy-900 hover:bg-primary-100 transition-colors"
             >
               <LogOut className="w-4 h-4" />
@@ -300,7 +322,7 @@ export default function AdminPage() {
                       <h3 className="font-bold text-gold-400 mb-2 underline">Main Menu</h3>
                       <ul className="space-y-1 text-navy-50">
                         <li>• <span className="font-bold">Option 1:</span> Check status (customer)</li>
-                        <li>• <span className="font-bold">Option 2:</span> Admin access (needs PIN)</li>
+                        <li>• <span className="font-bold">Option 9:</span> Admin access (needs PIN)</li>
                         <li>• <span className="font-bold">Option 3:</span> FORWARD CALL to representative</li>
                         <li>• <span className="font-bold">Direct Entry:</span> Just type Order # + #</li>
                       </ul>
