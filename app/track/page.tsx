@@ -4,22 +4,24 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Package, CheckCircle, Clock, AlertCircle, Truck, XCircle, Phone, MessageSquare, ChevronRight } from "lucide-react";
 import { Order, OrderStatus, getAllOrders } from "@/lib/db";
-
-const statusConfig: Record<OrderStatus, { label: string; icon: any; color: string; bg: string; desc: string }> = {
-  received: { label: "Received", icon: Package, color: "text-navy-600", bg: "bg-navy-100", desc: "Your garment has been received and logged into our system." },
-  testing: { label: "In Testing", icon: Clock, color: "text-gold-600", bg: "bg-gold-100", desc: "Our technicians are currently performing microscopic analysis." },
-  review: { label: "Under Review", icon: AlertCircle, color: "text-navy-600", bg: "bg-navy-100", desc: "Results are being double-checked by senior staff for accuracy." },
-  ready: { label: "Ready for Pickup", icon: CheckCircle, color: "text-green-600", bg: "bg-green-100", desc: "Testing is complete! Your garment is ready for pickup or delivery." },
-  delivered: { label: "Delivered", icon: Truck, color: "text-green-600", bg: "bg-green-100", desc: "Your garment has been delivered. Thank you for your business!" },
-  issue: { label: "Attention Needed", icon: XCircle, color: "text-red-600", bg: "bg-red-100", desc: "Please contact us regarding your order." },
-};
+import { useLanguage } from "@/lib/LanguageContext";
 
 export default function TrackPage() {
+  const { t, isRtl } = useLanguage();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const statusConfig: Record<OrderStatus, { label: string; icon: any; color: string; bg: string; desc: string }> = {
+    received: { label: t("status_received"), icon: Package, color: "text-navy-600", bg: "bg-navy-100", desc: t("status_desc_received") },
+    testing: { label: t("status_testing"), icon: Clock, color: "text-gold-600", bg: "bg-gold-100", desc: t("status_desc_testing") },
+    review: { label: t("status_review"), icon: AlertCircle, color: "text-navy-600", bg: "bg-navy-100", desc: t("status_desc_review") },
+    ready: { label: t("status_ready"), icon: CheckCircle, color: "text-green-600", bg: "bg-green-100", desc: t("status_desc_ready") },
+    delivered: { label: t("status_delivered"), icon: Truck, color: "text-green-600", bg: "bg-green-100", desc: t("status_desc_delivered") },
+    issue: { label: t("status_issue"), icon: XCircle, color: "text-red-600", bg: "bg-red-100", desc: t("status_desc_issue") },
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,11 +59,11 @@ export default function TrackPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="text-center mb-10"
+          className={`text-center mb-10 ${isRtl ? "text-right" : ""}`}
         >
-          <h1 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-3">Track Your Order</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-3">{t("track_title")}</h1>
           <p className="text-primary-600">
-            Enter your order number or phone number to check the current status of your garment
+            {t("track_subtitle")}
           </p>
         </motion.div>
 
@@ -74,16 +76,16 @@ export default function TrackPage() {
         >
           <div className="flex gap-3">
             <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400" />
+              <Search className={`absolute ${isRtl ? "right-4" : "left-4"} top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400`} />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter order number or phone (e.g., ORD-001 or 845-709-2022)"
-                className="w-full pl-12 pr-4 py-4 rounded-xl border border-primary-200 bg-white
+                placeholder={t("search_placeholder")}
+                className={`w-full ${isRtl ? "pr-12 pl-4 text-right" : "pl-12 pr-4 text-left"} py-4 rounded-xl border border-primary-200 bg-white
                          text-navy-900 placeholder:text-primary-400
                          focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
-                         transition-all duration-200 shadow-sm"
+                         transition-all duration-200 shadow-sm`}
               />
             </div>
             <button
@@ -91,7 +93,7 @@ export default function TrackPage() {
               disabled={loading}
               className="btn-primary px-8 py-4 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? "Searching..." : "Track"}
+              {loading ? t("searching") : t("search_btn")}
             </button>
           </div>
         </motion.form>
@@ -105,10 +107,9 @@ export default function TrackPage() {
               className="card p-8 text-center"
             >
               <AlertCircle className="w-12 h-12 text-primary-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-navy-900 mb-2">Order Not Found</h3>
+              <h3 className="text-lg font-semibold text-navy-900 mb-2">{t("order_not_found")}</h3>
               <p className="text-primary-600">
-                We couldn&apos;t find an order with that number or phone. Please double-check and try again,
-                or contact us for assistance.
+                {t("not_found_desc")}
               </p>
             </motion.div>
           )}
@@ -120,23 +121,23 @@ export default function TrackPage() {
               exit={{ opacity: 0, y: -10 }}
               className="space-y-4"
             >
-              <h3 className="text-lg font-semibold text-navy-900">
-                Found {results.length} Orders
+              <h3 className={`text-lg font-semibold text-navy-900 ${isRtl ? "text-right" : ""}`}>
+                {t("found_orders").replace("{n}", results.length.toString())}
               </h3>
               {results.map((o) => (
                 <button
                   key={o.id}
                   onClick={() => handleSelectOrder(o)}
-                  className="w-full card p-5 text-left hover:shadow-md transition-shadow flex items-center justify-between group"
+                  className={`w-full card p-5 ${isRtl ? "text-right" : "text-left"} hover:shadow-md transition-shadow flex items-center justify-between group`}
                 >
-                  <div>
+                  <div className={isRtl ? "order-last" : ""}>
                     <p className="text-sm text-primary-500 mb-1">Order #{o.id}</p>
                     <p className="font-semibold text-navy-900">{o.customerName}</p>
                     <p className="text-sm text-primary-600 mt-1">
                       {statusConfig[o.status].label} • {o.dateReceived}
                     </p>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-primary-400 group-hover:text-navy-600 transition-colors" />
+                  <ChevronRight className={`w-5 h-5 text-primary-400 group-hover:text-navy-600 transition-colors ${isRtl ? "rotate-180" : ""}`} />
                 </button>
               ))}
             </motion.div>
@@ -154,22 +155,22 @@ export default function TrackPage() {
               {results.length > 1 && (
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="text-sm text-primary-600 hover:text-navy-900 font-medium"
+                  className={`text-sm text-primary-600 hover:text-navy-900 font-medium ${isRtl ? "text-right block w-full" : ""}`}
                 >
-                  ← Back to results
+                  {t("back_to_results")}
                 </button>
               )}
 
               {/* Status Card */}
-              <div className="card p-8">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
+              <div className={`card p-8 ${isRtl ? "text-right" : ""}`}>
+                <div className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
                   <div className={`w-14 h-14 ${statusConfig[selectedOrder.status].bg} rounded-xl flex items-center justify-center`}>
                     {(() => {
                       const Icon = statusConfig[selectedOrder.status].icon;
                       return <Icon className={`w-7 h-7 ${statusConfig[selectedOrder.status].color}`} />;
                     })()}
                   </div>
-                  <div>
+                  <div className={isRtl ? "text-right" : ""}>
                     <p className="text-sm text-primary-500 mb-1">Order #{selectedOrder.id}</p>
                     <h2 className={`text-2xl font-bold ${statusConfig[selectedOrder.status].color}`}>
                       {statusConfig[selectedOrder.status].label}
@@ -181,8 +182,8 @@ export default function TrackPage() {
 
               {/* Progress Steps */}
               <div className="card p-8">
-                <h3 className="text-lg font-semibold text-navy-900 mb-6">Progress</h3>
-                <div className="flex items-center justify-between">
+                <h3 className={`text-lg font-semibold text-navy-900 mb-6 ${isRtl ? "text-right" : ""}`}>{t("progress")}</h3>
+                <div className={`flex items-center justify-between ${isRtl ? "flex-row-reverse" : ""}`}>
                   {statusSteps.map((step, index) => {
                     const currentStepIndex = statusSteps.indexOf(selectedOrder.status);
                     const isCompleted = index <= currentStepIndex;
@@ -193,7 +194,7 @@ export default function TrackPage() {
                       <div key={step} className="flex-1 flex flex-col items-center relative">
                         {index < statusSteps.length - 1 && (
                           <div
-                            className={`absolute top-5 left-1/2 w-full h-0.5 transition-colors duration-500 ${
+                            className={`absolute top-5 ${isRtl ? "right-1/2" : "left-1/2"} w-full h-0.5 transition-colors duration-500 ${
                               index < currentStepIndex ? "bg-gold-400" : "bg-primary-200"
                             }`}
                           />
@@ -223,39 +224,39 @@ export default function TrackPage() {
               </div>
 
               {/* Details */}
-              <div className="card p-8">
-                <h3 className="text-lg font-semibold text-navy-900 mb-4">Order Details</h3>
+              <div className={`card p-8 ${isRtl ? "text-right" : ""}`}>
+                <h3 className="text-lg font-semibold text-navy-900 mb-4">{t("order_details")}</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-primary-500 mb-1">Customer</p>
+                    <p className="text-sm text-primary-500 mb-1">{t("customer")}</p>
                     <p className="font-medium text-navy-900">{selectedOrder.customerName}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-primary-500 mb-1">Date Received</p>
+                    <p className="text-sm text-primary-500 mb-1">{t("date_received")}</p>
                     <p className="font-medium text-navy-900">{selectedOrder.dateReceived}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-primary-500 mb-1">Estimated Completion</p>
+                    <p className="text-sm text-primary-500 mb-1">{t("est_completion")}</p>
                     <p className="font-medium text-navy-900">{selectedOrder.estimatedCompletion || "—"}</p>
                   </div>
                   {selectedOrder.phone && (
                     <div>
-                      <p className="text-sm text-primary-500 mb-1">Phone</p>
-                      <div className="flex items-center gap-2">
+                      <p className="text-sm text-primary-500 mb-1">{t("phone")}</p>
+                      <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
                         <p className="font-medium text-navy-900">{selectedOrder.phone}</p>
                         <a
                           href={`tel:${selectedOrder.phone}`}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-navy-100 text-navy-700 text-xs hover:bg-navy-200 transition-colors"
                         >
                           <Phone className="w-3 h-3" />
-                          Call
+                          {t("call")}
                         </a>
                         <a
                           href={`sms:${selectedOrder.phone}`}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-xs hover:bg-gold-200 transition-colors"
                         >
                           <MessageSquare className="w-3 h-3" />
-                          SMS
+                          {t("sms")}
                         </a>
                       </div>
                     </div>
@@ -263,7 +264,7 @@ export default function TrackPage() {
                 </div>
                 {selectedOrder.notes && (
                   <div className="mt-4 pt-4 border-t border-primary-100">
-                    <p className="text-sm text-primary-500 mb-1">Notes</p>
+                    <p className="text-sm text-primary-500 mb-1">{t("notes")}</p>
                     <p className="text-primary-700">{selectedOrder.notes}</p>
                   </div>
                 )}

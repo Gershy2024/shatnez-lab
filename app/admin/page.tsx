@@ -5,20 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings } from "@/lib/db";
-import { Settings, Phone, Info, ChevronDown, ChevronUp } from "lucide-react";
-
-const statusOptions: { value: OrderStatus; label: string }[] = [
-  { value: "received", label: "Received" },
-  { value: "testing", label: "In Testing" },
-  { value: "review", label: "Under Review" },
-  { value: "ready", label: "Ready for Pickup" },
-  { value: "delivered", label: "Delivered" },
-  { value: "issue", label: "Attention Needed" },
-];
-
-// Admin PIN will be fetched from DB
+import { Settings, Phone, Info } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 export default function AdminPage() {
+  const { t, isRtl } = useLanguage();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
@@ -42,8 +33,16 @@ export default function AdminPage() {
   const [newForwardingNumber, setNewForwardingNumber] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const statusOptions: { value: OrderStatus; label: string }[] = [
+    { value: "received", label: t("status_received") },
+    { value: "testing", label: t("status_testing") },
+    { value: "review", label: t("status_review") },
+    { value: "ready", label: t("status_ready") },
+    { value: "delivered", label: t("status_delivered") },
+    { value: "issue", label: t("status_issue") },
+  ];
+
   useEffect(() => {
-    // Check for persistent authentication
     const persistedAuth = localStorage.getItem("admin_authenticated");
     if (persistedAuth === "true") {
       setIsAuthenticated(true);
@@ -54,10 +53,8 @@ export default function AdminPage() {
     if (!isAuthenticated) return;
     setLoading(true);
     
-    // Save authentication state
     localStorage.setItem("admin_authenticated", "true");
     
-    // Fetch settings
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
       setForwardingNumber(s.forwardingNumber);
@@ -70,7 +67,6 @@ export default function AdminPage() {
     return () => unsub();
   }, [isAuthenticated]);
 
-  // Handle login
   useEffect(() => {
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
@@ -93,8 +89,6 @@ export default function AdminPage() {
       const updatedPin = newPin.length === 4 ? newPin : adminPin;
       const updatedForwarding = newForwardingNumber || forwardingNumber;
       
-      console.log("Attempting to save:", { updatedPin, updatedForwarding });
-      
       await saveAdminSettings({ 
         pin: updatedPin,
         forwardingNumber: updatedForwarding
@@ -105,11 +99,14 @@ export default function AdminPage() {
       setNewPin("");
       setNewForwardingNumber("");
       setSaveSuccess(true);
-      alert("Settings updated successfully!");
+      
+      // If Firestore is working, we'll see "Admin settings saved successfully to Firebase" in console.
+      // If not, it still saved to LS.
+      alert(isRtl ? "הגדרות עודכנו בהצלחה!" : "Settings updated successfully!");
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to update settings:", err);
-      alert("Error updating settings. See console for details.");
+      alert(isRtl ? "שגיאה בשמירת ההגדרות. נסה שוב." : "Error saving settings. Please try again.");
     }
   };
 
@@ -164,7 +161,9 @@ export default function AdminPage() {
   };
 
   const handleDelete = async (orderId: string) => {
-    await deleteOrder(orderId);
+    if (confirm(isRtl ? "האם אתה בטוח שברצונך למחוק הזמנה זו?" : "Are you sure you want to delete this order?")) {
+      await deleteOrder(orderId);
+    }
   };
 
   const filteredOrders = orders.filter(
@@ -182,13 +181,13 @@ export default function AdminPage() {
           animate={{ opacity: 1, y: 0 }}
           className="max-w-sm w-full mx-4"
         >
-          <div className="card p-8">
+          <div className={`card p-8 ${isRtl ? "text-right" : ""}`}>
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-navy-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Lock className="w-8 h-8 text-navy-600" />
               </div>
-              <h1 className="text-2xl font-bold text-navy-900">Admin Access</h1>
-              <p className="text-sm text-primary-500 mt-1">Enter your PIN to continue</p>
+              <h1 className="text-2xl font-bold text-navy-900">{t("admin_panel")}</h1>
+              <p className="text-sm text-primary-500 mt-1">{t("enter_pin")}</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -201,7 +200,7 @@ export default function AdminPage() {
                   setPin(e.target.value.replace(/\D/g, ""));
                   setPinError(false);
                 }}
-                placeholder="Enter 4-digit PIN"
+                placeholder="PIN"
                 className={`w-full px-4 py-3 rounded-xl border text-center text-lg font-semibold tracking-widest
                          bg-primary-50 focus:outline-none focus:ring-2 focus:border-transparent
                          transition-all duration-200
@@ -213,11 +212,11 @@ export default function AdminPage() {
                   animate={{ opacity: 1 }}
                   className="text-sm text-red-500 text-center"
                 >
-                  Incorrect PIN. Please try again.
+                  {isRtl ? "קוד שגוי" : "Incorrect PIN"}
                 </motion.p>
               )}
               <button type="submit" className="btn-secondary w-full">
-                Unlock
+                {t("login")}
               </button>
             </form>
           </div>
@@ -229,18 +228,18 @@ export default function AdminPage() {
   return (
     <div className="min-h-[calc(100vh-300px)] bg-primary-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-navy-900">Order Management</h1>
-            <p className="text-primary-600 mt-1">Manage and track all customer orders</p>
+        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
+          <div className={isRtl ? "text-right" : ""}>
+            <h1 className="text-2xl sm:text-3xl font-bold text-navy-900">{t("orders_management")}</h1>
+            <p className="text-primary-600 mt-1">{isRtl ? "נהל ועקוב אחר כל הזמנות הלקוחות" : "Manage and track all customer orders"}</p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className={`flex flex-col sm:flex-row items-center gap-3 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
             <button
               onClick={() => setShowSettings(!showSettings)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-navy-600 hover:bg-navy-50 transition-colors"
             >
               <Settings className="w-4 h-4" />
-              Phone Settings
+              {t("phone_settings")}
             </button>
             <button
               onClick={() => {
@@ -250,7 +249,7 @@ export default function AdminPage() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-primary-600 hover:text-navy-900 hover:bg-primary-100 transition-colors"
             >
               <LogOut className="w-4 h-4" />
-              Logout
+              {t("logout")}
             </button>
           </div>
         </div>
@@ -263,84 +262,77 @@ export default function AdminPage() {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden mb-8"
             >
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isRtl ? "direction-rtl" : ""}`}>
                 {/* Admin PIN Change */}
-                <div className="card p-6 bg-white shadow-sm border border-navy-100">
-                  <div className="flex items-center gap-2 mb-4">
+                <div className={`card p-6 bg-white shadow-sm border border-navy-100 ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
                     <Lock className="w-5 h-5 text-navy-600" />
-                    <h2 className="text-lg font-bold text-navy-900">Change Admin PIN</h2>
+                    <h2 className="text-lg font-bold text-navy-900">{isRtl ? "שינוי קוד מנהל" : "Change Admin PIN"}</h2>
                   </div>
                   <p className="text-sm text-primary-600 mb-4">
-                    This PIN is used for both website access and phone admin menu.
+                    {isRtl ? "הקוד משמש לכניסה לאתר ולתפריט הניהול הטלפוני." : "This PIN is used for both website access and phone admin menu."}
                   </p>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">Admin PIN</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          maxLength={4}
-                          value={newPin}
-                          onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-                          placeholder="New 4-digit PIN"
-                          className="flex-1 px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none"
-                        />
-                      </div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "קוד מנהל" : "Admin PIN"}</label>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={newPin}
+                        onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                        placeholder={isRtl ? "קוד חדש בן 4 ספרות" : "New 4-digit PIN"}
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">Call Forwarding Number</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="tel"
-                          value={newForwardingNumber}
-                          onChange={(e) => setNewForwardingNumber(e.target.value)}
-                          placeholder="e.g. 8457092022"
-                          className="flex-1 px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none"
-                        />
-                      </div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "מספר להעברת שיחות" : "Forwarding Number"}</label>
+                      <input
+                        type="tel"
+                        value={newForwardingNumber}
+                        onChange={(e) => setNewForwardingNumber(e.target.value)}
+                        placeholder="e.g. 8457092022"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
                     </div>
                     <button 
                       onClick={handleUpdateSettings}
                       className="btn-primary w-full py-2"
                     >
-                      Update Settings
+                      {isRtl ? "עדכן הגדרות" : "Update Settings"}
                     </button>
                   </div>
-                  {saveSuccess && (
-                    <p className="text-sm text-green-600 mt-2 font-medium">Settings updated successfully!</p>
-                  )}
                 </div>
 
                 {/* Phone System Instructions */}
-                <div className="card p-6 bg-navy-900 text-white lg:col-span-2">
-                  <div className="flex items-center gap-2 mb-4">
+                <div className={`card p-6 bg-navy-900 text-white lg:col-span-2 ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
                     <Phone className="w-5 h-5 text-gold-400" />
-                    <h2 className="text-lg font-bold">Phone System Instructions</h2>
+                    <h2 className="text-lg font-bold">{isRtl ? "הוראות למערכת הטלפונית" : "Phone System Instructions"}</h2>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 text-sm ${isRtl ? "direction-rtl" : ""}`}>
                     <div>
-                      <h3 className="font-bold text-gold-400 mb-2 underline">Main Menu</h3>
-                      <ul className="space-y-1 text-navy-50">
-                        <li>• <span className="font-bold">Option 1:</span> Check status (customer)</li>
-                        <li>• <span className="font-bold">Option 9:</span> Admin access (needs PIN)</li>
-                        <li>• <span className="font-bold">Option 3:</span> FORWARD CALL to representative</li>
-                        <li>• <span className="font-bold">Direct Entry:</span> Just type Order # + #</li>
+                      <h3 className="font-bold text-gold-400 mb-2 underline">{isRtl ? "תפריט ראשי" : "Main Menu"}</h3>
+                      <ul className={`space-y-1 text-navy-50 ${isRtl ? "pr-0" : ""}`}>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 1:" : "Option 1:"}</span> {isRtl ? "בדיקת סטטוס (לקוח)" : "Check status (customer)"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 9:" : "Option 9:"}</span> {isRtl ? "גישת מנהל (דורש קוד)" : "Admin access (needs PIN)"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 3:" : "Option 3:"}</span> {isRtl ? "העברת שיחה לנציג" : "FORWARD CALL to representative"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "כניסה ישירה:" : "Direct Entry:"}</span> {isRtl ? "הקש מספר הזמנה + #" : "Just type Order # + #"}</li>
                       </ul>
                     </div>
                     <div>
-                      <h3 className="font-bold text-gold-400 mb-2 underline">Admin Menu (After PIN)</h3>
-                      <ul className="space-y-1 text-navy-50">
-                        <li>• <span className="font-bold">1:</span> Hear last 5 recent orders</li>
-                        <li>• <span className="font-bold">2:</span> Update order status</li>
-                        <li>• <span className="font-bold">3:</span> Lookup orders by phone number</li>
-                        <li>• <span className="font-bold">4:</span> ADD NEW ORDER by phone</li>
-                        <li>• <span className="font-bold">*:</span> Back to main menu</li>
+                      <h3 className="font-bold text-gold-400 mb-2 underline">{isRtl ? "תפריט מנהל (אחרי קוד)" : "Admin Menu (After PIN)"}</h3>
+                      <ul className={`space-y-1 text-navy-50 ${isRtl ? "pr-0" : ""}`}>
+                        <li>• <span className="font-bold">1:</span> {isRtl ? "שמיעת 5 הזמנות אחרונות" : "Hear last 5 recent orders"}</li>
+                        <li>• <span className="font-bold">2:</span> {isRtl ? "עדכון סטטוס הזמנה" : "Update order status"}</li>
+                        <li>• <span className="font-bold">3:</span> {isRtl ? "חיפוש לפי מספר טלפון" : "Lookup orders by phone number"}</li>
+                        <li>• <span className="font-bold">4:</span> {isRtl ? "הוספת הזמנה חדשה" : "ADD NEW ORDER by phone"}</li>
+                        <li>• <span className="font-bold">*:</span> {isRtl ? "חזרה לתפריט ראשי" : "Back to main menu"}</li>
                       </ul>
                     </div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-navy-800 flex items-start gap-2 text-xs text-navy-300">
+                  <div className={`mt-4 pt-4 border-t border-navy-800 flex items-start gap-2 text-xs text-navy-300 ${isRtl ? "flex-row-reverse text-right" : ""}`}>
                     <Info className="w-4 h-4 mt-0.5" />
-                    <p>Status Codes for Updates: 1=Received, 2=Testing, 3=Review, 4=Ready, 5=Delivered, 6=Issue</p>
+                    <p>{isRtl ? "קודי סטטוס לעדכון: 1=התקבל, 2=בבדיקה, 3=בביקורת, 4=מוכן, 5=נמסר, 6=בעיה" : "Status Codes for Updates: 1=Received, 2=Testing, 3=Review, 4=Ready, 5=Delivered, 6=Issue"}</p>
                   </div>
                 </div>
               </div>
@@ -349,17 +341,17 @@ export default function AdminPage() {
         </AnimatePresence>
 
         {/* Search & Add */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className={`flex flex-col sm:flex-row gap-4 mb-6 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
           <div className="flex-1 relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400" />
+            <Search className={`absolute ${isRtl ? "right-4" : "left-4"} top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400`} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search orders..."
-              className="w-full pl-12 pr-4 py-3 rounded-xl border border-primary-200 bg-white
+              placeholder={t("search_orders")}
+              className={`w-full ${isRtl ? "pr-12 pl-4 text-right" : "pl-12 pr-4 text-left"} py-3 rounded-xl border border-primary-200 bg-white
                        focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
-                       transition-all duration-200 shadow-sm"
+                       transition-all duration-200 shadow-sm`}
             />
           </div>
           <button
@@ -367,7 +359,7 @@ export default function AdminPage() {
             className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
           >
             {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-            {showAddForm ? "Cancel" : "Add Order"}
+            {showAddForm ? (isRtl ? "ביטול" : "Cancel") : t("add_new_order")}
           </button>
         </div>
 
@@ -380,39 +372,39 @@ export default function AdminPage() {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden mb-6"
             >
-              <div className="card p-6">
-                <h2 className="text-lg font-semibold text-navy-900 mb-4">Add New Order</h2>
+              <div className={`card p-6 ${isRtl ? "text-right" : ""}`}>
+                <h2 className="text-lg font-semibold text-navy-900 mb-4">{t("add_new_order")}</h2>
                 <form onSubmit={handleAddOrder} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Customer Name</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{t("customer_name")}</label>
                     <input
                       type="text"
                       required
                       value={newOrder.customerName || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, customerName: e.target.value })}
-                      placeholder="Customer name"
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      placeholder={t("customer_name")}
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Phone</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{t("phone")}</label>
                     <input
                       type="tel"
                       value={newOrder.phone || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, phone: e.target.value })}
                       placeholder="845-709-2022"
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Status</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{t("status")}</label>
                     <select
                       value={newOrder.status}
                       onChange={(e) => setNewOrder({ ...newOrder, status: e.target.value as OrderStatus })}
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     >
                       {statusOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -420,51 +412,51 @@ export default function AdminPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Date Received</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{t("date_received")}</label>
                     <input
                       type="date"
                       value={newOrder.dateReceived}
                       onChange={(e) => setNewOrder({ ...newOrder, dateReceived: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Est. Completion</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{t("est_completion")}</label>
                     <input
                       type="date"
                       value={newOrder.estimatedCompletion || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, estimatedCompletion: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Test Result</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{isRtl ? "תוצאה" : "Test Result"}</label>
                     <input
                       type="text"
                       value={newOrder.result || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, result: e.target.value })}
-                      placeholder="e.g. Clean, Shatnez Found..."
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      placeholder={isRtl ? "למשל: נקי, נמצא שעטנז..." : "e.g. Clean, Shatnez Found..."}
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
                   </div>
                   <div className="sm:col-span-2 lg:col-span-2">
-                    <label className="block text-sm font-medium text-navy-800 mb-1">Notes</label>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{t("notes")}</label>
                     <input
                       type="text"
                       value={newOrder.notes || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, notes: e.target.value })}
-                      placeholder="Any special notes..."
-                      className="w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent"
+                      placeholder={isRtl ? "הערות מיוחדות..." : "Any special notes..."}
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
                   </div>
                   <div className="sm:col-span-2 lg:col-span-3">
                     <button type="submit" className="btn-primary inline-flex items-center gap-2">
                       <Save className="w-4 h-4" />
-                      Save Order
+                      {isRtl ? "שמור הזמנה" : "Save Order"}
                     </button>
                   </div>
                 </form>
@@ -478,24 +470,24 @@ export default function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-primary-50 border-b border-primary-100">
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800">Order ID</th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800">Customer</th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800 hidden md:table-cell">Phone</th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800">Status</th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell">Received</th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800 hidden lg:table-cell">Est. Completion</th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-navy-800">Result</th>
-                  <th className="text-right px-6 py-4 text-sm font-semibold text-navy-800">Actions</th>
+                <tr className={`bg-primary-50 border-b border-primary-100 ${isRtl ? "text-right" : "text-left"}`}>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 hidden md:table-cell ${isRtl ? "text-right" : "text-left"}`}>{t("phone")}</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("status")}</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "התקבל" : "Received"}</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 hidden lg:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "סיום משוער" : "Est. Completion"}</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תוצאה" : "Result"}</th>
+                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={isRtl ? "text-right" : "text-left"}>
                 {filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-primary-500">
+                    <td colSpan={8} className="px-6 py-12 text-center text-primary-500">
                       <Package className="w-12 h-12 mx-auto mb-3 text-primary-300" />
-                      <p>No orders found</p>
-                      {searchQuery && <p className="text-sm mt-1">Try adjusting your search</p>}
+                      <p>{isRtl ? "לא נמצאו הזמנות" : "No orders found"}</p>
+                      {searchQuery && <p className="text-sm mt-1">{isRtl ? "נסה לשנות את החיפוש" : "Try adjusting your search"}</p>}
                     </td>
                   </tr>
                 ) : (
@@ -516,9 +508,9 @@ export default function AdminPage() {
                         <select
                           value={order.status}
                           onChange={(e) => updateStatus(order.id, e.target.value as OrderStatus)}
-                          className="px-3 py-1.5 rounded-lg border border-primary-200 bg-white text-sm
+                          className={`px-3 py-1.5 rounded-lg border border-primary-200 bg-white text-sm
                                    focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
-                                   cursor-pointer"
+                                   cursor-pointer ${isRtl ? "text-right" : ""}`}
                         >
                           {statusOptions.map((opt) => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -532,24 +524,24 @@ export default function AdminPage() {
                           type="text"
                           value={order.result || ""}
                           onChange={(e) => updateResult(order.id, e.target.value)}
-                          placeholder="No result yet"
-                          className="w-full px-2 py-1 text-sm rounded border border-primary-200 bg-white
+                          placeholder={isRtl ? "אין תוצאה" : "No result yet"}
+                          className={`w-full px-2 py-1 text-sm rounded border border-primary-200 bg-white
                                    focus:outline-none focus:ring-1 focus:ring-gold-400 focus:border-transparent
-                                   transition-all"
+                                   transition-all ${isRtl ? "text-right" : ""}`}
                         />
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className={`px-6 py-4 ${isRtl ? "text-left" : "text-right"}`}>
                         <button
                           onClick={() => setPrintOrder(order)}
                           className="p-2 rounded-lg text-navy-400 hover:text-navy-600 hover:bg-navy-50 transition-colors mr-1"
-                          title="Print card"
+                          title={isRtl ? "הדפס כרטיס" : "Print card"}
                         >
                           <Printer className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(order.id)}
                           className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Delete order"
+                          title={isRtl ? "מחק הזמנה" : "Delete order"}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

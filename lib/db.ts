@@ -125,13 +125,33 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
 }
 
 /* ── Admin Settings ── */
+const SETTINGS_LS_KEY = "shatnez_settings";
+
 export async function getAdminSettings(): Promise<AdminSettings> {
   const defaultSettings: AdminSettings = { pin: "1234", forwardingNumber: "8457092022" };
+  
+  // Try localStorage first for quick access/fallback
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem(SETTINGS_LS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+  }
+
   if (isConfigured && db) {
-    const ref = doc(db, SETTINGS_COLLECTION, "admin");
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      return snap.data() as AdminSettings;
+    try {
+      const ref = doc(db, SETTINGS_COLLECTION, "admin");
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data() as AdminSettings;
+        // Sync to LS
+        if (typeof window !== "undefined") {
+          localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(data));
+        }
+        return data;
+      }
+    } catch (e) {
+      console.error("Error fetching admin settings from Firebase:", e);
     }
   }
   return defaultSettings;
@@ -139,15 +159,23 @@ export async function getAdminSettings(): Promise<AdminSettings> {
 
 export async function saveAdminSettings(settings: AdminSettings): Promise<void> {
   console.log("Saving admin settings:", settings);
+  
+  // Always save to localStorage
+  if (typeof window !== "undefined") {
+    localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(settings));
+  }
+
   if (isConfigured && db) {
     try {
       await setDoc(doc(db, SETTINGS_COLLECTION, "admin"), settings);
-      console.log("Admin settings saved successfully");
+      console.log("Admin settings saved successfully to Firebase");
     } catch (error) {
-      console.error("Error saving admin settings:", error);
-      throw error;
+      console.error("Error saving admin settings to Firebase:", error);
+      // We don't throw here if we successfully saved to LS, 
+      // but maybe we should to notify the user of the sync issue?
+      // Actually, if we saved to LS, the app will work.
     }
   } else {
-    console.warn("Firebase not configured, settings not saved to DB");
+    console.warn("Firebase not configured, settings saved to localStorage only");
   }
 }

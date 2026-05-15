@@ -17,10 +17,9 @@ export default function Navbar() {
     { href: "/admin", label: t("admin") },
   ];
 
-  const languages: { code: Language; label: string; flag: string }[] = [
-    { code: "en", label: "English", flag: "🇺🇸" },
-    { code: "he", label: "עברית", flag: "🇮🇱" },
-    { code: "yi", label: "יידיש", flag: "📜" },
+  const languages: { code: Language; label: string; text: string }[] = [
+    { code: "en", label: "English", text: "US" },
+    { code: "he", label: "עברית", text: "IL" },
   ];
 
   return (
@@ -53,16 +52,19 @@ export default function Navbar() {
             </div>
 
             {/* Language Switcher */}
-            <div className="flex items-center gap-2 pl-6 border-l border-primary-100">
+            <div className="flex items-center gap-1.5 pl-6 border-l border-primary-100">
               {languages.map((lang) => (
                 <button
                   key={lang.code}
                   onClick={() => setLanguage(lang.code)}
-                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-all duration-200
-                            ${language === lang.code ? "bg-navy-900 shadow-lg scale-110" : "hover:bg-primary-50"}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300
+                            focus:outline-none focus:ring-2 focus:ring-gold-400/50
+                            ${language === lang.code 
+                              ? "bg-gold-400 text-navy-900 shadow-lg shadow-gold-400/20 scale-105" 
+                              : "text-primary-400 hover:bg-primary-50 hover:text-navy-900 hover:scale-105"}`}
                   title={lang.label}
                 >
-                  {lang.flag}
+                  {lang.text}
                 </button>
               ))}
             </div>
@@ -73,10 +75,10 @@ export default function Navbar() {
             <select 
               value={language}
               onChange={(e) => setLanguage(e.target.value as Language)}
-              className="bg-primary-50 text-sm border-none rounded-lg py-1 px-2 focus:ring-0"
+              className="bg-primary-50 text-xs font-bold border-none rounded-lg py-1 px-2 focus:ring-0 text-navy-900"
             >
               {languages.map(l => (
-                <option key={l.code} value={l.code}>{l.flag} {l.code.toUpperCase()}</option>
+                <option key={l.code} value={l.code}>{l.text}</option>
               ))}
             </select>
             <button
