@@ -298,8 +298,11 @@ export async function POST(req: NextRequest) {
       );
     }
     const orders = await getAllOrders();
-    const nextNum = orders.length + 1;
-    const newId = `ORD-P${nextNum.toString().padStart(3, "0")}`;
+    const existingIds = orders.map(o => parseInt(o.id.replace(/\D/g, "")) || 0);
+    const max = existingIds.length > 0 ? Math.max(...existingIds) : 0;
+    const next = max < 100 ? 101 : max + 1;
+    const newId = String(next);
+    
     await saveOrder({
       id: newId, customerName: "Phone Customer", phone: phone, status: "received",
       dateReceived: new Date().toISOString().split("T")[0], estimatedCompletion: "",
@@ -307,8 +310,8 @@ export async function POST(req: NextRequest) {
     });
     return xmlResponse(
       say(
-        `Order created successfully. The order ID is ${newId.replace(/-/g, " dash ")}.`,
-        `ההזמנה נוצרה בהצלחה. מספר ההזמנה הוא ${newId.replace(/-/g, " מקף ")}.`
+        `Order created successfully. The order ID is ${newId}.`,
+        `ההזמנה נוצרה בהצלחה. מספר ההזמנה הוא ${newId}.`
       ) +
       redirect(`${origin}/api/twilio/gather?step=admin_menu`)
     );

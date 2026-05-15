@@ -67,7 +67,7 @@ export const translations: Translations = {
   // Track Page
   track_title: { en: "Track Your Order", he: "עקוב אחר הזמנתך" },
   track_subtitle: { en: "Enter your order number or phone number to check the current status of your garment", he: "הזן את מספר ההזמנה או מספר הטלפון שלך כדי לבדוק את הסטטוס הנוכחי של הבגד" },
-  search_placeholder: { en: "Enter order number or phone (e.g., ORD-001 or 845-709-2022)", he: "הזן מספר הזמנה או טלפון (למשל, ORD-001 או 845-709-2022)" },
+  search_placeholder: { en: "Enter order number or phone (e.g., 101 or 845-709-2022)", he: "הזן מספר הזמנה או טלפון (למשל, 101 או 845-709-2022)" },
   search_btn: { en: "Track", he: "עקוב" },
   searching: { en: "Searching...", he: "מחפש..." },
   order_not_found: { en: "Order Not Found", he: "הזמנה לא נמצאה" },

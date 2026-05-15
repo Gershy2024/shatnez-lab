@@ -112,11 +112,12 @@ export default function AdminPage() {
 
   const generateNextId = (): string => {
     const existing = orders.map((o) => {
-      const match = o.id.match(/^ORD-(\d+)$/i);
+      const match = o.id.match(/^(\d+)$/);
       return match ? parseInt(match[1], 10) : 0;
     });
     const max = existing.length > 0 ? Math.max(...existing) : 0;
-    return `ORD-${String(max + 1).padStart(3, "0")}`;
+    const next = max < 100 ? 101 : max + 1;
+    return String(next);
   };
 
   const handleAddOrder = async (e: React.FormEvent) => {
