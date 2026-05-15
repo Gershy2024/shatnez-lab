@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings } from "@/lib/db";
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || "";
-const ADMIN_PIN = "1234";
 
 function say(text: string, lang = "en-US") {
-  return `<Say voice="alice" language="${lang}">${text}</Say>`;
+  return `<Say voice="man" language="${lang}">${text}</Say>`;
 }
 
 function gather(action: string, numDigits: number | string, timeout = 10, innerXml: string) {
@@ -28,6 +27,9 @@ export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const step = url.searchParams.get("step") || "menu";
 
+  const settings = await getAdminSettings();
+  const ADMIN_PIN = settings.pin;
+
   // ── Main Menu ──
   if (step === "menu") {
     if (digits === "1") {
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
           `${BASE_URL}/api/twilio/gather?step=order_lookup`,
           10,
           10,
-          say("Please enter your order number, followed by pound. For example, O R D dash 0 0 1 pound.")
+          say("Please enter your order number, or your ten digit phone number, followed by pound.")
         ) +
         say("No input received. Returning to main menu.") +
         redirect(`${BASE_URL}/api/twilio/voice`)
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
           1,
           10,
           say(
-            "Admin menu. Press 1 to hear recent orders. Press 2 to update an order status. Press 3 to hear orders by phone. Press star to return to main menu."
+            "Admin menu. Press 1 to hear recent orders. Press 2 to update an order status. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu."
           )
         ) +
         say("No input received. Goodbye.")
@@ -144,6 +146,18 @@ export async function POST(req: NextRequest) {
           10,
           10,
           say("Enter the phone number, followed by pound.")
+        ) +
+        say("No input received.") +
+        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+      );
+    }
+    if (digits === "4") {
+      return xmlResponse(
+        gather(
+          `${BASE_URL}/api/twilio/gather?step=admin_add_order`,
+          10,
+          10,
+          say("Enter the customer phone number for the new order, followed by pound.")
         ) +
         say("No input received.") +
         redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
@@ -234,6 +248,38 @@ export async function POST(req: NextRequest) {
         10,
         say("Press any key to return to admin menu, or star for main menu.")
       )
+    );
+  }
+
+  // ── Admin: Add Order ──
+  if (step === "admin_add_order") {
+    const phone = digits.replace(/#$/, "").trim();
+    if (!phone) {
+      return xmlResponse(
+        say("No phone number entered.") +
+        redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
+      );
+    }
+    
+    // Generate a simple numeric ID for phone orders or use phone as suffix
+    const orders = await getAllOrders();
+    const nextNum = orders.length + 1;
+    const newId = `ORD-P${nextNum.toString().padStart(3, "0")}`;
+    
+    await saveOrder({
+      id: newId,
+      customerName: "Phone Customer",
+      phone: phone,
+      status: "received",
+      dateReceived: new Date().toISOString().split("T")[0],
+      estimatedCompletion: "",
+      notes: "Added via phone system",
+      result: ""
+    });
+
+    return xmlResponse(
+      say(`Order created successfully. The order ID is ${newId.replace(/-/g, " dash ")}.`) +
+      redirect(`${BASE_URL}/api/twilio/gather?step=admin_menu`)
     );
   }
 

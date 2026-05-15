@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
-import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder } from "@/lib/db";
+import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings } from "@/lib/db";
+import { Settings, Phone, Info, ChevronDown, ChevronUp } from "lucide-react";
 
 const statusOptions: { value: OrderStatus; label: string }[] = [
   { value: "received", label: "Received" },
@@ -15,7 +16,7 @@ const statusOptions: { value: OrderStatus; label: string }[] = [
   { value: "issue", label: "Attention Needed" },
 ];
 
-const ADMIN_PIN = "1234";
+// Admin PIN will be fetched from DB
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,10 +35,18 @@ export default function AdminPage() {
   });
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [adminPin, setAdminPin] = useState("1234");
+  const [showSettings, setShowSettings] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
     setLoading(true);
+    
+    // Fetch settings
+    getAdminSettings().then(s => setAdminPin(s.pin));
+
     const unsub = subscribeToOrders((data) => {
       setOrders(data);
       setLoading(false);
@@ -45,14 +54,28 @@ export default function AdminPage() {
     return () => unsub();
   }, [isAuthenticated]);
 
+  // Handle login
+  useEffect(() => {
+    getAdminSettings().then(s => setAdminPin(s.pin));
+  }, []);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === ADMIN_PIN) {
+    if (pin === adminPin) {
       setIsAuthenticated(true);
       setPinError(false);
     } else {
       setPinError(true);
     }
+  };
+
+  const handleUpdatePin = async () => {
+    if (newPin.length !== 4) return;
+    await saveAdminSettings({ pin: newPin });
+    setAdminPin(newPin);
+    setNewPin("");
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const generateNextId = (): string => {
@@ -176,14 +199,99 @@ export default function AdminPage() {
             <h1 className="text-2xl sm:text-3xl font-bold text-navy-900">Order Management</h1>
             <p className="text-primary-600 mt-1">Manage and track all customer orders</p>
           </div>
-          <button
-            onClick={() => setIsAuthenticated(false)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-primary-600 hover:text-navy-900 hover:bg-primary-100 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-navy-600 hover:bg-navy-50 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Phone Settings
+            </button>
+            <button
+              onClick={() => setIsAuthenticated(false)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-primary-600 hover:text-navy-900 hover:bg-primary-100 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
         </div>
+
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden mb-8"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Admin PIN Change */}
+                <div className="card p-6 bg-white shadow-sm border border-navy-100">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lock className="w-5 h-5 text-navy-600" />
+                    <h2 className="text-lg font-bold text-navy-900">Change Admin PIN</h2>
+                  </div>
+                  <p className="text-sm text-primary-600 mb-4">
+                    This PIN is used for both website access and phone admin menu.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={newPin}
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                      placeholder="New 4-digit PIN"
+                      className="flex-1 px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none"
+                    />
+                    <button 
+                      onClick={handleUpdatePin}
+                      disabled={newPin.length !== 4}
+                      className="btn-primary py-2 px-4 disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {saveSuccess && (
+                    <p className="text-sm text-green-600 mt-2 font-medium">PIN updated successfully!</p>
+                  )}
+                </div>
+
+                {/* Phone System Instructions */}
+                <div className="card p-6 bg-navy-900 text-white lg:col-span-2">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Phone className="w-5 h-5 text-gold-400" />
+                    <h2 className="text-lg font-bold">Phone System Instructions</h2>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                    <div>
+                      <h3 className="font-bold text-gold-400 mb-2 underline">Main Menu</h3>
+                      <ul className="space-y-1 text-navy-50">
+                        <li>• <span className="font-bold">Option 1:</span> Check status (customer)</li>
+                        <li>• <span className="font-bold">Option 2:</span> Admin access (needs PIN)</li>
+                        <li>• <span className="font-bold">Direct Entry:</span> Just type Order # + #</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gold-400 mb-2 underline">Admin Menu (After PIN)</h3>
+                      <ul className="space-y-1 text-navy-50">
+                        <li>• <span className="font-bold">1:</span> Hear last 5 recent orders</li>
+                        <li>• <span className="font-bold">2:</span> Update order status</li>
+                        <li>• <span className="font-bold">3:</span> Lookup orders by phone number</li>
+                        <li>• <span className="font-bold">4:</span> ADD NEW ORDER by phone</li>
+                        <li>• <span className="font-bold">*:</span> Back to main menu</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-navy-800 flex items-start gap-2 text-xs text-navy-300">
+                    <Info className="w-4 h-4 mt-0.5" />
+                    <p>Status Codes for Updates: 1=Received, 2=Testing, 3=Review, 4=Ready, 5=Delivered, 6=Issue</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Search & Add */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">

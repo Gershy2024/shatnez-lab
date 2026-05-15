@@ -24,7 +24,12 @@ export interface Order {
   result: string;
 }
 
+export interface AdminSettings {
+  pin: string;
+}
+
 const ORDERS_COLLECTION = "orders";
+const SETTINGS_COLLECTION = "settings";
 const LS_KEY = "shatnez_orders";
 
 /* ── localStorage helpers (fallback) ── */
@@ -116,4 +121,23 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
   }, 2000);
   callback(lsGet());
   return () => clearInterval(interval);
+}
+
+/* ── Admin Settings ── */
+export async function getAdminSettings(): Promise<AdminSettings> {
+  const defaultSettings: AdminSettings = { pin: "1234" };
+  if (isConfigured && db) {
+    const ref = doc(db, SETTINGS_COLLECTION, "admin");
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      return snap.data() as AdminSettings;
+    }
+  }
+  return defaultSettings;
+}
+
+export async function saveAdminSettings(settings: AdminSettings): Promise<void> {
+  if (isConfigured && db) {
+    await setDoc(doc(db, SETTINGS_COLLECTION, "admin"), settings);
+  }
 }

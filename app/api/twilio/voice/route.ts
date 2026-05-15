@@ -11,14 +11,14 @@ export async function POST(req: NextRequest) {
     numDigits="1"
     timeout="5"
   >
-    <Say voice="alice" language="en-US">
+    <Say voice="man" language="en-US">
       Welcome to The Shatnez Lab.
       Press 1 to check your order status.
       Press 2 for admin access.
       Or enter your order number followed by pound.
     </Say>
   </Gather>
-  <Say voice="alice" language="en-US">We did not receive a response. Goodbye.</Say>
+  <Say voice="man" language="en-US">We did not receive a response. Goodbye.</Say>
 </Response>`;
 
   return new NextResponse(twiml, {
