@@ -4,16 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Menu, X, Microscope } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/track", label: "Track Order" },
-  { href: "/contact", label: "Contact" },
-  { href: "/admin", label: "Admin" },
-];
-
 import { useLanguage, Language } from "@/lib/LanguageContext";
-import { Languages } from "lucide-react";
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -95,6 +86,8 @@ export default function Navbar() {
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
+        </div>
+      </div>
 
       {/* Mobile Nav */}
       <AnimatePresence>
