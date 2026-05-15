@@ -20,6 +20,18 @@ function xmlResponse(inner: string) {
   });
 }
 
+function translateStatus(status: string) {
+  const map: Record<string, string> = {
+    received: "התקבל",
+    testing: "בבדיקה",
+    review: "בביקורת",
+    ready: "מוכן לאיסוף",
+    delivered: "נמסר",
+    issue: "דרוש טיפול",
+  };
+  return map[status] || status;
+}
+
 export async function POST(req: NextRequest) {
   const origin = req.nextUrl.origin;
   let digits = "";

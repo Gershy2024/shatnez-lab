@@ -1,3 +1,6 @@
+"use client";
+import React, { createContext, useContext, useState, useEffect } from "react";
+
 export type Language = "en" | "he";
 
 interface Translations {
@@ -135,9 +138,6 @@ export const translations: Translations = {
   status: { en: "Status", he: "סטטוס" },
   date: { en: "Date", he: "תאריך" },
   actions: { en: "Actions", he: "פעולות" },
-  customer: { en: "Customer", he: "לקוח" },
-  date_received: { en: "Date Received", he: "תאריך קבלה" },
-  est_completion: { en: "Est. Completion", he: "סיום משוער" },
 };
 
 interface LanguageContextType {
