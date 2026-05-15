@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
       Welcome to The Shatnez Lab.
       Press 1 to check your order status.
       Press 2 for admin access.
+      Press 3 to speak with a representative.
       Or enter your order number followed by pound.
     </Say>
   </Gather>

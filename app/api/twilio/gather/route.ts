@@ -56,6 +56,13 @@ export async function POST(req: NextRequest) {
         redirect(`${BASE_URL}/api/twilio/voice`)
       );
     }
+    if (digits === "3") {
+      const num = settings.forwardingNumber || "8457092022";
+      return xmlResponse(
+        say("Connecting you to a representative. Please wait.") +
+        `<Dial>${num}</Dial>`
+      );
+    }
     // Try direct order number entry (includes pound terminator)
     const clean = digits.replace(/#$/, "").trim().toUpperCase();
     if (clean) {

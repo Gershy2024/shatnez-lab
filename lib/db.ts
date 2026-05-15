@@ -26,6 +26,7 @@ export interface Order {
 
 export interface AdminSettings {
   pin: string;
+  forwardingNumber: string;
 }
 
 const ORDERS_COLLECTION = "orders";
@@ -125,7 +126,7 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
 
 /* ── Admin Settings ── */
 export async function getAdminSettings(): Promise<AdminSettings> {
-  const defaultSettings: AdminSettings = { pin: "1234" };
+  const defaultSettings: AdminSettings = { pin: "1234", forwardingNumber: "8457092022" };
   if (isConfigured && db) {
     const ref = doc(db, SETTINGS_COLLECTION, "admin");
     const snap = await getDoc(ref);

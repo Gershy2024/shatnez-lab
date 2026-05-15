@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Microscope, Truck, Home, ShieldCheck, Clock, Phone, ChevronRight } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 20 },
@@ -18,6 +19,8 @@ const staggerContainer = {
 };
 
 export default function HomePage() {
+  const { t, isRtl } = useLanguage();
+
   return (
     <div className="space-y-0">
       {/* Hero Section */}
@@ -30,38 +33,55 @@ export default function HomePage() {
             initial="hidden"
             animate="visible"
             variants={staggerContainer}
-            className="max-w-3xl"
+            className={`max-w-3xl ${isRtl ? "text-right" : "text-left"}`}
           >
             <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm font-medium mb-6 border border-white/10">
               <ShieldCheck className="w-4 h-4 text-gold-400" />
-              Trusted Professional Shatnez Testing
+              {t("trusted_badge")}
             </motion.div>
             
             <motion.h1 
               variants={fadeInUp}
               className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6"
             >
-              The Shatnez Lab
-              <span className="block text-gold-400 mt-2">Precision & Care</span>
+              {t("hero_title")}
+              <span className="block text-gold-400 mt-2">{t("hero_subtitle")}</span>
             </motion.h1>
             
             <motion.p 
               variants={fadeInUp}
               className="text-lg sm:text-xl text-primary-300 leading-relaxed mb-10 max-w-2xl"
             >
-              Professional shatnez inspection services for your garments and textiles. 
-              In-lab testing and VIP home visits available throughout Spring Valley and surrounding areas.
+              {t("hero_desc")}
             </motion.p>
             
             <motion.div variants={fadeInUp} className="flex flex-wrap gap-4">
               <Link href="/track" className="btn-primary inline-flex items-center gap-2">
                 <Truck className="w-5 h-5" />
-                Track Your Order
+                {t("track_your_order")}
               </Link>
               <Link href="/contact" className="inline-flex items-center gap-2 px-8 py-3 rounded-lg font-semibold border-2 border-white/20 text-white hover:bg-white/10 transition-all duration-300">
                 <Phone className="w-5 h-5" />
-                Contact Us
+                {t("contact_us")}
               </Link>
+            </motion.div>
+
+            {/* Automated Phone System Info */}
+            <motion.div 
+              variants={fadeInUp}
+              className="mt-12 p-6 bg-gold-400/10 backdrop-blur-sm rounded-2xl border border-gold-400/20 max-w-xl"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 bg-gold-400 rounded-lg flex items-center justify-center shrink-0">
+                  <Phone className="w-6 h-6 text-navy-900" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gold-400">{t("phone_title")}</h3>
+                  <p className="text-primary-300 mt-1">
+                    {t("phone_desc")}
+                  </p>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         </div>
@@ -77,9 +97,9 @@ export default function HomePage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-4">Our Services</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-4">{t("our_services")}</h2>
             <p className="text-lg text-primary-600 max-w-2xl mx-auto">
-              Comprehensive shatnez testing solutions tailored to your needs
+              {t("services_desc")}
             </p>
           </motion.div>
 
@@ -87,20 +107,20 @@ export default function HomePage() {
             {[
               {
                 icon: Microscope,
-                title: "In-Lab Testing",
-                description: "Thorough microscopic examination in our state-of-the-art facility. Fast, accurate results with detailed reporting.",
+                title: t("in_lab"),
+                description: t("in_lab_desc"),
                 color: "bg-navy-100 text-navy-600",
               },
               {
                 icon: Home,
-                title: "VIP Home Service",
-                description: "Can&apos;t make it to the lab? We come to you! Premium home inspection service for your convenience and privacy.",
+                title: t("vip_home"),
+                description: t("vip_home_desc"),
                 color: "bg-gold-100 text-gold-600",
               },
               {
                 icon: Clock,
-                title: "Express Processing",
-                description: "Need results urgently? Our express service provides same-day or next-day turnaround for time-sensitive needs.",
+                title: t("express"),
+                description: t("express_desc"),
                 color: "bg-navy-100 text-navy-600",
               },
             ].map((service, index) => (
@@ -133,18 +153,18 @@ export default function HomePage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-4">How It Works</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-4">{t("how_it_works")}</h2>
             <p className="text-lg text-primary-600 max-w-2xl mx-auto">
-              Simple, transparent process from drop-off to results
+              {t("how_desc")}
             </p>
           </motion.div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {[
-              { step: "01", title: "Submit Garment", desc: "Drop off at our lab or schedule VIP pickup" },
-              { step: "02", title: "Testing", desc: "Expert microscopic analysis performed" },
-              { step: "03", title: "Quality Check", desc: "Double-verified results for accuracy" },
-              { step: "04", title: "Get Results", desc: "Receive your report with status update" },
+              { step: "01", title: t("step1_title"), desc: t("step1_desc") },
+              { step: "02", title: t("step2_title"), desc: t("step2_desc") },
+              { step: "03", title: t("step3_title"), desc: t("step3_desc") },
+              { step: "04", title: t("step4_title"), desc: t("step4_desc") },
             ].map((item, index) => (
               <motion.div
                 key={item.step}
@@ -175,10 +195,9 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to Get Started?</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">{t("ready_to_start")}</h2>
             <p className="text-lg text-primary-300 mb-8 max-w-2xl mx-auto">
-              Whether you need in-lab testing or our premium VIP home service, 
-              we&apos;re here to help with professional care.
+              {t("cta_desc")}
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <a 
@@ -186,11 +205,11 @@ export default function HomePage() {
                 className="btn-primary inline-flex items-center gap-2"
               >
                 <Phone className="w-5 h-5" />
-                Call Now: 845-709-2022
+                {t("call_now")}: 845-709-2022
               </a>
               <Link href="/track" className="inline-flex items-center gap-2 px-8 py-3 rounded-lg font-semibold border-2 border-white/20 text-white hover:bg-white/10 transition-all duration-300">
-                Track Order
-                <ChevronRight className="w-5 h-5" />
+                {t("track_your_order")}
+                <ChevronRight className={`w-5 h-5 ${isRtl ? "rotate-180" : ""}`} />
               </Link>
             </div>
           </motion.div>

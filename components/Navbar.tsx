@@ -12,8 +12,25 @@ const navLinks = [
   { href: "/admin", label: "Admin" },
 ];
 
+import { useLanguage, Language } from "@/lib/LanguageContext";
+import { Languages } from "lucide-react";
+
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { language, setLanguage, t } = useLanguage();
+
+  const navLinks = [
+    { href: "/", label: t("home") },
+    { href: "/track", label: t("track_order") },
+    { href: "/contact", label: t("contact") },
+    { href: "/admin", label: t("admin") },
+  ];
+
+  const languages: { code: Language; label: string; flag: string }[] = [
+    { code: "en", label: "English", flag: "🇺🇸" },
+    { code: "he", label: "עברית", flag: "🇮🇱" },
+    { code: "yi", label: "יידיש", flag: "📜" },
+  ];
 
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-primary-100">
@@ -30,28 +47,54 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-navy-700
-                         hover:text-navy-900 hover:bg-primary-50 transition-all duration-200"
-              >
-                {link.label}
-              </Link>
-            ))}
+          <div className="hidden md:flex items-center gap-6">
+            <div className="flex items-center gap-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-navy-700
+                           hover:text-navy-900 hover:bg-primary-50 transition-all duration-200"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+
+            {/* Language Switcher */}
+            <div className="flex items-center gap-2 pl-6 border-l border-primary-100">
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => setLanguage(lang.code)}
+                  className={`w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-all duration-200
+                            ${language === lang.code ? "bg-navy-900 shadow-lg scale-110" : "hover:bg-primary-50"}`}
+                  title={lang.label}
+                >
+                  {lang.flag}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-navy-700 hover:bg-primary-50 transition-colors"
-          >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-        </div>
-      </div>
+          {/* Mobile buttons */}
+          <div className="flex items-center gap-2 md:hidden">
+            <select 
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+              className="bg-primary-50 text-sm border-none rounded-lg py-1 px-2 focus:ring-0"
+            >
+              {languages.map(l => (
+                <option key={l.code} value={l.code}>{l.flag} {l.code.toUpperCase()}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-lg text-navy-700 hover:bg-primary-50 transition-colors"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
 
       {/* Mobile Nav */}
       <AnimatePresence>
@@ -69,7 +112,7 @@ export default function Navbar() {
                   href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-4 py-3 rounded-lg text-sm font-medium text-navy-700
-                           hover:text-navy-900 hover:bg-primary-50 transition-all duration-200"
+                           hover:text-navy-900 hover:bg-primary-50 transition-all duration-200 text-center"
                 >
                   {link.label}
                 </Link>

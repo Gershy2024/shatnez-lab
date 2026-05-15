@@ -36,8 +36,10 @@ export default function AdminPage() {
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [adminPin, setAdminPin] = useState("1234");
+  const [forwardingNumber, setForwardingNumber] = useState("8457092022");
   const [showSettings, setShowSettings] = useState(false);
   const [newPin, setNewPin] = useState("");
+  const [newForwardingNumber, setNewForwardingNumber] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
@@ -45,7 +47,10 @@ export default function AdminPage() {
     setLoading(true);
     
     // Fetch settings
-    getAdminSettings().then(s => setAdminPin(s.pin));
+    getAdminSettings().then(s => {
+      setAdminPin(s.pin);
+      setForwardingNumber(s.forwardingNumber);
+    });
 
     const unsub = subscribeToOrders((data) => {
       setOrders(data);
@@ -56,7 +61,10 @@ export default function AdminPage() {
 
   // Handle login
   useEffect(() => {
-    getAdminSettings().then(s => setAdminPin(s.pin));
+    getAdminSettings().then(s => {
+      setAdminPin(s.pin);
+      setForwardingNumber(s.forwardingNumber);
+    });
   }, []);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -69,11 +77,19 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpdatePin = async () => {
-    if (newPin.length !== 4) return;
-    await saveAdminSettings({ pin: newPin });
-    setAdminPin(newPin);
+  const handleUpdateSettings = async () => {
+    const updatedPin = newPin.length === 4 ? newPin : adminPin;
+    const updatedForwarding = newForwardingNumber || forwardingNumber;
+    
+    await saveAdminSettings({ 
+      pin: updatedPin,
+      forwardingNumber: updatedForwarding
+    });
+    
+    setAdminPin(updatedPin);
+    setForwardingNumber(updatedForwarding);
     setNewPin("");
+    setNewForwardingNumber("");
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -235,25 +251,41 @@ export default function AdminPage() {
                   <p className="text-sm text-primary-600 mb-4">
                     This PIN is used for both website access and phone admin menu.
                   </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      maxLength={4}
-                      value={newPin}
-                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-                      placeholder="New 4-digit PIN"
-                      className="flex-1 px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">Admin PIN</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          maxLength={4}
+                          value={newPin}
+                          onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                          placeholder="New 4-digit PIN"
+                          className="flex-1 px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">Call Forwarding Number</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          value={newForwardingNumber}
+                          onChange={(e) => setNewForwardingNumber(e.target.value)}
+                          placeholder="e.g. 8457092022"
+                          className="flex-1 px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
                     <button 
-                      onClick={handleUpdatePin}
-                      disabled={newPin.length !== 4}
-                      className="btn-primary py-2 px-4 disabled:opacity-50"
+                      onClick={handleUpdateSettings}
+                      className="btn-primary w-full py-2"
                     >
-                      Save
+                      Update Settings
                     </button>
                   </div>
                   {saveSuccess && (
-                    <p className="text-sm text-green-600 mt-2 font-medium">PIN updated successfully!</p>
+                    <p className="text-sm text-green-600 mt-2 font-medium">Settings updated successfully!</p>
                   )}
                 </div>
 
@@ -269,6 +301,7 @@ export default function AdminPage() {
                       <ul className="space-y-1 text-navy-50">
                         <li>• <span className="font-bold">Option 1:</span> Check status (customer)</li>
                         <li>• <span className="font-bold">Option 2:</span> Admin access (needs PIN)</li>
+                        <li>• <span className="font-bold">Option 3:</span> FORWARD CALL to representative</li>
                         <li>• <span className="font-bold">Direct Entry:</span> Just type Order # + #</li>
                       </ul>
                     </div>
