@@ -315,8 +315,8 @@ export default function AdminPage() {
                       <h3 className="font-bold text-gold-400 mb-2 underline">{isRtl ? "תפריט ראשי" : "Main Menu"}</h3>
                       <ul className={`space-y-1 text-navy-50 ${isRtl ? "pr-0" : ""}`}>
                         <li>• <span className="font-bold">{isRtl ? "אופציה 1:" : "Option 1:"}</span> {isRtl ? "בדיקת סטטוס (לקוח)" : "Check status (customer)"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 2:" : "Option 2:"}</span> {isRtl ? "העברת שיחה לנציג" : "FORWARD CALL to representative"}</li>
                         <li>• <span className="font-bold">{isRtl ? "אופציה 9:" : "Option 9:"}</span> {isRtl ? "גישת מנהל (דורש קוד)" : "Admin access (needs PIN)"}</li>
-                        <li>• <span className="font-bold">{isRtl ? "אופציה 3:" : "Option 3:"}</span> {isRtl ? "העברת שיחה לנציג" : "FORWARD CALL to representative"}</li>
                         <li>• <span className="font-bold">{isRtl ? "כניסה ישירה:" : "Direct Entry:"}</span> {isRtl ? "הקש מספר הזמנה + #" : "Just type Order # + #"}</li>
                       </ul>
                     </div>
