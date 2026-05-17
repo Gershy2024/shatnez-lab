@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const origin = req.nextUrl.origin;
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather
-    action="${origin}/api/twilio/gather?step=menu"
+    action="/api/twilio/gather?step=menu"
     method="POST"
     timeout="3"
   >
@@ -28,7 +27,7 @@ export async function POST(req: NextRequest) {
   </Gather>
   <Say voice="Polly.Joey" language="en-US">We did not receive a response. Returning to main menu.</Say>
   <Say voice="Polly.Madi" language="he-IL">לא התקבל קלט. חוזר לתפריט הראשי.</Say>
-  <Redirect method="POST">${origin}/api/twilio/voice</Redirect>
+  <Redirect method="POST">/api/twilio/voice</Redirect>
 </Response>`;
 
   return new NextResponse(twiml, {
