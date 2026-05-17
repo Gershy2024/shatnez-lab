@@ -18,8 +18,8 @@ export default function Navbar() {
   ];
 
   const languages: { code: Language; label: string; text: string }[] = [
-    { code: "en", label: "English", text: "US" },
-    { code: "he", label: "עברית", text: "IL" },
+    { code: "en", label: "English", text: "EN" },
+    { code: "he", label: "עברית", text: "HE" },
   ];
 
   return (

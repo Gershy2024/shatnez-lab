@@ -4,16 +4,20 @@ import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettin
 function say(en: string, he: string) {
   // Using Polly.Joey (premium, extremely friendly and natural male voice for English)
   // Using Polly.Madi (premium female voice for Hebrew)
-  return `<Say voice="Polly.Joey" language="en-US">${en}</Say>` +
-         `<Say voice="Polly.Madi" language="he-IL">${he}</Say>`;
+  const safeEn = en.replace(/&/g, "&amp;");
+  const safeHe = he.replace(/&/g, "&amp;");
+  return `<Say voice="Polly.Joey" language="en-US">${safeEn}</Say>` +
+         `<Say voice="Polly.Madi" language="he-IL">${safeHe}</Say>`;
 }
 
 function gather(action: string, numDigits: number | string, timeout = 10, innerXml: string) {
-  return `<Gather action="${action}" method="POST" numDigits="${numDigits}" timeout="${timeout}">${innerXml}</Gather>`;
+  const escapedAction = action.replace(/&/g, "&amp;");
+  return `<Gather action="${escapedAction}" method="POST" numDigits="${numDigits}" timeout="${timeout}">${innerXml}</Gather>`;
 }
 
 function redirect(action: string) {
-  return `<Redirect method="POST">${action}</Redirect>`;
+  const escapedAction = action.replace(/&/g, "&amp;");
+  return `<Redirect method="POST">${escapedAction}</Redirect>`;
 }
 
 function xmlResponse(inner: string) {

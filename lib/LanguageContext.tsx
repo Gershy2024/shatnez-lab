@@ -143,6 +143,7 @@ export const translations: Translations = {
   status: { en: "Status", he: "סטטוס" },
   date: { en: "Date", he: "תאריך" },
   actions: { en: "Actions", he: "פעולות" },
+  test_result: { en: "Test Result", he: "תוצאת הבדיקה" },
 };
 
 interface LanguageContextType {

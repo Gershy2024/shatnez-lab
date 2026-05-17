@@ -47,6 +47,13 @@ export default function AdminPage() {
     { value: "issue", label: t("status_issue") },
   ];
 
+  const resultOptions = [
+    { value: "", label: isRtl ? "אין תוצאה" : "No result yet" },
+    { value: "Clean / No Shatnez", label: isRtl ? "נקי משעטנז" : "Clean / No Shatnez" },
+    { value: "Shatnez Found", label: isRtl ? "נמצא שעטנז" : "Shatnez Found" },
+    { value: "Call to Discuss", label: isRtl ? "נא להתקשר לפרטים" : "Call to Discuss" },
+  ];
+
   useEffect(() => {
     const persistedAuth = localStorage.getItem("admin_authenticated");
     if (persistedAuth === "true") {
@@ -63,6 +70,8 @@ export default function AdminPage() {
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
       setForwardingNumber(s.forwardingNumber);
+      setNewPin(s.pin);
+      setNewForwardingNumber(s.forwardingNumber);
       setIvrGeneralEn(s.ivrGeneralEn || "");
       setIvrGeneralHe(s.ivrGeneralHe || "");
       setIvrSpecialEn(s.ivrSpecialEn || "");
@@ -80,6 +89,8 @@ export default function AdminPage() {
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
       setForwardingNumber(s.forwardingNumber);
+      setNewPin(s.pin);
+      setNewForwardingNumber(s.forwardingNumber);
       setIvrGeneralEn(s.ivrGeneralEn || "");
       setIvrGeneralHe(s.ivrGeneralHe || "");
       setIvrSpecialEn(s.ivrSpecialEn || "");
@@ -113,12 +124,10 @@ export default function AdminPage() {
       
       setAdminPin(updatedPin);
       setForwardingNumber(updatedForwarding);
-      setNewPin("");
-      setNewForwardingNumber("");
+      setNewPin(updatedPin);
+      setNewForwardingNumber(updatedForwarding);
       setSaveSuccess(true);
       
-      // If Firestore is working, we'll see "Admin settings saved successfully to Firebase" in console.
-      // If not, it still saved to LS.
       alert(isRtl ? "הגדרות עודכנו בהצלחה!" : "Settings updated successfully!");
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
@@ -520,14 +529,16 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-navy-800 mb-1">{isRtl ? "תוצאה" : "Test Result"}</label>
-                    <input
-                      type="text"
+                    <select
                       value={newOrder.result || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, result: e.target.value })}
-                      placeholder={isRtl ? "למשל: נקי, נמצא שעטנז..." : "e.g. Clean, Shatnez Found..."}
                       className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
-                    />
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent cursor-pointer ${isRtl ? "text-right" : ""}`}
+                    >
+                      {resultOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="sm:col-span-2 lg:col-span-2">
                     <label className="block text-sm font-medium text-navy-800 mb-1">{t("notes")}</label>
@@ -607,15 +618,17 @@ export default function AdminPage() {
                       <td className="px-6 py-4 text-primary-600 hidden sm:table-cell">{order.dateReceived}</td>
                       <td className="px-6 py-4 text-primary-600 hidden lg:table-cell">{order.estimatedCompletion || "—"}</td>
                       <td className="px-6 py-4">
-                        <input
-                          type="text"
+                        <select
                           value={order.result || ""}
                           onChange={(e) => updateResult(order.id, e.target.value)}
-                          placeholder={isRtl ? "אין תוצאה" : "No result yet"}
                           className={`w-full px-2 py-1 text-sm rounded border border-primary-200 bg-white
                                    focus:outline-none focus:ring-1 focus:ring-gold-400 focus:border-transparent
-                                   transition-all ${isRtl ? "text-right" : ""}`}
-                        />
+                                   cursor-pointer ${isRtl ? "text-right" : ""}`}
+                        >
+                          {resultOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className={`px-6 py-4 ${isRtl ? "text-left" : "text-right"}`}>
                         <button

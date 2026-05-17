@@ -262,6 +262,28 @@ export default function TrackPage() {
                     </div>
                   )}
                 </div>
+                 {selectedOrder.result && (
+                  <div className="mt-4 pt-4 border-t border-primary-100">
+                    <p className="text-sm text-primary-500 mb-1">{t("test_result")}</p>
+                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-sm ${
+                      selectedOrder.result.toLowerCase().includes("clean") 
+                        ? "bg-green-100 text-green-800 border border-green-200" 
+                        : selectedOrder.result.toLowerCase().includes("shatnez") 
+                          ? "bg-red-100 text-red-800 border border-red-200" 
+                          : selectedOrder.result === "Call to Discuss"
+                            ? "bg-amber-100 text-amber-800 border border-amber-200"
+                            : "bg-navy-50 text-navy-800 border border-navy-100"
+                    }`}>
+                      {selectedOrder.result === "Clean / No Shatnez" 
+                        ? (isRtl ? "נקי משעטנז" : "Clean / No Shatnez")
+                        : selectedOrder.result === "Shatnez Found"
+                          ? (isRtl ? "נמצא שעטנז!" : "Shatnez Found!")
+                          : selectedOrder.result === "Call to Discuss"
+                            ? (isRtl ? "נא להתקשר לפרטים" : "Call to Discuss")
+                            : selectedOrder.result}
+                    </div>
+                  </div>
+                )}
                 {selectedOrder.notes && (
                   <div className="mt-4 pt-4 border-t border-primary-100">
                     <p className="text-sm text-primary-500 mb-1">{t("notes")}</p>
