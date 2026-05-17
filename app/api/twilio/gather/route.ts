@@ -58,20 +58,21 @@ export async function POST(req: NextRequest) {
     let digits = "";
     let toPhoneNumber = "";
     let fromPhoneNumber = "";
+    const url = new URL(req.url);
+    const step = url.searchParams.get("step") || "menu";
+    const clearFlag = url.searchParams.get("clear") === "true";
+
     try {
       const form = await req.formData();
-      digits = (form.get("Digits") as string) || "";
+      digits = clearFlag ? "" : ((form.get("Digits") as string) || "");
       toPhoneNumber = (form.get("To") as string) || "";
       fromPhoneNumber = (form.get("From") as string) || "";
     } catch (e) {
-      const url = new URL(req.url);
-      digits = url.searchParams.get("Digits") || "";
+      digits = clearFlag ? "" : (url.searchParams.get("Digits") || "");
       toPhoneNumber = url.searchParams.get("To") || "";
       fromPhoneNumber = url.searchParams.get("From") || "";
     }
     
-    const url = new URL(req.url);
-    const step = url.searchParams.get("step") || "menu";
 
     // Clean fromPhoneNumber to extract raw local 10 digits
     const rawPhone = fromPhoneNumber.replace(/\D/g, "");
@@ -96,8 +97,8 @@ export async function POST(req: NextRequest) {
         const generalEn = settings.ivrGeneralEn || "To have your garments checked, please drop them off at 14 Buchanan, North Square, New York. Once dropped off, you can call our 24/7 automated line at any time to hear your order status. When the status is completed, you may come pick up your garment. Please place the testing payment in the designated slot or envelope with the garment. Our prices are 5 dollars for a simple garment, and 10 dollars for any lined garment, such as a suit or a coat. Thank you for choosing The Shatnez Lab.";
         const generalHe = settings.ivrGeneralHe || "לבדיקת בגדים, אנא מסרו אותם בכתובת 14 Buchanan, North Square, ניו יורק. לאחר המסירה, תוכלו להתקשר לקו הטלפוני שלנו הפעיל 24 שעות ביממה, 7 ימים בשבוע כדי לשמוע את סטטוס ההזמנה. כאשר הבדיקה תושלם, תוכלו לבוא לאסוף את הבגד. אנא הניחו את התשלום במעטפה או בחריץ המיועד יחד עם הבגד. המחירים שלנו הם 5 דולרים עבור בגד פשוט, ו-10 דולרים עבור בגד עם בטנה, כגון חליפה או מעיל. תודה שבחרתם במעבדת השעטנז.";
         return xmlResponse(
-          say(generalEn, generalHe) +
-          redirect(`/api/twilio/voice`)
+          gather(`/api/twilio/gather?step=menu`, 1, 2, say(generalEn, generalHe)) +
+          redirect(`/api/twilio/voice?clear=true`)
         );
       }
       if (cleanDigits === "2") {
@@ -139,8 +140,8 @@ export async function POST(req: NextRequest) {
         const specialEn = settings.ivrSpecialEn || "We offer premium special services, including VIP home testing visits for an additional fee, as well as on-site testing for clothing stores and warehouses to ensure the entire inventory is certified clean of shatnez. Please speak to a representative for details and pricing.";
         const specialHe = settings.ivrSpecialHe || "אנו מציעים שירותים מיוחדים מובחרים, כולל ביקורי בית של מומחה לבדיקת VIP בתוספת תשלום, וכן בדיקות מקומיות בחנויות בגדים ומחסנים כדי להבטיח שכל המלאי נקי משעטנז. אנא שוחחו עם נציג לקבלת פרטים ומחירים.";
         return xmlResponse(
-          say(specialEn, specialHe) +
-          redirect(`/api/twilio/voice`)
+          gather(`/api/twilio/gather?step=menu`, 1, 2, say(specialEn, specialHe)) +
+          redirect(`/api/twilio/voice?clear=true`)
         );
       }
       if (cleanDigits === "0") {
@@ -289,7 +290,7 @@ export async function POST(req: NextRequest) {
         if (recent.length === 0) {
           return xmlResponse(
             say("No orders found.", "לא נמצאו הזמנות.") + 
-            redirect(`/api/twilio/gather?step=admin_menu`)
+            redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
           );
         }
         let enMsg = `You have ${orders.length} total orders. Here are the latest 5. `;
@@ -319,7 +320,7 @@ export async function POST(req: NextRequest) {
             say("Enter the order number to update, followed by pound.", "הקש את מספר ההזמנה לעדכון, ולאחריו סולמית.")
           ) +
           say("No input received.", "לא התקבל קלט.") +
-          redirect(`/api/twilio/gather?step=admin_menu`)
+          redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
       if (menuSelection === "3") {
@@ -331,7 +332,7 @@ export async function POST(req: NextRequest) {
             say("Enter the phone number, followed by pound.", "הקש את מספר הטלפון, ולאחריו סולמית.")
           ) +
           say("No input received.", "לא התקבל קלט.") +
-          redirect(`/api/twilio/gather?step=admin_menu`)
+          redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
       if (menuSelection === "4") {
@@ -343,7 +344,7 @@ export async function POST(req: NextRequest) {
             say("Enter the customer phone number for the new order, followed by pound.", "הקש את מספר הטלפון של הלקוח עבור ההזמנה החדשה, ולאחריו סולמית.")
           ) +
           say("No input received.", "לא התקבל קלט.") +
-          redirect(`/api/twilio/gather?step=admin_menu`)
+          redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
       if (!menuSelection) {
@@ -363,7 +364,7 @@ export async function POST(req: NextRequest) {
       }
       return xmlResponse(
         say("Invalid option.", "אופציה לא תקינה.") + 
-        redirect(`/api/twilio/gather?step=admin_menu`)
+        redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
       );
     }
 
@@ -460,11 +461,11 @@ export async function POST(req: NextRequest) {
       });
 
       return xmlResponse(
-        say(
+        gather(`/api/twilio/gather?step=admin_menu`, 1, 2, say(
           `Order successfully updated. Status is ${newStatus}, result is ${newResult || "not set"}. Returning to admin menu.`,
           `ההזמנה עודכנה בהצלחה. הסטטוס הוא ${translateStatus(newStatus)}, התוצאה היא ${newResult === "Clean / No Shatnez" ? "נקי משעטנז" : newResult === "Shatnez Found" ? "נמצא שעטנז" : "לא נקבעה"}. חוזר לתפריט המנהל.`
-        ) +
-        redirect(`/api/twilio/gather?step=admin_menu`)
+        )) +
+        redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
       );
     }
 
@@ -476,7 +477,7 @@ export async function POST(req: NextRequest) {
       if (orders.length === 0) {
         return xmlResponse(
           say("No orders found for that phone number.", "לא נמצאו הזמנות עבור מספר הטלפון הזה.") +
-          redirect(`/api/twilio/gather?step=admin_menu`)
+          redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
       let enMsg = `Found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
@@ -505,7 +506,7 @@ export async function POST(req: NextRequest) {
       if (!phone) {
         return xmlResponse(
           say("No phone number entered.", "לא הוקש מספר טלפון.") +
-          redirect(`/api/twilio/gather?step=admin_menu`)
+          redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
       const orders = await getAllOrders();
@@ -520,11 +521,11 @@ export async function POST(req: NextRequest) {
         notes: "Added via phone system", result: ""
       });
       return xmlResponse(
-        say(
+        gather(`/api/twilio/gather?step=admin_menu`, 1, 2, say(
           `Order created successfully. The order ID is ${newId}.`,
           `ההזמנה נוצרה בהצלחה. מספר ההזמנה הוא ${newId}.`
-        ) +
-        redirect(`/api/twilio/gather?step=admin_menu`)
+        )) +
+        redirect(`/api/twilio/gather?step=admin_menu&clear=true`)
       );
     }
 
@@ -598,8 +599,8 @@ async function lookupOrder(input: string, origin: string) {
     }
     
     return xmlResponse(
-      say(enMsg, heMsg) +
-      redirect(`/api/twilio/voice`)
+      gather(`/api/twilio/gather?step=menu`, 1, 2, say(enMsg, heMsg)) +
+      redirect(`/api/twilio/voice?clear=true`)
     );
   } catch (error) {
     console.error("Lookup Error:", error);
