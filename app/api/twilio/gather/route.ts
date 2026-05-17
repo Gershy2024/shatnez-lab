@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     // ── Main Menu ──
     if (step === "menu") {
-      if (digits === "1") {
+      if (cleanDigits === "1") {
         console.log(`[Twilio IVR Log] Main Menu: Option 1 played.`);
         const generalEn = settings.ivrGeneralEn || "To have your garments checked, please drop them off at 14 Buchanan, North Square, New York. Once dropped off, you can call our 24/7 automated line at any time to hear your order status. When the status is completed, you may come pick up your garment. Please place the testing payment in the designated slot or envelope with the garment. Our prices are 5 dollars for a simple garment, and 10 dollars for any lined garment, such as a suit or a coat. Thank you for choosing The Shatnez Lab.";
         const generalHe = settings.ivrGeneralHe || "לבדיקת בגדים, אנא מסרו אותם בכתובת 14 Buchanan, North Square, ניו יורק. לאחר המסירה, תוכלו להתקשר לקו הטלפוני שלנו הפעיל 24 שעות ביממה, 7 ימים בשבוע כדי לשמוע את סטטוס ההזמנה. כאשר הבדיקה תושלם, תוכלו לבוא לאסוף את הבגד. אנא הניחו את התשלום במעטפה או בחריץ המיועד יחד עם הבגד. המחירים שלנו הם 5 דולרים עבור בגד פשוט, ו-10 דולרים עבור בגד עם בטנה, כגון חליפה או מעיל. תודה שבחרתם במעבדת השעטנז.";
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/voice`)
         );
       }
-      if (digits === "2") {
+      if (cleanDigits === "2") {
         console.log(`[Twilio IVR Log] Main Menu: Option 2 requested. Clean Caller Phone: "${cleanPhone}"`);
         if (cleanPhone && cleanPhone.length >= 7) {
           const spacedPhone = cleanPhone.split("").join(" ");
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
           );
         }
       }
-      if (digits === "3") {
+      if (cleanDigits === "3") {
         console.log(`[Twilio IVR Log] Main Menu: Option 3 played.`);
         const specialEn = settings.ivrSpecialEn || "We offer premium special services, including VIP home testing visits for an additional fee, as well as on-site testing for clothing stores and warehouses to ensure the entire inventory is certified clean of shatnez. Please speak to a representative for details and pricing.";
         const specialHe = settings.ivrSpecialHe || "אנו מציעים שירותים מיוחדים מובחרים, כולל ביקורי בית של מומחה לבדיקת VIP בתוספת תשלום, וכן בדיקות מקומיות בחנויות בגדים ומחסנים כדי להבטיח שכל המלאי נקי משעטנז. אנא שוחחו עם נציג לקבלת פרטים ומחירים.";
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/voice`)
         );
       }
-      if (digits === "0") {
+      if (cleanDigits === "0") {
         console.log(`[Twilio IVR Log] Main Menu: Option 0 - Forwarding call to representative.`);
         const num = settings.forwardingNumber || "8457092022";
         const formattedNum = formatDialNumber(num);
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
           `<Dial${callerIdAttr}>${formattedNum}</Dial>`
         );
       }
-      if (digits === "9") {
+      if (cleanDigits === "9") {
         console.log(`[Twilio IVR Log] Main Menu: Option 9 - Requesting admin PIN.`);
         return xmlResponse(
           gather(
@@ -281,8 +281,9 @@ export async function POST(req: NextRequest) {
 
     // ── Admin Menu ──
     if (step === "admin_menu") {
-      console.log(`[Twilio IVR Log] Admin Menu option entered: "${digits}"`);
-      if (digits === "1") {
+      const menuSelection = (cleanDigits.length === 1 || cleanDigits === "*") ? cleanDigits : "";
+      console.log(`[Twilio IVR Log] Admin Menu option entered: "${digits}" (menuSelection: "${menuSelection}")`);
+      if (menuSelection === "1") {
         const orders = await getAllOrders();
         const recent = orders.slice(-5).reverse();
         if (recent.length === 0) {
@@ -309,7 +310,7 @@ export async function POST(req: NextRequest) {
           )
         );
       }
-      if (digits === "2") {
+      if (menuSelection === "2") {
         return xmlResponse(
           gather(
             `${origin}/api/twilio/gather?step=status_update_ask_id`,
@@ -321,7 +322,7 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/gather?step=admin_menu`)
         );
       }
-      if (digits === "3") {
+      if (menuSelection === "3") {
         return xmlResponse(
           gather(
             `${origin}/api/twilio/gather?step=lookup_by_phone`,
@@ -333,7 +334,7 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/gather?step=admin_menu`)
         );
       }
-      if (digits === "4") {
+      if (menuSelection === "4") {
         return xmlResponse(
           gather(
             `${origin}/api/twilio/gather?step=admin_add_order`,
@@ -343,6 +344,21 @@ export async function POST(req: NextRequest) {
           ) +
           say("No input received.", "לא התקבל קלט.") +
           redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+        );
+      }
+      if (!menuSelection) {
+        // Just play the menu options (do not say invalid choice, as it was likely a redirect transition)
+        return xmlResponse(
+          gather(
+            `${origin}/api/twilio/gather?step=admin_menu`,
+            1,
+            15,
+            say(
+              "Admin menu. Press 1 to hear recent orders. Press 2 to update an order. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu.",
+              "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש כוכבית לחזרה לתפריט הראשי."
+            )
+          ) +
+          say("No input received. Goodbye.", "לא התקבל קלט. שלום.")
         );
       }
       return xmlResponse(
@@ -551,19 +567,12 @@ async function lookupOrder(input: string, origin: string) {
     }
 
     if (!order) {
-      console.log(`[Twilio IVR Log] lookupOrder: Order not found for input "${input}"`);
-      // Gathers and retries in order_lookup
+      console.log(`[Twilio IVR Log] lookupOrder: Order not found for input "${input}". Returning to main menu.`);
       return xmlResponse(
-        gather(
-          `${origin}/api/twilio/gather?step=order_lookup`,
-          10,
-          10,
-          say(
-            "We could not find an order with that number. Please enter a valid order number, or phone number, followed by pound. Or press star to return to the main menu.",
-            "לא מצאנו הזמנה עם המספר הזה. אנא הקש מספר הזמנה תקין, או את מספר הטלפון שלך, ולאחריו סולמית. או הקש כוכבית לחזרה לתפריט הראשי."
-          )
+        say(
+          "We could not find an order with that number. Returning to the main menu.",
+          "לא מצאנו הזמנה עם המספר הזה. חוזר לתפריט הראשי."
         ) +
-        say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
         redirect(`${origin}/api/twilio/voice`)
       );
     }
