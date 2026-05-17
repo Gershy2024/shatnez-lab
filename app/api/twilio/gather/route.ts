@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings } from "@/lib/db";
 
 function say(en: string, he: string) {
-  // Using Polly.Joanna (premium US English female voice) which has a clear, premium, pleasant higher pitch
-  // Using Polly.Madi (premium Hebrew female voice)
-  return `<Say voice="Polly.Joanna" language="en-US">${en}</Say>` +
+  // Using Polly.Joey (premium, extremely friendly and natural male voice for English)
+  // Using Polly.Madi (premium female voice for Hebrew)
+  return `<Say voice="Polly.Joey" language="en-US">${en}</Say>` +
          `<Say voice="Polly.Madi" language="he-IL">${he}</Say>`;
 }
 
@@ -49,32 +49,46 @@ function formatDialNumber(num: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const origin = req.nextUrl.origin;
   try {
-    const origin = req.nextUrl.origin;
     let digits = "";
+    let toPhoneNumber = "";
+    let fromPhoneNumber = "";
     try {
       const form = await req.formData();
       digits = (form.get("Digits") as string) || "";
+      toPhoneNumber = (form.get("To") as string) || "";
+      fromPhoneNumber = (form.get("From") as string) || "";
     } catch (e) {
       const url = new URL(req.url);
       digits = url.searchParams.get("Digits") || "";
+      toPhoneNumber = url.searchParams.get("To") || "";
+      fromPhoneNumber = url.searchParams.get("From") || "";
     }
     
     const url = new URL(req.url);
     const step = url.searchParams.get("step") || "menu";
 
+    // Clean fromPhoneNumber to extract raw local 10 digits
+    const rawPhone = fromPhoneNumber.replace(/\D/g, "");
+    const cleanPhone = rawPhone.length === 11 && rawPhone.startsWith("1") ? rawPhone.substring(1) : rawPhone;
+
+    console.log(`[Twilio IVR Log] Step: ${step}, Digits: "${digits}", From: "${fromPhoneNumber}" (clean: "${cleanPhone}"), To: "${toPhoneNumber}"`);
+
     // Global Key Check: If they press * at any step, instantly return to the main menu!
     const cleanDigits = digits.replace(/#$/, "").trim();
-    if (cleanDigits === "*") {
+    if (cleanDigits === "*" || cleanDigits === "*#" || cleanDigits.includes("*")) {
+      console.log(`[Twilio IVR Log] Global * detected. Redirecting to welcome menu.`);
       return xmlResponse(redirect(`${origin}/api/twilio/voice`));
     }
 
     const settings = await getAdminSettings();
-    const ADMIN_PIN = settings.pin;
+    const ADMIN_PIN = settings.pin || "1234";
 
     // ── Main Menu ──
     if (step === "menu") {
       if (digits === "1") {
+        console.log(`[Twilio IVR Log] Main Menu: Option 1 played.`);
         const generalEn = settings.ivrGeneralEn || "To have your garments checked, please drop them off at 14 Buchanan, North Square, New York. Once dropped off, you can call our 24/7 automated line at any time to hear your order status. When the status is completed, you may come pick up your garment. Please place the testing payment in the designated slot or envelope with the garment. Our prices are 5 dollars for a simple garment, and 10 dollars for any lined garment, such as a suit or a coat. Thank you for choosing The Shatnez Lab.";
         const generalHe = settings.ivrGeneralHe || "לבדיקת בגדים, אנא מסרו אותם בכתובת 14 Buchanan, North Square, ניו יורק. לאחר המסירה, תוכלו להתקשר לקו הטלפוני שלנו הפעיל 24 שעות ביממה, 7 ימים בשבוע כדי לשמוע את סטטוס ההזמנה. כאשר הבדיקה תושלם, תוכלו לבוא לאסוף את הבגד. אנא הניחו את התשלום במעטפה או בחריץ המיועד יחד עם הבגד. המחירים שלנו הם 5 דולרים עבור בגד פשוט, ו-10 דולרים עבור בגד עם בטנה, כגון חליפה או מעיל. תודה שבחרתם במעבדת השעטנז.";
         return xmlResponse(
@@ -83,21 +97,41 @@ export async function POST(req: NextRequest) {
         );
       }
       if (digits === "2") {
-        return xmlResponse(
-          gather(
-            `${origin}/api/twilio/gather?step=order_lookup`,
-            10,
-            10,
-            say(
-              "Please enter your order number, or your ten digit phone number, followed by pound.",
-              "אנא הקש את מספר ההזמנה, או את מספר הטלפון שלך בן עשר ספרות, ולאחר מכן סולמית."
-            )
-          ) +
-          say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-          redirect(`${origin}/api/twilio/voice`)
-        );
+        console.log(`[Twilio IVR Log] Main Menu: Option 2 requested. Clean Caller Phone: "${cleanPhone}"`);
+        if (cleanPhone && cleanPhone.length >= 7) {
+          const spacedPhone = cleanPhone.split("").join(" ");
+          return xmlResponse(
+            gather(
+              `${origin}/api/twilio/gather?step=caller_id_confirm&callerPhone=${cleanPhone}`,
+              1,
+              10,
+              say(
+                `We see you are calling from, ${spacedPhone}. Press 1 to search for orders with this number. Press 2 to enter a different number.`,
+                `אנו רואים שאתה מתקשר ממספר, ${spacedPhone}. הקש 1 לחיפוש הזמנות עם מספר זה. הקש 2 להזנת מספר אחר.`
+              )
+            ) +
+            say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+            redirect(`${origin}/api/twilio/voice`)
+          );
+        } else {
+          // Fallback if caller ID is not available
+          return xmlResponse(
+            gather(
+              `${origin}/api/twilio/gather?step=order_lookup`,
+              10,
+              10,
+              say(
+                "Please enter your order number, or your ten digit phone number, followed by pound.",
+                "אנא הקש את מספר ההזמנה, או את מספר הטלפון שלך בן עשר ספרות, ולאחר מכן סולמית."
+              )
+            ) +
+            say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+            redirect(`${origin}/api/twilio/voice`)
+          );
+        }
       }
       if (digits === "3") {
+        console.log(`[Twilio IVR Log] Main Menu: Option 3 played.`);
         const specialEn = settings.ivrSpecialEn || "We offer premium special services, including VIP home testing visits for an additional fee, as well as on-site testing for clothing stores and warehouses to ensure the entire inventory is certified clean of shatnez. Please speak to a representative for details and pricing.";
         const specialHe = settings.ivrSpecialHe || "אנו מציעים שירותים מיוחדים מובחרים, כולל ביקורי בית של מומחה לבדיקת VIP בתוספת תשלום, וכן בדיקות מקומיות בחנויות בגדים ומחסנים כדי להבטיח שכל המלאי נקי משעטנז. אנא שוחחו עם נציג לקבלת פרטים ומחירים.";
         return xmlResponse(
@@ -106,14 +140,18 @@ export async function POST(req: NextRequest) {
         );
       }
       if (digits === "0") {
+        console.log(`[Twilio IVR Log] Main Menu: Option 0 - Forwarding call to representative.`);
         const num = settings.forwardingNumber || "8457092022";
         const formattedNum = formatDialNumber(num);
+        const callerIdAttr = toPhoneNumber ? ` callerId="${toPhoneNumber}"` : "";
+        console.log(`[Twilio IVR Log] Forwarding to: ${formattedNum} with Caller ID: ${toPhoneNumber || "default"}`);
         return xmlResponse(
           say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
-          `<Dial>${formattedNum}</Dial>`
+          `<Dial${callerIdAttr}>${formattedNum}</Dial>`
         );
       }
       if (digits === "9") {
+        console.log(`[Twilio IVR Log] Main Menu: Option 9 - Requesting admin PIN.`);
         return xmlResponse(
           gather(
             `${origin}/api/twilio/gather?step=admin_pin`,
@@ -126,9 +164,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // If they type an order ID directly
+      // If they type an order ID directly (exclude star symbol)
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
-      if (clean) {
+      if (clean && clean !== "*") {
+        console.log(`[Twilio IVR Log] Direct Order ID input from Main Menu: "${clean}"`);
         return await lookupOrder(clean, origin);
       }
       return xmlResponse(
@@ -137,9 +176,72 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Caller ID Confirmation ──
+    if (step === "caller_id_confirm") {
+      const callerPhone = url.searchParams.get("callerPhone") || "";
+      console.log(`[Twilio IVR Log] Caller ID Confirm Digit: "${digits}" for phone: "${callerPhone}"`);
+      if (digits === "1") {
+        const orders = await getOrdersByPhone(callerPhone);
+        if (orders.length === 0) {
+          console.log(`[Twilio IVR Log] No orders found for phone: "${callerPhone}". Prompting manual entry.`);
+          return xmlResponse(
+            gather(
+              `${origin}/api/twilio/gather?step=order_lookup`,
+              10,
+              10,
+              say(
+                "We could not find any orders associated with this number. Please enter your order number, or another phone number, followed by pound.",
+                "לא מצאנו הזמנות המשויכות למספר זה. אנא הקש מספר הזמנה, או מספר טלפון אחר, ולאחריו סולמית."
+              )
+            ) +
+            say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+            redirect(`${origin}/api/twilio/voice`)
+          );
+        }
+        
+        let enMsg = `Found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
+        let heMsg = `נמצאו ${orders.length} הזמנות. `;
+        for (const o of orders) {
+          const safeId = String(o.id).replace(/-/g, " dash ");
+          const safeIdHe = String(o.id).replace(/-/g, " מקף ");
+          const enStatus = o.status === "received" ? "received and logged" : o.status === "testing" ? "in testing" : o.status === "review" ? "under review" : o.status === "ready" ? "ready for pickup" : o.status === "delivered" ? "delivered" : "needs attention";
+          const heStatus = translateStatus(o.status || "received");
+          
+          enMsg += `Order ${safeId} is ${enStatus}. `;
+          heMsg += `הזמנה ${safeIdHe} היא ${heStatus}. `;
+          if (o.result) {
+            const translatedResult = o.result === "Clean / No Shatnez" ? "נקי משעטנז" : o.result === "Shatnez Found" ? "נמצא שעטנז" : o.result;
+            enMsg += `Result is: ${o.result}. `;
+            heMsg += `התוצאה היא: ${translatedResult}. `;
+          }
+        }
+        
+        return xmlResponse(
+          say(enMsg, heMsg) +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
+      
+      // If they press 2 or anything else, prompt manual lookup
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=order_lookup`,
+          10,
+          10,
+          say(
+            "Please enter your order number, or your ten digit phone number, followed by pound.",
+            "אנא הקש את מספר ההזמנה, או את מספר הטלפון שלך בן עשר ספרות, ולאחר מכן סולמית."
+          )
+        ) +
+        say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+        redirect(`${origin}/api/twilio/voice`)
+      );
+    }
+
     // ── Order Lookup ──
     if (step === "order_lookup") {
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
+      console.log(`[Twilio IVR Log] Order Lookup Input: "${clean}"`);
       if (!clean) {
         return xmlResponse(
           say("No order number entered. Returning to main menu.", "לא הוקש מספר הזמנה. חוזר לתפריט הראשי.") +
@@ -152,6 +254,7 @@ export async function POST(req: NextRequest) {
     // ── Admin PIN ──
     if (step === "admin_pin") {
       const cleanPin = digits.replace(/#$/, "").trim();
+      console.log(`[Twilio IVR Log] Admin PIN entered: "${cleanPin}" (Expected: "${ADMIN_PIN}")`);
       if (cleanPin === ADMIN_PIN) {
         return xmlResponse(
           gather(
@@ -174,6 +277,7 @@ export async function POST(req: NextRequest) {
 
     // ── Admin Menu ──
     if (step === "admin_menu") {
+      console.log(`[Twilio IVR Log] Admin Menu option entered: "${digits}"`);
       if (digits === "1") {
         const orders = await getAllOrders();
         const recent = orders.slice(-5).reverse();
@@ -246,6 +350,7 @@ export async function POST(req: NextRequest) {
     // ── Status Update: Ask for Order ID ──
     if (step === "status_update_ask_id") {
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
+      console.log(`[Twilio IVR Log] Admin Status Ask Order ID: "${clean}"`);
       const order = await getOrderById(clean);
       if (!order) {
         return xmlResponse(
@@ -275,6 +380,7 @@ export async function POST(req: NextRequest) {
     // ── Status Update: Set New Status ──
     if (step === "status_update_set") {
       const orderId = url.searchParams.get("orderId");
+      console.log(`[Twilio IVR Log] Admin Status Set digit: "${digits}" for order ID: "${orderId}"`);
       const statusMap: Record<string, string> = {
         "1": "received", "2": "testing", "3": "review", "4": "ready", "5": "delivered", "6": "issue",
       };
@@ -303,6 +409,7 @@ export async function POST(req: NextRequest) {
     if (step === "status_update_result_set") {
       const orderId = url.searchParams.get("orderId");
       const newStatus = url.searchParams.get("newStatus");
+      console.log(`[Twilio IVR Log] Admin Status Result Set digit: "${digits}" for order ID: "${orderId}" and status: "${newStatus}"`);
       
       if (!orderId || !newStatus) {
         return xmlResponse(
@@ -344,6 +451,7 @@ export async function POST(req: NextRequest) {
     // ── Lookup by Phone ──
     if (step === "lookup_by_phone") {
       const clean = digits.replace(/#$/, "").trim();
+      console.log(`[Twilio IVR Log] Admin Lookup by phone: "${clean}"`);
       const orders = await getOrdersByPhone(clean);
       if (orders.length === 0) {
         return xmlResponse(
@@ -373,6 +481,7 @@ export async function POST(req: NextRequest) {
     // ── Admin: Add Order ──
     if (step === "admin_add_order") {
       const phone = digits.replace(/#$/, "").trim();
+      console.log(`[Twilio IVR Log] Admin Add Order phone: "${phone}"`);
       if (!phone) {
         return xmlResponse(
           say("No phone number entered.", "לא הוקש מספר טלפון.") +
@@ -402,7 +511,6 @@ export async function POST(req: NextRequest) {
     return xmlResponse(redirect(`${origin}/api/twilio/voice`));
   } catch (error) {
     console.error("IVR Error:", error);
-    const origin = req.nextUrl.origin;
     return xmlResponse(
       say("An error occurred. Returning to main menu.", "אירעה שגיאה. חוזר לתפריט הראשי.") +
       redirect(`${origin}/api/twilio/voice`)
@@ -439,6 +547,7 @@ async function lookupOrder(input: string, origin: string) {
     }
 
     if (!order) {
+      console.log(`[Twilio IVR Log] lookupOrder: Order not found for input "${input}"`);
       // Gathers and retries in order_lookup
       return xmlResponse(
         gather(
@@ -454,6 +563,8 @@ async function lookupOrder(input: string, origin: string) {
         redirect(`${origin}/api/twilio/voice`)
       );
     }
+
+    console.log(`[Twilio IVR Log] lookupOrder: Found order ID: "${order.id}", status: "${order.status}", result: "${order.result}"`);
 
     const enStatus = order.status === "received" ? "received and logged" : order.status === "testing" ? "in testing" : order.status === "review" ? "under review" : order.status === "ready" ? "ready for pickup" : order.status === "delivered" ? "delivered" : "needs attention";
     const heStatus = translateStatus(order.status || "received");

@@ -73,9 +73,20 @@ export async function getOrderById(id: string): Promise<Order | null> {
     try {
       const ref = doc(db, ORDERS_COLLECTION, id);
       const snap = await getDoc(ref);
-      return snap.exists() ? (snap.data() as Order) : null;
+      if (snap.exists()) {
+        return snap.data() as Order;
+      }
     } catch (e) {
-      console.error(`Firestore getOrderById for ID ${id} failed:`, e);
+      console.error(`Firestore getDoc for ID ${id} failed:`, e);
+    }
+    
+    // Backup scanning method to ensure lookup always works under strict permissions
+    try {
+      const all = await getAllOrders();
+      const found = all.find((o) => String(o.id).toUpperCase() === String(id).toUpperCase());
+      if (found) return found;
+    } catch (e) {
+      console.error("Firestore backup getAllOrders scan failed:", e);
     }
   }
   return lsGet().find((o) => String(o.id).toUpperCase() === String(id).toUpperCase()) || null;
