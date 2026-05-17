@@ -33,6 +33,11 @@ export default function AdminPage() {
   const [newForwardingNumber, setNewForwardingNumber] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const [ivrGeneralEn, setIvrGeneralEn] = useState("");
+  const [ivrGeneralHe, setIvrGeneralHe] = useState("");
+  const [ivrSpecialEn, setIvrSpecialEn] = useState("");
+  const [ivrSpecialHe, setIvrSpecialHe] = useState("");
+
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: "received", label: t("status_received") },
     { value: "testing", label: t("status_testing") },
@@ -58,6 +63,10 @@ export default function AdminPage() {
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
       setForwardingNumber(s.forwardingNumber);
+      setIvrGeneralEn(s.ivrGeneralEn || "");
+      setIvrGeneralHe(s.ivrGeneralHe || "");
+      setIvrSpecialEn(s.ivrSpecialEn || "");
+      setIvrSpecialHe(s.ivrSpecialHe || "");
     });
 
     const unsub = subscribeToOrders((data) => {
@@ -71,6 +80,10 @@ export default function AdminPage() {
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
       setForwardingNumber(s.forwardingNumber);
+      setIvrGeneralEn(s.ivrGeneralEn || "");
+      setIvrGeneralHe(s.ivrGeneralHe || "");
+      setIvrSpecialEn(s.ivrSpecialEn || "");
+      setIvrSpecialHe(s.ivrSpecialHe || "");
     });
   }, []);
 
@@ -91,7 +104,11 @@ export default function AdminPage() {
       
       await saveAdminSettings({ 
         pin: updatedPin,
-        forwardingNumber: updatedForwarding
+        forwardingNumber: updatedForwarding,
+        ivrGeneralEn,
+        ivrGeneralHe,
+        ivrSpecialEn,
+        ivrSpecialHe
       });
       
       setAdminPin(updatedPin);
@@ -302,6 +319,73 @@ export default function AdminPage() {
                       {isRtl ? "עדכן הגדרות" : "Update Settings"}
                     </button>
                   </div>
+                </div>
+
+                {/* Custom IVR Voice Prompts */}
+                <div className={`card p-6 bg-white shadow-sm border border-navy-100 lg:col-span-2 ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                    <Phone className="w-5 h-5 text-navy-600" />
+                    <h2 className="text-lg font-bold text-navy-900">{isRtl ? "התאמת הודעות קוליות לטלפון" : "Custom IVR Voice Prompts"}</h2>
+                  </div>
+                  <p className="text-sm text-primary-600 mb-4">
+                    {isRtl ? "באפשרותך להתאים אישית את הטקסט שהמערכת הטלפונית תקריא. אם השדה ריק, המערכת תשתמש בהודעת ברירת המחדל המקצועית." : "Customize the text the automated phone system speaks. If left empty, the professional default message will be used."}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "אופציה 1 - מידע כללי ומחירים (אנגלית)" : "Option 1 - General Info & Pricing (English)"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={ivrGeneralEn}
+                        onChange={(e) => setIvrGeneralEn(e.target.value)}
+                        placeholder="Default drop-off & pricing info..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "אופציה 1 - מידע כללי ומחירים (עברית)" : "Option 1 - General Info & Pricing (Hebrew)"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={ivrGeneralHe}
+                        onChange={(e) => setIvrGeneralHe(e.target.value)}
+                        placeholder="מידע ברירת מחדל על מסירה ומחירים..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "אופציה 3 - שירותי VIP וחנויות (אנגלית)" : "Option 3 - VIP & Store Services (English)"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={ivrSpecialEn}
+                        onChange={(e) => setIvrSpecialEn(e.target.value)}
+                        placeholder="Default VIP and store service info..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "אופציה 3 - שירותי VIP וחנויות (עברית)" : "Option 3 - VIP & Store Services (Hebrew)"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={ivrSpecialHe}
+                        onChange={(e) => setIvrSpecialHe(e.target.value)}
+                        placeholder="מידע ברירת מחדל על שירותי VIP וחנויות..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleUpdateSettings}
+                    className="btn-primary w-full py-2 mt-4"
+                  >
+                    {isRtl ? "שמור הודעות טלפוניות" : "Save Voice Messages"}
+                  </button>
                 </div>
 
                 {/* Phone System Instructions */}

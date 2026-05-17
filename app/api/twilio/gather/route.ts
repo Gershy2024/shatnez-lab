@@ -33,7 +33,6 @@ function translateStatus(status: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const origin = req.nextUrl.origin;
   try {
     let digits = "";
     try {
@@ -53,18 +52,17 @@ export async function POST(req: NextRequest) {
     // ── Main Menu ──
     if (step === "menu") {
       if (digits === "1") {
+        const generalEn = settings.ivrGeneralEn || "To have your garments checked, please drop them off at 14 Buchanan, North Square, New York. Once dropped off, you can call our 24/7 automated line at any time to hear your order status. When the status is completed, you may come pick up your garment. Please place the testing payment in the designated slot or envelope with the garment. Our prices are 5 dollars for a simple garment, and 10 dollars for any lined garment, such as a suit or a coat. Thank you for choosing The Shatnez Lab.";
+        const generalHe = settings.ivrGeneralHe || "לבדיקת בגדים, אנא מסרו אותם בכתובת 14 Buchanan, North Square, ניו יורק. לאחר המסירה, תוכלו להתקשר לקו הטלפוני שלנו הפעיל 24 שעות ביממה, 7 ימים בשבוע כדי לשמוע את סטטוס ההזמנה. כאשר הבדיקה תושלם, תוכלו לבוא לאסוף את הבגד. אנא הניחו את התשלום במעטפה או בחריץ המיועד יחד עם הבגד. המחירים שלנו הם 5 דולרים עבור בגד פשוט, ו-10 דולרים עבור בגד עם בטנה, כגון חליפה או מעיל. תודה שבחרתם במעבדת השעטנז.";
         return xmlResponse(
-          say(
-            "To have your garments checked, please drop them off at 14 Buchanan, North Square, New York. Once dropped off, you can call our 24/7 automated line at any time to hear your order status. When the status is completed, you may come pick up your garment. Please place the testing payment in the designated slot or envelope with the garment. Our prices are 5 dollars for a simple garment, and 10 dollars for any lined garment, such as a suit or a coat. Thank you for choosing The Shatnez Lab.",
-            "לבדיקת בגדים, אנא מסרו אותם בכתובת 14 Buchanan, North Square, ניו יורק. לאחר המסירה, תוכלו להתקשר לקו הטלפוני שלנו הפעיל 24 שעות ביממה, 7 ימים בשבוע כדי לשמוע את סטטוס ההזמנה. כאשר הבדיקה תושלם, תוכלו לבוא לאסוף את הבגד. אנא הניחו את התשלום במעטפה או בחריץ המיועד יחד עם הבגד. המחירים שלנו הם 5 דולרים עבור בגד פשוט, ו-10 דולרים עבור בגד עם בטנה, כגון חליפה או מעיל. תודה שבחרתם במעבדת השעטנז."
-          ) +
-          redirect(`${origin}/api/twilio/voice`)
+          say(generalEn, generalHe) +
+          redirect("/api/twilio/voice")
         );
       }
       if (digits === "2") {
         return xmlResponse(
           gather(
-            `${origin}/api/twilio/gather?step=order_lookup`,
+            "/api/twilio/gather?step=order_lookup",
             10,
             10,
             say(
@@ -73,16 +71,15 @@ export async function POST(req: NextRequest) {
             )
           ) +
           say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-          redirect(`${origin}/api/twilio/voice`)
+          redirect("/api/twilio/voice")
         );
       }
       if (digits === "3") {
+        const specialEn = settings.ivrSpecialEn || "We offer premium special services, including VIP home testing visits for an additional fee, as well as on-site testing for clothing stores and warehouses to ensure the entire inventory is certified clean of shatnez. Please speak to a representative for details and pricing.";
+        const specialHe = settings.ivrSpecialHe || "אנו מציעים שירותים מיוחדים מובחרים, כולל ביקורי בית של מומחה לבדיקת VIP בתוספת תשלום, וכן בדיקות מקומיות בחנויות בגדים ומחסנים כדי להבטיח שכל המלאי נקי משעטנז. אנא שוחחו עם נציג לקבלת פרטים ומחירים.";
         return xmlResponse(
-          say(
-            "We offer premium special services, including VIP home testing visits for an additional fee, as well as on-site testing for clothing stores and warehouses to ensure the entire inventory is certified clean of shatnez. Please speak to a representative for details and pricing.",
-            "אנו מציעים שירותים מיוחדים מובחרים, כולל ביקורי בית של מומחה לבדיקת VIP בתוספת תשלום, וכן בדיקות מקומיות בחנויות בגדים ומחסנים כדי להבטיח שכל המלאי נקי משעטנז. אנא שוחחו עם נציג לקבלת פרטים ומחירים."
-          ) +
-          redirect(`${origin}/api/twilio/voice`)
+          say(specialEn, specialHe) +
+          redirect("/api/twilio/voice")
         );
       }
       if (digits === "0") {
@@ -95,37 +92,40 @@ export async function POST(req: NextRequest) {
       if (digits === "9") {
         return xmlResponse(
           gather(
-            `${origin}/api/twilio/gather?step=admin_pin`,
+            "/api/twilio/gather?step=admin_pin",
             4,
             10,
             say("Please enter your 4 digit admin PIN.", "אנא הקש את קוד המנהל בן 4 הספרות.")
           ) +
           say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-          redirect(`${origin}/api/twilio/voice`)
+          redirect("/api/twilio/voice")
         );
       }
 
       // If they type an order ID directly
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
       if (clean) {
-        return await lookupOrder(clean, origin);
+        return await lookupOrder(clean);
       }
       return xmlResponse(
         say("Invalid selection. Returning to main menu.", "בחירה לא תקינה. חוזר לתפריט הראשי.") +
-        redirect(`${origin}/api/twilio/voice`)
+        redirect("/api/twilio/voice")
       );
     }
 
     // ── Order Lookup ──
     if (step === "order_lookup") {
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
+      if (clean === "*") {
+        return xmlResponse(redirect("/api/twilio/voice"));
+      }
       if (!clean) {
         return xmlResponse(
           say("No order number entered. Returning to main menu.", "לא הוקש מספר הזמנה. חוזר לתפריט הראשי.") +
-          redirect(`${origin}/api/twilio/voice`)
+          redirect("/api/twilio/voice")
         );
       }
-      return await lookupOrder(clean, origin);
+      return await lookupOrder(clean);
     }
 
     // ── Admin PIN ──
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
       if (digits === ADMIN_PIN) {
         return xmlResponse(
           gather(
-            `${origin}/api/twilio/gather?step=admin_menu`,
+            "/api/twilio/gather?step=admin_menu",
             1,
             15,
             say(
@@ -146,14 +146,14 @@ export async function POST(req: NextRequest) {
       }
       return xmlResponse(
         say("Incorrect PIN. Returning to main menu.", "קוד שגוי. חוזר לתפריט הראשי.") + 
-        redirect(`${origin}/api/twilio/voice`)
+        redirect("/api/twilio/voice")
       );
     }
 
     // ── Admin Menu ──
     if (step === "admin_menu") {
       if (digits === "*") {
-        return xmlResponse(redirect(`${origin}/api/twilio/voice`));
+        return xmlResponse(redirect("/api/twilio/voice"));
       }
       if (digits === "1") {
         const orders = await getAllOrders();
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
         if (recent.length === 0) {
           return xmlResponse(
             say("No orders found.", "לא נמצאו הזמנות.") + 
-            redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+            redirect("/api/twilio/gather?step=admin_menu")
           );
         }
         let enMsg = `You have ${orders.length} total orders. Here are the latest 5. `;
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
         return xmlResponse(
           say(enMsg, heMsg) +
           gather(
-            `${origin}/api/twilio/gather?step=admin_menu`,
+            "/api/twilio/gather?step=admin_menu",
             1,
             10,
             say("Press any key to return to admin menu, or star for main menu.", "הקש על מקש כלשהו לחזרה לתפריט המנהל, או כוכבית לתפריט הראשי.")
@@ -185,42 +185,42 @@ export async function POST(req: NextRequest) {
       if (digits === "2") {
         return xmlResponse(
           gather(
-            `${origin}/api/twilio/gather?step=status_update_ask_id`,
+            "/api/twilio/gather?step=status_update_ask_id",
             10,
             10,
             say("Enter the order number to update, followed by pound.", "הקש את מספר ההזמנה לעדכון, ולאחריו סולמית.")
           ) +
           say("No input received.", "לא התקבל קלט.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       if (digits === "3") {
         return xmlResponse(
           gather(
-            `${origin}/api/twilio/gather?step=lookup_by_phone`,
+            "/api/twilio/gather?step=lookup_by_phone",
             10,
             10,
             say("Enter the phone number, followed by pound.", "הקש את מספר הטלפון, ולאחריו סולמית.")
           ) +
           say("No input received.", "לא התקבל קלט.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       if (digits === "4") {
         return xmlResponse(
           gather(
-            `${origin}/api/twilio/gather?step=admin_add_order`,
+            "/api/twilio/gather?step=admin_add_order",
             10,
             10,
             say("Enter the customer phone number for the new order, followed by pound.", "הקש את מספר הטלפון של הלקוח עבור ההזמנה החדשה, ולאחריו סולמית.")
           ) +
           say("No input received.", "לא התקבל קלט.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       return xmlResponse(
         say("Invalid option.", "אופציה לא תקינה.") + 
-        redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
 
@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
       if (!order) {
         return xmlResponse(
           say("Order not found.", "הזמנה לא נמצאה.") + 
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       const safeId = String(order.id).replace(/-/g, " dash ");
@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
           `הזמנה ${safeIdHe} כרגע בסטטוס ${translateStatus(order.status || "received")}.`
         ) +
         gather(
-          `${origin}/api/twilio/gather?step=status_update_set&orderId=${order.id}`,
+          `/api/twilio/gather?step=status_update_set&orderId=${order.id}`,
           1,
           15,
           say(
@@ -259,7 +259,7 @@ export async function POST(req: NextRequest) {
       if (digits === "*") {
         return xmlResponse(
           say("Cancelled. Returning to admin menu.", "בוטל. חוזר לתפריט המנהל.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       const statusMap: Record<string, string> = {
@@ -269,14 +269,14 @@ export async function POST(req: NextRequest) {
       if (!newStatus || !orderId) {
         return xmlResponse(
           say("Invalid option.", "אופציה לא תקינה.") + 
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       
       // Instead of saving directly, gather the test results next!
       return xmlResponse(
         gather(
-          `${origin}/api/twilio/gather?step=status_update_result_set&orderId=${orderId}&newStatus=${newStatus}`,
+          `/api/twilio/gather?step=status_update_result_set&orderId=${orderId}&newStatus=${newStatus}`,
           1,
           15,
           say(
@@ -295,7 +295,7 @@ export async function POST(req: NextRequest) {
       if (!orderId || !newStatus) {
         return xmlResponse(
           say("Missing parameters. Returning to admin menu.", "פרמטרים חסרים. חוזר לתפריט המנהל.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
 
@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
       if (!order) {
         return xmlResponse(
           say("Order not found.", "הזמנה לא נמצאה.") + 
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
 
@@ -325,7 +325,7 @@ export async function POST(req: NextRequest) {
           `Order successfully updated. Status is ${newStatus}, result is ${newResult || "not set"}. Returning to admin menu.`,
           `ההזמנה עודכנה בהצלחה. הסטטוס הוא ${translateStatus(newStatus)}, התוצאה היא ${newResult === "Clean / No Shatnez" ? "נקי משעטנז" : newResult === "Shatnez Found" ? "נמצא שעטנז" : "לא נקבעה"}. חוזר לתפריט המנהל.`
         ) +
-        redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
 
@@ -336,7 +336,7 @@ export async function POST(req: NextRequest) {
       if (orders.length === 0) {
         return xmlResponse(
           say("No orders found for that phone number.", "לא נמצאו הזמנות עבור מספר הטלפון הזה.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       let enMsg = `Found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
@@ -350,7 +350,7 @@ export async function POST(req: NextRequest) {
       return xmlResponse(
         say(enMsg, heMsg) +
         gather(
-          `${origin}/api/twilio/gather?step=admin_menu`,
+          "/api/twilio/gather?step=admin_menu",
           1,
           10,
           say("Press any key to return to admin menu, or star for main menu.", "הקש על מקש כלשהו לחזרה לתפריט המנהל, או כוכבית לתפריט הראשי.")
@@ -364,7 +364,7 @@ export async function POST(req: NextRequest) {
       if (!phone) {
         return xmlResponse(
           say("No phone number entered.", "לא הוקש מספר טלפון.") +
-          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+          redirect("/api/twilio/gather?step=admin_menu")
         );
       }
       const orders = await getAllOrders();
@@ -383,21 +383,21 @@ export async function POST(req: NextRequest) {
           `Order created successfully. The order ID is ${newId}.`,
           `ההזמנה נוצרה בהצלחה. מספר ההזמנה הוא ${newId}.`
         ) +
-        redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+        redirect("/api/twilio/gather?step=admin_menu")
       );
     }
 
-    return xmlResponse(redirect(`${origin}/api/twilio/voice`));
+    return xmlResponse(redirect("/api/twilio/voice"));
   } catch (error) {
     console.error("IVR Error:", error);
     return xmlResponse(
       say("An error occurred. Returning to main menu.", "אירעה שגיאה. חוזר לתפריט הראשי.") +
-      redirect(`${origin}/api/twilio/voice`)
+      redirect("/api/twilio/voice")
     );
   }
 }
 
-async function lookupOrder(input: string, origin: string) {
+async function lookupOrder(input: string) {
   try {
     let order = await getOrderById(input);
     if (!order && input.replace(/\D/g, "").length >= 7) {
@@ -416,7 +416,7 @@ async function lookupOrder(input: string, origin: string) {
         return xmlResponse(
           say(enMsg, heMsg) +
           gather(
-            `${origin}/api/twilio/gather?step=menu`,
+            "/api/twilio/gather?step=menu",
             1,
             10,
             say("Press 1 to return to main menu.", "הקש 1 לחזרה לתפריט הראשי.")
@@ -426,12 +426,19 @@ async function lookupOrder(input: string, origin: string) {
     }
 
     if (!order) {
+      // Gathers and retries in order_lookup
       return xmlResponse(
-        say(
-          "We could not find an order with that number. Please try again.",
-          "לא מצאנו הזמנה עם המספר הזה. אנא נסה שוב."
+        gather(
+          "/api/twilio/gather?step=order_lookup",
+          10,
+          10,
+          say(
+            "We could not find an order with that number. Please enter a valid order number, or phone number, followed by pound. Or press star to return to the main menu.",
+            "לא מצאנו הזמנה עם המספר הזה. אנא הקש מספר הזמנה תקין, או את מספר הטלפון שלך, ולאחריו סולמית. או הקש כוכבית לחזרה לתפריט הראשי."
+          )
         ) +
-        redirect(`${origin}/api/twilio/voice`)
+        say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
+        redirect("/api/twilio/voice")
       );
     }
 
@@ -454,14 +461,16 @@ async function lookupOrder(input: string, origin: string) {
       heMsg += `תוצאת הבדיקה היא: ${translatedResult}. `;
     }
     
-    enMsg += "Thank you for calling The Shatnez Lab. Goodbye.";
-    heMsg += "תודה שהתקשרת למעבדת השעטנז. שלום.";
-    return xmlResponse(say(enMsg, heMsg));
+    // Redirect back to main menu after speaking status and result!
+    return xmlResponse(
+      say(enMsg, heMsg) +
+      redirect("/api/twilio/voice")
+    );
   } catch (error) {
     console.error("Lookup Error:", error);
     return xmlResponse(
       say("Error looking up order. Returning to main menu.", "שגיאה בחיפוש ההזמנה. חוזר לתפריט הראשי.") +
-      redirect(`${origin}/api/twilio/voice`)
+      redirect("/api/twilio/voice")
     );
   }
 }

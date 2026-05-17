@@ -74,22 +74,6 @@ export default function ContactPage() {
               </div>
             </a>
 
-            <a 
-              href="https://wa.me/18457092022"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
-            >
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-green-200 transition-colors">
-                <MessageCircle className="w-6 h-6 text-green-600" />
-              </div>
-              <div className={isRtl ? "text-right" : ""}>
-                <h3 className="font-semibold text-navy-900 mb-1">{t("whatsapp")}</h3>
-                <p className="text-primary-600">{t("whatsapp_desc")}</p>
-                <p className="text-sm text-primary-400 mt-1">{t("quick_responses")}</p>
-              </div>
-            </a>
-
             <div className="card p-6 flex items-start gap-4">
               <div className="w-12 h-12 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
                 <MapPin className="w-6 h-6 text-navy-600" />
@@ -104,15 +88,13 @@ export default function ContactPage() {
             </div>
 
             <div className="card p-6 flex items-start gap-4">
-              <div className="w-12 h-12 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
-                <Clock className="w-6 h-6 text-navy-600" />
+              <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0">
+                <Clock className="w-6 h-6 text-gold-600" />
               </div>
               <div className={isRtl ? "text-right" : ""}>
-                <h3 className="font-semibold text-navy-900 mb-1">{t("hours")}</h3>
-                <p className="text-primary-600">
-                  Sun - Thu: 9:00 AM - 6:00 PM<br />
-                  Fri: 9:00 AM - 2:00 PM<br />
-                  Sat: Closed
+                <h3 className="font-semibold text-navy-900 mb-1">{t("dropoff_info")}</h3>
+                <p className="text-primary-600 leading-relaxed">
+                  {t("dropoff_details")}
                 </p>
               </div>
             </div>

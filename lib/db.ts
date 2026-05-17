@@ -27,6 +27,10 @@ export interface Order {
 export interface AdminSettings {
   pin: string;
   forwardingNumber: string;
+  ivrGeneralEn?: string;
+  ivrGeneralHe?: string;
+  ivrSpecialEn?: string;
+  ivrSpecialHe?: string;
 }
 
 const ORDERS_COLLECTION = "orders";
@@ -148,14 +152,35 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
 /* ── Admin Settings ── */
 const SETTINGS_LS_KEY = "shatnez_settings";
 
+let cachedSettings: AdminSettings | null = null;
+let settingsCacheTimestamp = 0;
+const CACHE_TTL = 60000; // Cache settings for 60 seconds to make sequential IVR calls instantaneous
+
 export async function getAdminSettings(): Promise<AdminSettings> {
-  const defaultSettings: AdminSettings = { pin: "1234", forwardingNumber: "8457092022" };
+  const defaultSettings: AdminSettings = { 
+    pin: "1234", 
+    forwardingNumber: "8457092022",
+    ivrGeneralEn: "",
+    ivrGeneralHe: "",
+    ivrSpecialEn: "",
+    ivrSpecialHe: ""
+  };
   
+  const now = Date.now();
+  if (cachedSettings && (now - settingsCacheTimestamp < CACHE_TTL)) {
+    return cachedSettings;
+  }
+
   // Try localStorage first for quick access/fallback
   if (typeof window !== "undefined") {
     try {
       const saved = localStorage.getItem(SETTINGS_LS_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        cachedSettings = parsed;
+        settingsCacheTimestamp = now;
+        return parsed;
+      }
     } catch {}
   }
 
@@ -165,6 +190,8 @@ export async function getAdminSettings(): Promise<AdminSettings> {
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data() as AdminSettings;
+        cachedSettings = data;
+        settingsCacheTimestamp = now;
         // Sync to LS
         if (typeof window !== "undefined") {
           localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(data));
@@ -181,6 +208,10 @@ export async function getAdminSettings(): Promise<AdminSettings> {
 export async function saveAdminSettings(settings: AdminSettings): Promise<void> {
   console.log("Saving admin settings:", settings);
   
+  // Update in-memory cache immediately
+  cachedSettings = settings;
+  settingsCacheTimestamp = Date.now();
+  
   // Always save to localStorage
   if (typeof window !== "undefined") {
     localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(settings));
@@ -192,9 +223,6 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<void> 
       console.log("Admin settings saved successfully to Firebase");
     } catch (error) {
       console.error("Error saving admin settings to Firebase:", error);
-      // We don't throw here if we successfully saved to LS, 
-      // but maybe we should to notify the user of the sync issue?
-      // Actually, if we saved to LS, the app will work.
     }
   } else {
     console.warn("Firebase not configured, settings saved to localStorage only");

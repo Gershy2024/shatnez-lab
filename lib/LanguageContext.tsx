@@ -45,8 +45,8 @@ export const translations: Translations = {
   in_lab_desc: { en: "Thorough microscopic examination in our state-of-the-art facility.", he: "בדיקה מיקרוסקופית יסודית במתקן המתקדם שלנו." },
   vip_home: { en: "VIP Home Service", he: "שירות VIP עד הבית" },
   vip_home_desc: { en: "Can't make it to the lab? We come to you! Premium home inspection.", he: "לא יכולים להגיע למעבדה? אנחנו באים אליכם! בדיקה בבית הלקוח." },
-  express: { en: "Express Processing", he: "טיפול אקספרס" },
-  express_desc: { en: "Need results urgently? Same-day or next-day turnaround.", he: "צריכים תוצאות דחוף? שירות באותו יום או ביום למחרת." },
+  store_testing: { en: "Store & Inventory Certification", he: "בדיקת חנויות ומלאי" },
+  store_testing_desc: { en: "On-site certification for clothing stores and warehouses to ensure entire stock is shatnez-free.", he: "בדיקה ואישור של חנויות ביגוד ומחסנים במקום כדי להבטיח שכל המלאי נקי משעטנז." },
 
   // How it works
   how_it_works: { en: "How It Works", he: "איך זה עובד?" },
@@ -109,6 +109,11 @@ export const translations: Translations = {
   quick_responses: { en: "Quick responses", he: "מענה מהיר" },
   location: { en: "Location", he: "מיקום" },
   hours: { en: "Hours", he: "שעות פעילות" },
+  dropoff_info: { en: "Drop-off Info", he: "הנחיות מסירה" },
+  dropoff_details: { 
+    en: "Drop off garments at 14 Buchanan Rd. Place payment in the envelope/bag with the garment. Simple garments: $5. Lined garments (suits/coats): $10.",
+    he: "מסרו את הבגדים בכתובת 14 Buchanan Rd. הניחו את התשלום במעטפה או שקית יחד עם הבגד. בגד פשוט: $5. בגד עם בטנה (חליפות/מעילים): $10."
+  },
   send_message: { en: "Send a Message", he: "שלחו הודעה" },
   name: { en: "Name", he: "שם" },
   email: { en: "Email", he: "אימייל" },

@@ -118,9 +118,9 @@ export default function HomePage() {
                 color: "bg-gold-100 text-gold-600",
               },
               {
-                icon: Clock,
-                title: t("express"),
-                description: t("express_desc"),
+                icon: ShieldCheck,
+                title: t("store_testing"),
+                description: t("store_testing_desc"),
                 color: "bg-navy-100 text-navy-600",
               },
             ].map((service, index) => (
