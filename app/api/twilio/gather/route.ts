@@ -148,11 +148,10 @@ export async function POST(req: NextRequest) {
         console.log(`[Twilio IVR Log] Main Menu: Option 0 - Forwarding call to representative.`);
         const num = settings.forwardingNumber || "8457092022";
         const formattedNum = formatDialNumber(num);
-        const callerIdAttr = toPhoneNumber ? ` callerId="${toPhoneNumber}"` : "";
-        console.log(`[Twilio IVR Log] Forwarding to: ${formattedNum} with Caller ID: ${toPhoneNumber || "default"}`);
+        console.log(`[Twilio IVR Log] Forwarding to: ${formattedNum} (default caller ID)`);
         return xmlResponse(
           say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
-          `<Dial${callerIdAttr}>${formattedNum}</Dial>`
+          `<Dial>${formattedNum}</Dial>`
         );
       }
       if (cleanDigits === "9") {
