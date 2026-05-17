@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/$/, "");
-
 export async function POST(req: NextRequest) {
   const origin = req.nextUrl.origin;
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -9,25 +7,27 @@ export async function POST(req: NextRequest) {
   <Gather
     action="${origin}/api/twilio/gather?step=menu"
     method="POST"
-    timeout="5"
+    timeout="8"
   >
     <Say voice="Polly.Matthew" language="en-US">
       Welcome to The Shatnez Lab.
-      Press 1 to check your order status.
-      Press 2 to speak with a representative.
-      Press 9 for admin access.
-      Or enter your order number followed by pound.
+      Press 1 for drop-off information, pricing, and instructions.
+      Press 2 to check your order status and test results.
+      Press 3 to hear about our special VIP and store services.
+      Press 0 to speak with a representative.
+      Or, enter your order number followed by pound.
     </Say>
     <Say voice="Polly.Madi" language="he-IL">
       ברוכים הבאים למעבדת השעטנז.
-      להקיש אחת לבדיקת סטטוס הזמנה.
-      להקיש שתיים לשיחה עם נציג.
-      להקיש תשע לגישת מנהל.
-      או הקישו את מספר ההזמנה ולאחריו סולמית.
+      להקשת אחת לקבלת מידע על מסירת בגדים, מחירים והנחיות.
+      להקשת שתיים לבדיקת סטטוס הזמנה ותוצאות הבדיקה.
+      להקשת שלוש לשמיעת פרטים על שירותי ה-VIP והחנויות המיוחדים שלנו.
+      להקשת אפס לשיחה עם נציג.
+      או הקישו את מספר ההזמנה שלכם ולאחריו סולמית.
     </Say>
   </Gather>
-  <Say voice="Polly.Matthew" language="en-US">We did not receive a response. Goodbye.</Say>
-  <Say voice="Polly.Madi" language="he-IL">לא התקבלה קלט. שלום.</Say>
+  <Say voice="Polly.Matthew" language="en-US">We did not receive a response. Returning to main menu.</Say>
+  <Say voice="Polly.Madi" language="he-IL">לא התקבל קלט. חוזר לתפריט הראשי.</Say>
   <Redirect method="POST">${origin}/api/twilio/voice</Redirect>
 </Response>`;
 

@@ -54,6 +54,15 @@ export async function POST(req: NextRequest) {
     if (step === "menu") {
       if (digits === "1") {
         return xmlResponse(
+          say(
+            "To have your garments checked, please drop them off at 14 Buchanan, North Square, New York. Once dropped off, you can call our 24/7 automated line at any time to hear your order status. When the status is completed, you may come pick up your garment. Please place the testing payment in the designated slot or envelope with the garment. Our prices are 5 dollars for a simple garment, and 10 dollars for any lined garment, such as a suit or a coat. Thank you for choosing The Shatnez Lab.",
+            "לבדיקת בגדים, אנא מסרו אותם בכתובת 14 Buchanan, North Square, ניו יורק. לאחר המסירה, תוכלו להתקשר לקו הטלפוני שלנו הפעיל 24 שעות ביממה, 7 ימים בשבוע כדי לשמוע את סטטוס ההזמנה. כאשר הבדיקה תושלם, תוכלו לבוא לאסוף את הבגד. אנא הניחו את התשלום במעטפה או בחריץ המיועד יחד עם הבגד. המחירים שלנו הם 5 דולרים עבור בגד פשוט, ו-10 דולרים עבור בגד עם בטנה, כגון חליפה או מעיל. תודה שבחרתם במעבדת השעטנז."
+          ) +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
+      if (digits === "2") {
+        return xmlResponse(
           gather(
             `${origin}/api/twilio/gather?step=order_lookup`,
             10,
@@ -67,7 +76,16 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/voice`)
         );
       }
-      if (digits === "2") {
+      if (digits === "3") {
+        return xmlResponse(
+          say(
+            "We offer premium special services, including VIP home testing visits for an additional fee, as well as on-site testing for clothing stores and warehouses to ensure the entire inventory is certified clean of shatnez. Please speak to a representative for details and pricing.",
+            "אנו מציעים שירותים מיוחדים מובחרים, כולל ביקורי בית של מומחה לבדיקת VIP בתוספת תשלום, וכן בדיקות מקומיות בחנויות בגדים ומחסנים כדי להבטיח שכל המלאי נקי משעטנז. אנא שוחחו עם נציג לקבלת פרטים ומחירים."
+          ) +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
+      if (digits === "0") {
         const num = settings.forwardingNumber || "8457092022";
         return xmlResponse(
           say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
@@ -87,6 +105,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // If they type an order ID directly
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
       if (clean) {
         return await lookupOrder(clean, origin);
@@ -118,8 +137,8 @@ export async function POST(req: NextRequest) {
             1,
             15,
             say(
-              "Admin menu. Press 1 to hear recent orders. Press 2 to update an order status. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu.",
-              "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון סטטוס הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש כוכבית לחזרה לתפריט הראשי."
+              "Admin menu. Press 1 to hear recent orders. Press 2 to update an order. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu.",
+              "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש כוכבית לחזרה לתפריט הראשי."
             )
           ) +
           say("No input received. Goodbye.", "לא התקבל קלט. שלום.")
@@ -253,6 +272,33 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/gather?step=admin_menu`)
         );
       }
+      
+      // Instead of saving directly, gather the test results next!
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=status_update_result_set&orderId=${orderId}&newStatus=${newStatus}`,
+          1,
+          15,
+          say(
+            "Status noted. Now update the test result. Press 1 for clean, 2 for shatnez found, or star to keep existing result.",
+            "הסטטוס נקלט. כעת לעדכון תוצאת הבדיקה. הקש 1 עבור נקי משעטנז, 2 עבור נמצא שעטנז, או כוכבית כדי להשאיר את התוצאה הנוכחית."
+          )
+        )
+      );
+    }
+
+    // ── Status Update: Set Test Result ──
+    if (step === "status_update_result_set") {
+      const orderId = url.searchParams.get("orderId");
+      const newStatus = url.searchParams.get("newStatus");
+      
+      if (!orderId || !newStatus) {
+        return xmlResponse(
+          say("Missing parameters. Returning to admin menu.", "פרמטרים חסרים. חוזר לתפריט המנהל.") +
+          redirect(`${origin}/api/twilio/gather?step=admin_menu`)
+        );
+      }
+
       const order = await getOrderById(orderId);
       if (!order) {
         return xmlResponse(
@@ -260,9 +306,25 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/gather?step=admin_menu`)
         );
       }
-      await saveOrder({ ...order, status: newStatus as any });
+
+      let newResult = order.result || "";
+      if (digits === "1") {
+        newResult = "Clean / No Shatnez";
+      } else if (digits === "2") {
+        newResult = "Shatnez Found";
+      }
+
+      await saveOrder({
+        ...order,
+        status: newStatus as any,
+        result: newResult
+      });
+
       return xmlResponse(
-        say(`Status updated to ${newStatus}.`, `הסטטוס עודכן ל-${translateStatus(newStatus as any)}.`) +
+        say(
+          `Order successfully updated. Status is ${newStatus}, result is ${newResult || "not set"}. Returning to admin menu.`,
+          `ההזמנה עודכנה בהצלחה. הסטטוס הוא ${translateStatus(newStatus)}, התוצאה היא ${newResult === "Clean / No Shatnez" ? "נקי משעטנז" : newResult === "Shatnez Found" ? "נמצא שעטנז" : "לא נקבעה"}. חוזר לתפריט המנהל.`
+        ) +
         redirect(`${origin}/api/twilio/gather?step=admin_menu`)
       );
     }
@@ -384,10 +446,14 @@ async function lookupOrder(input: string, origin: string) {
       enMsg += `Estimated completion is ${order.estimatedCompletion}. `;
       heMsg += `תאריך סיום משוער הוא ${order.estimatedCompletion}. `;
     }
+    
+    // Play test result if it exists
     if (order.result) {
-      enMsg += `Test result: ${order.result}. `;
-      heMsg += `תוצאת הבדיקה: ${order.result}. `;
+      const translatedResult = order.result === "Clean / No Shatnez" ? "נקי משעטנז" : order.result === "Shatnez Found" ? "נמצא שעטנז" : order.result;
+      enMsg += `Test result is: ${order.result}. `;
+      heMsg += `תוצאת הבדיקה היא: ${translatedResult}. `;
     }
+    
     enMsg += "Thank you for calling The Shatnez Lab. Goodbye.";
     heMsg += "תודה שהתקשרת למעבדת השעטנז. שלום.";
     return xmlResponse(say(enMsg, heMsg));

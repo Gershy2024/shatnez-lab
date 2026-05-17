@@ -52,36 +52,53 @@ function lsSet(orders: Order[]) {
 /* ── Firestore helpers ── */
 export async function getAllOrders(): Promise<Order[]> {
   if (isConfigured && db) {
-    const snapshot = await getDocs(
-      query(collection(db, ORDERS_COLLECTION), orderBy("id", "asc"))
-    );
-    return snapshot.docs.map((d) => d.data() as Order);
+    try {
+      const snapshot = await getDocs(
+        query(collection(db, ORDERS_COLLECTION), orderBy("id", "asc"))
+      );
+      return snapshot.docs.map((d) => d.data() as Order);
+    } catch (e) {
+      console.error("Firestore getAllOrders failed:", e);
+    }
   }
   return lsGet();
 }
 
 export async function getOrderById(id: string): Promise<Order | null> {
   if (isConfigured && db) {
-    const ref = doc(db, ORDERS_COLLECTION, id);
-    const snap = await getDoc(ref);
-    return snap.exists() ? (snap.data() as Order) : null;
+    try {
+      const ref = doc(db, ORDERS_COLLECTION, id);
+      const snap = await getDoc(ref);
+      return snap.exists() ? (snap.data() as Order) : null;
+    } catch (e) {
+      console.error(`Firestore getOrderById for ID ${id} failed:`, e);
+    }
   }
-  return lsGet().find((o) => o.id.toUpperCase() === id.toUpperCase()) || null;
+  return lsGet().find((o) => String(o.id).toUpperCase() === String(id).toUpperCase()) || null;
 }
 
 export async function getOrdersByPhone(phone: string): Promise<Order[]> {
-  const all = await getAllOrders();
-  const normalized = phone.replace(/\D/g, "");
-  return all.filter((o) => {
-    if (!o.phone) return false;
-    return o.phone.replace(/\D/g, "").includes(normalized);
-  });
+  try {
+    const all = await getAllOrders();
+    const normalized = phone.replace(/\D/g, "");
+    return all.filter((o) => {
+      if (!o.phone) return false;
+      return o.phone.replace(/\D/g, "").includes(normalized);
+    });
+  } catch (e) {
+    console.error("getOrdersByPhone failed:", e);
+    return [];
+  }
 }
 
 export async function saveOrder(order: Order): Promise<void> {
   if (isConfigured && db) {
-    await setDoc(doc(db, ORDERS_COLLECTION, order.id), order);
-    return;
+    try {
+      await setDoc(doc(db, ORDERS_COLLECTION, order.id), order);
+      return;
+    } catch (e) {
+      console.error("Firestore saveOrder failed:", e);
+    }
   }
   const orders = lsGet();
   const idx = orders.findIndex((o) => o.id === order.id);
@@ -95,8 +112,12 @@ export async function saveOrder(order: Order): Promise<void> {
 
 export async function deleteOrder(id: string): Promise<void> {
   if (isConfigured && db) {
-    await deleteDoc(doc(db, ORDERS_COLLECTION, id));
-    return;
+    try {
+      await deleteDoc(doc(db, ORDERS_COLLECTION, id));
+      return;
+    } catch (e) {
+      console.error("Firestore deleteOrder failed:", e);
+    }
   }
   const orders = lsGet().filter((o) => o.id !== id);
   lsSet(orders);

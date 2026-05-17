@@ -314,9 +314,11 @@ export default function AdminPage() {
                     <div>
                       <h3 className="font-bold text-gold-400 mb-2 underline">{isRtl ? "תפריט ראשי" : "Main Menu"}</h3>
                       <ul className={`space-y-1 text-navy-50 ${isRtl ? "pr-0" : ""}`}>
-                        <li>• <span className="font-bold">{isRtl ? "אופציה 1:" : "Option 1:"}</span> {isRtl ? "בדיקת סטטוס (לקוח)" : "Check status (customer)"}</li>
-                        <li>• <span className="font-bold">{isRtl ? "אופציה 2:" : "Option 2:"}</span> {isRtl ? "העברת שיחה לנציג" : "FORWARD CALL to representative"}</li>
-                        <li>• <span className="font-bold">{isRtl ? "אופציה 9:" : "Option 9:"}</span> {isRtl ? "גישת מנהל (דורש קוד)" : "Admin access (needs PIN)"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 1:" : "Option 1:"}</span> {isRtl ? "מידע כללי ומחירים" : "General Info & Pricing"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 2:" : "Option 2:"}</span> {isRtl ? "בדיקת סטטוס ותוצאות (לקוח)" : "Track status & test results"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 3:" : "Option 3:"}</span> {isRtl ? "שירותי VIP וחנויות" : "VIP & Store services"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 0:" : "Option 0:"}</span> {isRtl ? "העברת שיחה לנציג" : "FORWARD CALL to representative"}</li>
+                        <li>• <span className="font-bold">{isRtl ? "אופציה 9 (מוסתר):" : "Option 9 (Hidden):"}</span> {isRtl ? "גישת מנהל (דורש קוד)" : "Admin access (needs PIN)"}</li>
                         <li>• <span className="font-bold">{isRtl ? "כניסה ישירה:" : "Direct Entry:"}</span> {isRtl ? "הקש מספר הזמנה + #" : "Just type Order # + #"}</li>
                       </ul>
                     </div>
@@ -324,7 +326,7 @@ export default function AdminPage() {
                       <h3 className="font-bold text-gold-400 mb-2 underline">{isRtl ? "תפריט מנהל (אחרי קוד)" : "Admin Menu (After PIN)"}</h3>
                       <ul className={`space-y-1 text-navy-50 ${isRtl ? "pr-0" : ""}`}>
                         <li>• <span className="font-bold">1:</span> {isRtl ? "שמיעת 5 הזמנות אחרונות" : "Hear last 5 recent orders"}</li>
-                        <li>• <span className="font-bold">2:</span> {isRtl ? "עדכון סטטוס הזמנה" : "Update order status"}</li>
+                        <li>• <span className="font-bold">2:</span> {isRtl ? "עדכון סטטוס ותוצאת בדיקה" : "Update status and test result"}</li>
                         <li>• <span className="font-bold">3:</span> {isRtl ? "חיפוש לפי מספר טלפון" : "Lookup orders by phone number"}</li>
                         <li>• <span className="font-bold">4:</span> {isRtl ? "הוספת הזמנה חדשה" : "ADD NEW ORDER by phone"}</li>
                         <li>• <span className="font-bold">*:</span> {isRtl ? "חזרה לתפריט ראשי" : "Back to main menu"}</li>
