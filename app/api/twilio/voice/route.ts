@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
+  const origin = req.nextUrl.origin;
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather
-    action="/api/twilio/gather?step=menu"
+    action="${origin}/api/twilio/gather?step=menu"
     method="POST"
-    timeout="8"
+    timeout="3"
   >
-    <Say voice="Polly.Matthew" language="en-US">
+    <Say voice="Polly.Joanna" language="en-US">
       Welcome to The Shatnez Lab.
       Press 1 for drop-off information, pricing, and instructions.
       Press 2 to check your order status and test results.
@@ -25,9 +26,9 @@ export async function POST(req: NextRequest) {
       או הקישו את מספר ההזמנה שלכם ולאחריו סולמית.
     </Say>
   </Gather>
-  <Say voice="Polly.Matthew" language="en-US">We did not receive a response. Returning to main menu.</Say>
+  <Say voice="Polly.Joanna" language="en-US">We did not receive a response. Returning to main menu.</Say>
   <Say voice="Polly.Madi" language="he-IL">לא התקבל קלט. חוזר לתפריט הראשי.</Say>
-  <Redirect method="POST">/api/twilio/voice</Redirect>
+  <Redirect method="POST">${origin}/api/twilio/voice</Redirect>
 </Response>`;
 
   return new NextResponse(twiml, {
