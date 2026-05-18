@@ -79,16 +79,31 @@ async function handleRequest(req: NextRequest) {
 
     // ─── DEBUG DIAGNOSTICS ───
     if (action === "debug") {
+      const { db, isConfigured: firebaseConfigured } = require("@/lib/firebase");
+      const { doc, getDoc } = require("firebase/firestore");
       let dbError: string | null = null;
-      let settings: any = null;
+      let rawSettings: any = null;
+      let isConfiguredStatus = firebaseConfigured;
+      
       try {
-        settings = await getAdminSettings();
+        if (firebaseConfigured && db) {
+          const ref = doc(db, "settings", "admin");
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            rawSettings = snap.data();
+          } else {
+            rawSettings = { exists: false, message: "settings/admin document does not exist in this database" };
+          }
+        } else {
+          dbError = "Firebase is NOT configured (db is null)";
+        }
       } catch (err: any) {
         dbError = err.message || String(err);
       }
       return jsonResponse({
         timestamp: Date.now(),
-        settings,
+        isConfigured: isConfiguredStatus,
+        rawSettings,
         dbError
       });
     }
