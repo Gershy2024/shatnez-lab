@@ -260,9 +260,9 @@
           "x": 150,
           "y": 1000
         },
-        "say": "{{widgets.caller_lookup.parsed.messageEn}}\n\n{{widgets.caller_lookup.parsed.messageHe}}",
-        "voice": "Polly.Avri",
-        "language": "he-IL"
+        "say": "{{widgets.caller_lookup.parsed.messageEn}}",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -282,9 +282,9 @@
         "number_of_digits": 10,
         "finish_on_key": "#",
         "timeout": 10,
-        "say": "We could not find orders for your phone number. Please enter your 10 digit phone number or your order ID followed by pound.\n\nלא מצאנו הזמנות למספר זה. אנא הקש את מספר הטלפון שלך או מספר ההזמנה, ולאחריו סולמית.",
-        "voice": "Polly.Avri",
-        "language": "he-IL"
+        "say": "We could not find orders for your phone number. Please enter your 10 digit phone number or your order ID followed by pound.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -334,9 +334,9 @@
           "x": 450,
           "y": 1400
         },
-        "say": "{{widgets.manual_lookup.parsed.messageEn}}\n\n{{widgets.manual_lookup.parsed.messageHe}}",
-        "voice": "Polly.Avri",
-        "language": "he-IL"
+        "say": "{{widgets.manual_lookup.parsed.messageEn}}",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -357,7 +357,7 @@
         "finish_on_key": "#",
         "timeout": 10,
         "say": "Please enter your 4 digit admin PIN.\n\nאנא הקש קוד מנהל בן 4 ספרות.",
-        "voice": "Polly.Avri",
+        "voice": "Polly.Madi",
         "language": "he-IL"
       },
       "transitions": [
@@ -439,7 +439,7 @@
           "y": 1200
         },
         "say": "Incorrect admin PIN. Returning to main menu.\n\nקוד שגוי.",
-        "voice": "Polly.Avri",
+        "voice": "Polly.Madi",
         "language": "he-IL"
       },
       "transitions": [
@@ -461,7 +461,7 @@
         "finish_on_key": "#",
         "timeout": 10,
         "say": "Admin menu. Press 1 to hear recent orders. Press star to return.\n\nתפריט מנהל. להקש 1 לשמיעת הזמנות אחרונות.",
-        "voice": "Polly.Avri",
+        "voice": "Polly.Madi",
         "language": "he-IL"
       },
       "transitions": [
@@ -550,7 +550,7 @@
           "y": 1800
         },
         "say": "{{widgets.admin_get_recent.parsed.messageEn}}\n\n{{widgets.admin_get_recent.parsed.messageHe}}",
-        "voice": "Polly.Avri",
+        "voice": "Polly.Madi",
         "language": "he-IL"
       },
       "transitions": [
