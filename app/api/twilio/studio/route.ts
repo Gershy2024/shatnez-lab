@@ -77,6 +77,22 @@ async function handleRequest(req: NextRequest) {
     
     console.log(`[Twilio Studio API] Action: "${action}", Query: "${query}", Phone: "${phone}", PIN: "${pin}"`);
 
+    // ─── DEBUG DIAGNOSTICS ───
+    if (action === "debug") {
+      let dbError: string | null = null;
+      let settings: any = null;
+      try {
+        settings = await getAdminSettings();
+      } catch (err: any) {
+        dbError = err.message || String(err);
+      }
+      return jsonResponse({
+        timestamp: Date.now(),
+        settings,
+        dbError
+      });
+    }
+
     // ─── 1. CALLER LOOKUP BY PHONE ───
     if (action === "caller_lookup") {
       if (!phone) {
