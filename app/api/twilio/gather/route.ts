@@ -109,14 +109,12 @@ export async function POST(req: NextRequest) {
             gather(
               `${origin}/api/twilio/gather?step=caller_id_confirm&callerPhone=${cleanPhone}`,
               1,
-              10,
+              15,
               say(
                 `We see you are calling from, ${spacedPhone}. Press 1 to search for orders with this number. Press 2 to enter a different number.`,
                 `אנו רואים שאתה מתקשר ממספר, ${spacedPhone}. הקש 1 לחיפוש הזמנות עם מספר זה. הקש 2 להזנת מספר אחר.`
               )
-            ) +
-            say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-            redirect(`${origin}/api/twilio/voice`)
+            )
           );
         } else {
           // Fallback if caller ID is not available
@@ -124,14 +122,12 @@ export async function POST(req: NextRequest) {
             gather(
               `${origin}/api/twilio/gather?step=order_lookup`,
               10,
-              10,
+              15,
               say(
                 "Please enter your order number, or your ten digit phone number, followed by pound.",
                 "אנא הקש את מספר ההזמנה, או את מספר הטלפון שלך בן עשר ספרות, ולאחר מכן סולמית."
               )
-            ) +
-            say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-            redirect(`${origin}/api/twilio/voice`)
+            )
           );
         }
       }
@@ -160,11 +156,9 @@ export async function POST(req: NextRequest) {
           gather(
             `${origin}/api/twilio/gather?step=admin_pin`,
             4,
-            10,
+            15,
             say("Please enter your 4 digit admin PIN.", "אנא הקש את קוד המנהל בן 4 הספרות.")
-          ) +
-          say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-          redirect(`${origin}/api/twilio/voice`)
+          )
         );
       }
 
@@ -192,14 +186,12 @@ export async function POST(req: NextRequest) {
             gather(
               `${origin}/api/twilio/gather?step=order_lookup`,
               10,
-              10,
+              15,
               say(
                 "We could not find any orders associated with this number. Please enter your order number, or another phone number, followed by pound.",
                 "לא מצאנו הזמנות המשויכות למספר זה. אנא הקש מספר הזמנה, או מספר טלפון אחר, ולאחריו סולמית."
               )
-            ) +
-            say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-            redirect(`${origin}/api/twilio/voice`)
+            )
           );
         }
         
@@ -231,14 +223,12 @@ export async function POST(req: NextRequest) {
         gather(
           `${origin}/api/twilio/gather?step=order_lookup`,
           10,
-          10,
+          15,
           say(
             "Please enter your order number, or your ten digit phone number, followed by pound.",
             "אנא הקש את מספר ההזמנה, או את מספר הטלפון שלך בן עשר ספרות, ולאחר מכן סולמית."
           )
-        ) +
-        say("No input received. Returning to main menu.", "לא התקבל קלט. חוזר לתפריט הראשי.") +
-        redirect(`${origin}/api/twilio/voice`)
+        )
       );
     }
 
@@ -269,8 +259,7 @@ export async function POST(req: NextRequest) {
               "Admin menu. Press 1 to hear recent orders. Press 2 to update an order. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu.",
               "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש כוכבית לחזרה לתפריט הראשי."
             )
-          ) +
-          say("No input received. Goodbye.", "לא התקבל קלט. שלום.")
+          )
         );
       }
       return xmlResponse(
