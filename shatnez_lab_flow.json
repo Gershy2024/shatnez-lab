@@ -1,0 +1,568 @@
+{
+  "description": "Shatnez Laboratory Multilingual IVR with Admin Menu",
+  "states": [
+    {
+      "name": "Trigger",
+      "type": "trigger",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": -150
+        }
+      },
+      "transitions": [
+        {
+          "event": "incomingCall",
+          "next": "welcome_menu"
+        },
+        {
+          "event": "incomingMessage"
+        },
+        {
+          "event": "incomingConversation"
+        },
+        {
+          "event": "request"
+        }
+      ]
+    },
+    {
+      "name": "welcome_menu",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 100
+        },
+        "number_of_digits": 1,
+        "finish_on_key": "#",
+        "timeout": 5,
+        "say": "Welcome to The Shatnez Lab. Press 1 for drop-off information. Press 2 to check your order status. Press 3 to hear about VIP services. Press 0 to speak with a representative.\n\nברוכים הבאים למעבדת השעטנז. להקש 1 למידע על מסירת בגדים. להקש 2 לבדיקת סטטוס הזמנה. להקש 3 לשירותי VIP. להקש 0 לשיחה עם נציג.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "split_menu_keys"
+        },
+        {
+          "event": "timeout",
+          "next": "connect_call_1"
+        }
+      ]
+    },
+    {
+      "name": "split_menu_keys",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 350
+        },
+        "variable_to_test": "{{widgets.welcome_menu.Digits}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 1",
+              "arguments": [
+                "1"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "play_info"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 2",
+              "arguments": [
+                "2"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "caller_lookup"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 3",
+              "arguments": [
+                "3"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "play_vip"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 0",
+              "arguments": [
+                "0"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "connect_call_1"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 9",
+              "arguments": [
+                "9"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "ask_admin_pin"
+        },
+        {
+          "event": "noMatch",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "play_info",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": -400,
+          "y": 600
+        },
+        "say": "Drop-off Information: You can drop off your garments at our main lab at any time. Testing usually takes 2 to 3 business days. The base price is 15 dollars per item.\n\nמידע על מסירת בגדים: ניתן למסור בגדים לבדיקה במעבדה בכל עת. הבדיקה אורכת בדרך כלל בין יומיים לשלושה ימי עסקים. המחיר הוא 15 דולר לפריט.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "play_vip",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 600
+        },
+        "say": "Exclusive VIP Services: We offer express same-day testing, and at-home pick-up and delivery services in selected locations.\n\nשירותי VIP: אנו מציעים בדיקת אקספרס באותו היום, ושירותי איסוף והחזרה עד הבית.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "connect_call_1",
+      "type": "connect-call-to",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 600
+        },
+        "caller_id": "{{contact.channel.address}}",
+        "noun": "number",
+        "to": "+18457092022"
+      },
+      "transitions": [
+        {
+          "event": "connectedCallEnded"
+        },
+        {
+          "event": "callerHungUp"
+        }
+      ]
+    },
+    {
+      "name": "caller_lookup",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 300,
+          "y": 600
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=caller_lookup",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_caller_lookup_success"
+        },
+        {
+          "event": "failed",
+          "next": "ask_manual_query"
+        }
+      ]
+    },
+    {
+      "name": "check_caller_lookup_success",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 300,
+          "y": 800
+        },
+        "variable_to_test": "{{widgets.caller_lookup.parsed.found}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If Found",
+              "arguments": [
+                "true"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "read_caller_orders"
+        },
+        {
+          "event": "noMatch",
+          "next": "ask_manual_query"
+        }
+      ]
+    },
+    {
+      "name": "read_caller_orders",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 150,
+          "y": 1000
+        },
+        "say": "{{widgets.caller_lookup.parsed.messageEn}}\n\n{{widgets.caller_lookup.parsed.messageHe}}",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "ask_manual_query",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 450,
+          "y": 1000
+        },
+        "number_of_digits": 10,
+        "finish_on_key": "#",
+        "timeout": 10,
+        "say": "We could not find orders for your phone number. Please enter your 10 digit phone number or your order ID followed by pound.\n\nלא מצאנו הזמנות למספר זה. אנא הקש את מספר הטלפון שלך או מספר ההזמנה, ולאחריו סולמית.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "manual_lookup"
+        },
+        {
+          "event": "timeout",
+          "next": "connect_call_1"
+        }
+      ]
+    },
+    {
+      "name": "manual_lookup",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 450,
+          "y": 1200
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=manual_lookup",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "query",
+            "value": "{{widgets.ask_manual_query.Digits}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "read_manual_orders"
+        },
+        {
+          "event": "failed",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "read_manual_orders",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 450,
+          "y": 1400
+        },
+        "say": "{{widgets.manual_lookup.parsed.messageEn}}\n\n{{widgets.manual_lookup.parsed.messageHe}}",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "ask_admin_pin",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 800,
+          "y": 600
+        },
+        "number_of_digits": 4,
+        "finish_on_key": "#",
+        "timeout": 10,
+        "say": "Please enter your 4 digit admin PIN.\n\nאנא הקש קוד מנהל בן 4 ספרות.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "verify_pin"
+        },
+        {
+          "event": "timeout",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "verify_pin",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 800,
+          "y": 800
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_login",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "pin",
+            "value": "{{widgets.ask_admin_pin.Digits}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_admin_auth"
+        },
+        {
+          "event": "failed",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "check_admin_auth",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 800,
+          "y": 1000
+        },
+        "variable_to_test": "{{widgets.verify_pin.parsed.authenticated}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If Auth Success",
+              "arguments": [
+                "true"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "admin_menu"
+        },
+        {
+          "event": "noMatch",
+          "next": "bad_pin_msg"
+        }
+      ]
+    },
+    {
+      "name": "bad_pin_msg",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 650,
+          "y": 1200
+        },
+        "say": "Incorrect admin PIN. Returning to main menu.\n\nקוד שגוי.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "admin_menu",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 950,
+          "y": 1200
+        },
+        "number_of_digits": 1,
+        "finish_on_key": "#",
+        "timeout": 10,
+        "say": "Admin menu. Press 1 to hear recent orders. Press star to return.\n\nתפריט מנהל. להקש 1 לשמיעת הזמנות אחרונות.",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "split_admin_menu"
+        },
+        {
+          "event": "timeout",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "split_admin_menu",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 950,
+          "y": 1400
+        },
+        "variable_to_test": "{{widgets.admin_menu.Digits}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 1",
+              "arguments": [
+                "1"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "admin_get_recent"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If Star",
+              "arguments": [
+                "*"
+              ],
+              "type": "contains"
+            }
+          ],
+          "next": "welcome_menu"
+        },
+        {
+          "event": "noMatch",
+          "next": "admin_menu"
+        }
+      ]
+    },
+    {
+      "name": "admin_get_recent",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 1100,
+          "y": 1600
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_get_recent",
+        "content_type": "application/x-www-form-urlencoded"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "read_recent_orders"
+        },
+        {
+          "event": "failed",
+          "next": "admin_menu"
+        }
+      ]
+    },
+    {
+      "name": "read_recent_orders",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 1100,
+          "y": 1800
+        },
+        "say": "{{widgets.admin_get_recent.parsed.messageEn}}\n\n{{widgets.admin_get_recent.parsed.messageHe}}",
+        "voice": "Polly.Avri",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin_menu"
+        }
+      ]
+    }
+  ],
+  "initial_state": "Trigger",
+  "flags": {
+    "allow_bypassing_constraints": false
+  }
+}
