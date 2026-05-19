@@ -16,6 +16,7 @@ export const translations: Translations = {
   track_order: { en: "Track Order", he: "מעקב הזמנה" },
   contact: { en: "Contact", he: "צור קשר" },
   admin: { en: "Admin", he: "ניהול" },
+  business_card: { en: "Business Card", he: "כרטיס ביקור" },
   
   // Hero Section
   hero_title: { en: "The Shatnez Lab", he: "מעבדת השעטנז" },
