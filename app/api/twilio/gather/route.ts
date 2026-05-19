@@ -83,6 +83,18 @@ function translateStatus(status: string) {
   return map[status] || status;
 }
 
+function translateStatusEn(status: string): string {
+  const map: Record<string, string> = {
+    received: "received and logged",
+    testing: "currently in testing",
+    review: "under quality review",
+    ready: "ready for pickup",
+    delivered: "successfully delivered",
+    issue: "needs attention",
+  };
+  return map[status] || status;
+}
+
 function formatDialNumber(num: string) {
   const clean = num.replace(/\D/g, ""); // Keep only digits
   if (clean.length === 10) {
@@ -326,18 +338,20 @@ export async function POST(req: NextRequest) {
             redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
           );
         }
-        let enMsg = `You have ${orders.length} total orders. Here are the latest 5. `;
-        let heMsg = `יש לך ${orders.length} הזמנות בסך הכל. הנה ה-5 האחרונות. `;
+        let enMsg = `Here are the five latest orders. `;
+        let heMsg = `להלן חמש ההזמנות האחרונות. `;
         for (const o of recent) {
-          const safeId = String(o.id).replace(/-/g, " dash ");
-          const safeIdHe = String(o.id).replace(/-/g, " מקף ");
+          const spokenId = String(o.id).split("").join(" ");
+          const customer = o.customerName || "No name";
+          const enStatus = translateStatusEn(o.status || "received");
+          const heStatus = translateStatus(o.status || "received");
           
           const spokenDate = formatSpokenDate(o.dateReceived);
-          const dateEn = spokenDate.en ? `, received ${spokenDate.en}` : "";
-          const dateHe = spokenDate.he ? `, התקבלה ${spokenDate.he}` : "";
+          const dateEn = spokenDate.en ? spokenDate.en : "not set";
+          const dateHe = spokenDate.he ? spokenDate.he : "לא מוגדר";
 
-          enMsg += `Order ${safeId}, ${o.customerName || "Customer"}, status ${o.status || "received"}${dateEn}. `;
-          heMsg += `הזמנה ${safeIdHe}, ${o.customerName || "לקוח"}, סטטוס ${translateStatus(o.status || "received")}${dateHe}. `;
+          enMsg += `Order number ${spokenId}. Customer name is ${customer}. Status is ${enStatus}. Date received is ${dateEn}. `;
+          heMsg += `הזמנה מספר ${spokenId}. שם הלקוח הוא ${customer}. הסטטוס הוא ${heStatus}. יום ההזנה הוא ${dateHe}. `;
         }
         return xmlResponse(
           say(enMsg, heMsg) +

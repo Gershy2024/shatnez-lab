@@ -293,22 +293,21 @@ async function handleRequest(req: NextRequest) {
         });
       }
 
-      let enMsg = `Here are the last ${recent.length} orders. `;
-      let heMsg = `להלן ${recent.length} ההזמנות האחרונות. `;
+      let enMsg = `Here are the five latest orders. `;
+      let heMsg = `להלן חמש ההזמנות האחרונות. `;
 
       for (const o of recent) {
-        const safeId = String(o.id).replace(/-/g, " dash ");
-        const safeIdHe = String(o.id).replace(/-/g, " מקף ");
-        const customer = o.customerName || "No Name";
+        const spokenId = String(o.id).split("").join(" ");
+        const customer = o.customerName || "No name";
         const enStatus = translateStatusEn(o.status || "received");
         const heStatus = translateStatus(o.status || "received");
         
         const spokenDate = formatSpokenDate(o.dateReceived);
-        const dateEn = spokenDate.en ? `, received ${spokenDate.en}` : "";
-        const dateHe = spokenDate.he ? `, התקבלה ${spokenDate.he}` : "";
+        const dateEn = spokenDate.en ? spokenDate.en : "not set";
+        const dateHe = spokenDate.he ? spokenDate.he : "לא מוגדר";
         
-        enMsg += `Order ${safeId} for ${customer} is ${enStatus}${dateEn}. `;
-        heMsg += `הזמנה ${safeIdHe} עבור ${customer} היא ${heStatus}${dateHe}. `;
+        enMsg += `Order number ${spokenId}. Customer name is ${customer}. Status is ${enStatus}. Date received is ${dateEn}. `;
+        heMsg += `הזמנה מספר ${spokenId}. שם הלקוח הוא ${customer}. הסטטוס הוא ${heStatus}. יום ההזנה הוא ${dateHe}. `;
       }
 
       return jsonResponse({
