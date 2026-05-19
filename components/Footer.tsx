@@ -32,7 +32,6 @@ export default function Footer() {
                 { href: "/", label: "Home" },
                 { href: "/track", label: "Track Your Order" },
                 { href: "/contact", label: "Contact Us" },
-                { href: "/card", label: "Business Card" },
               ].map((link) => (
                 <li key={link.href}>
                   <Link 

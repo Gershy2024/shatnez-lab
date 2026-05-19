@@ -14,7 +14,6 @@ export default function Navbar() {
     { href: "/", label: t("home") },
     { href: "/track", label: t("track_order") },
     { href: "/contact", label: t("contact") },
-    { href: "/card", label: t("business_card") },
     { href: "/admin", label: t("admin") },
   ];
 

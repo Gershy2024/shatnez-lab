@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo } from "@/lib/db";
-import { Settings, Phone, Info } from "lucide-react";
+import { Settings, Phone, Info, Microscope, ShieldCheck, MapPin } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
 export default function AdminPage() {
@@ -48,6 +48,7 @@ export default function AdminPage() {
 
   const [showBlueprintModal, setShowBlueprintModal] = useState(false);
   const [activeBlueprintTab, setActiveBlueprintTab] = useState("flow");
+  const [isCardFlipped, setIsCardFlipped] = useState(false);
 
   const [adminNotes, setAdminNotes] = useState("");
 
@@ -998,6 +999,17 @@ export default function AdminPage() {
                   <Sliders className="w-4 h-4 shrink-0" />
                   <span>{isRtl ? "הגדרות Twilio מתקדמות" : "Advanced Twilio"}</span>
                 </button>
+                <button
+                  onClick={() => setActiveBlueprintTab("business-card")}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
+                  style={{
+                    backgroundColor: activeBlueprintTab === "business-card" ? "#0f172a" : "transparent",
+                    color: activeBlueprintTab === "business-card" ? "#ffffff" : "#0369a1"
+                  }}
+                >
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span>{isRtl ? "כרטיס ביקור" : "Business Card"}</span>
+                </button>
               </div>
 
               {/* Modal Content */}
@@ -1372,6 +1384,230 @@ export default function AdminPage() {
 
                     <div className="bg-navy-950 text-gold-400 p-3 rounded-lg font-mono text-xs select-all">
                       {"<speak>I see you are calling from <say-as interpret-as=\"digits\">{{contact.channel.address | remove: \"+\"}}</say-as>...</speak>"}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. BUSINESS CARD TAB */}
+                {activeBlueprintTab === "business-card" && (
+                  <div className="flex flex-col items-center justify-center p-4 sm:p-6 bg-gradient-to-b from-primary-50/50 to-white rounded-2xl border border-primary-100">
+                    <div className="max-w-xl w-full text-center space-y-6">
+                      <div className="space-y-1">
+                        <h3 className="text-xl font-bold text-navy-900">
+                          {isRtl ? "ניהול והדפסת כרטיס ביקור" : "Business Card Hub"}
+                        </h3>
+                        <p className="text-xs text-primary-600">
+                          {isRtl
+                            ? "צפה בכרטיס הדו-צדדי האינטראקטיבי, שלוט בעיצובו והדפס אותו ישירות בגודל סטנדרטי."
+                            : "Preview the double-sided interactive card and print it in standard size."}
+                        </p>
+                      </div>
+
+                      {/* Card Preview Container */}
+                      <div className="flex flex-col items-center justify-center py-4">
+                        <div 
+                          className="w-full max-w-[340px] h-[195px] cursor-pointer group"
+                          style={{ perspective: "1000px" }}
+                          onClick={() => setIsCardFlipped(!isCardFlipped)}
+                        >
+                          <motion.div
+                            className="w-full h-full relative"
+                            style={{ transformStyle: "preserve-3d" }}
+                            animate={{ rotateY: isCardFlipped ? 180 : 0 }}
+                            transition={{ duration: 0.6, ease: "easeInOut" }}
+                          >
+                            {/* FRONT SIDE (Rich Deep Navy & Gold Premium) */}
+                            <div 
+                              className="absolute inset-0 w-full h-full rounded-2xl p-5 text-white flex flex-col justify-between border-2 border-gold-400 shadow-xl overflow-hidden select-none"
+                              style={{ 
+                                backfaceVisibility: "hidden",
+                                background: "linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%)"
+                              }}
+                            >
+                              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-gold-500/20 via-transparent to-transparent pointer-events-none" />
+                              <div className="absolute inset-0 border border-gold-400/30 rounded-xl m-1.5 pointer-events-none" />
+                              
+                              <div className="flex justify-between items-start z-10">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 bg-gold-400 rounded-lg flex items-center justify-center">
+                                    <Microscope className="w-4 h-4 text-navy-950" />
+                                  </div>
+                                  <div className="text-left">
+                                    <span className="font-bold text-[11px] tracking-wide block leading-none">THE SHATNEZ LAB</span>
+                                    <span className="text-[7.5px] text-primary-300 tracking-widest block uppercase mt-0.5 leading-none">EST. 2026</span>
+                                  </div>
+                                </div>
+                                <ShieldCheck className="w-5 h-5 text-gold-400" />
+                              </div>
+
+                              <div className="space-y-1 text-center z-10 my-auto">
+                                <h4 className="text-lg font-black text-white tracking-wide">
+                                  {isRtl ? "מעבדת השעטנז" : "THE SHATNEZ LAB"}
+                                </h4>
+                                <p className="text-[9px] text-gold-400 font-semibold tracking-wider uppercase">
+                                  {isRtl ? "בדיקת שעטנז מקצועית ומוסמכת" : "Professional Shatnez Inspection"}
+                                </p>
+                              </div>
+
+                              <div className="flex justify-between items-center text-[8.5px] text-primary-200 font-mono tracking-wide z-10">
+                                <span>📞 845-709-2022</span>
+                                <span>shatnez-lab.vercel.app</span>
+                              </div>
+                            </div>
+
+                            {/* BACK SIDE (White & Navy Content) */}
+                            <div 
+                              className="absolute inset-0 w-full h-full rounded-2xl p-4 bg-white text-navy-900 flex justify-between border-2 border-navy-900 shadow-xl overflow-hidden select-none"
+                              style={{ 
+                                backfaceVisibility: "hidden",
+                                transform: "rotateY(180deg)"
+                              }}
+                            >
+                              <div className="absolute inset-0 bg-primary-50/20 pointer-events-none" />
+                              
+                              {/* Details Section */}
+                              <div className={`flex flex-col justify-between text-left w-[62%] ${isRtl ? "text-right order-2 items-end" : "order-1"}`}>
+                                <div className="space-y-0.5">
+                                  <h4 className="font-bold text-xs text-navy-950 flex items-center gap-1">
+                                    <Microscope className="w-3 h-3 text-gold-500" />
+                                    <span>{isRtl ? "מעבדת השעטנז" : "The Shatnez Lab"}</span>
+                                  </h4>
+                                  <p className="text-[7.5px] text-primary-500 font-semibold leading-relaxed">
+                                    {isRtl 
+                                      ? "בדיקות מעבדה, שירותי VIP וחנויות" 
+                                      : "Microscopic analysis, VIP pickups"}
+                                  </p>
+                                </div>
+
+                                <div className="space-y-1 py-1">
+                                  <div className={`flex items-center gap-1.5 text-[8.5px] text-primary-800 ${isRtl ? "flex-row-reverse" : ""}`}>
+                                    <Phone className="w-2.5 h-2.5 text-gold-500 shrink-0" />
+                                    <span className="font-bold">845-709-2022</span>
+                                  </div>
+                                  <div className={`flex items-center gap-1.5 text-[8.5px] text-primary-800 ${isRtl ? "flex-row-reverse" : ""}`}>
+                                    <MapPin className="w-2.5 h-2.5 text-gold-500 shrink-0" />
+                                    <span>14 Buchanan Rd, Spring Valley</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-1.5 mt-0.5 border-t border-primary-100 pt-1">
+                                  <span className="text-[7px] bg-primary-50 border border-primary-100 px-1 py-0.5 rounded font-bold text-navy-950">
+                                    {isRtl ? "פשוט: $5" : "Simple: $5"}
+                                  </span>
+                                  <span className="text-[7px] bg-primary-50 border border-primary-100 px-1 py-0.5 rounded font-bold text-navy-950">
+                                    {isRtl ? "בטנה: $10" : "Lined: $10"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* QR Code Section */}
+                              <div className={`flex flex-col items-center justify-center w-[33%] border-primary-100 ${isRtl ? "order-1 border-r pr-2" : "order-2 border-l pl-2"}`}>
+                                <img 
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin + "/track" : "")}`} 
+                                  className="w-16 h-16 border border-primary-100 p-0.5 rounded bg-white shadow-sm"
+                                  alt="QR Code"
+                                />
+                                <span className="text-[6px] text-primary-500 font-bold uppercase tracking-wider mt-1 block leading-none">
+                                  {isRtl ? "סרוק למעקב" : "Scan to track"}
+                                </span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        </div>
+
+                        {/* Flip Hint */}
+                        <button 
+                          onClick={() => setIsCardFlipped(!isCardFlipped)}
+                          className="mt-3 inline-flex items-center gap-1 text-[11px] text-primary-500 hover:text-navy-900 transition-colors font-medium"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          {isRtl ? "לחץ כדי להפוך כרטיס" : "Click to flip card"}
+                        </button>
+                      </div>
+
+                      {/* Buttons Action */}
+                      <div className="flex gap-3 justify-center max-w-xs mx-auto">
+                        <button
+                          onClick={() => {
+                            const printWindow = window.open("", "_blank");
+                            if (!printWindow) return;
+                            const origin = typeof window !== "undefined" ? window.location.origin : "";
+                            printWindow.document.write(`
+                              <!DOCTYPE html>
+                              <html>
+                                <head>
+                                  <title>Shatnez Lab Business Card</title>
+                                  <style>
+                                    @page { size: 3.5in 2in; margin: 0; }
+                                    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .page-break { page-break-after: always; } }
+                                    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background: #ffffff; }
+                                    .card-print { width: 3.5in; height: 2in; box-sizing: border-box; position: relative; overflow: hidden; color: #ffffff; display: flex; flex-direction: column; justify-content: space-between; padding: 0.2in 0.25in; }
+                                    .card-front { background: linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 100%) !important; border: 4px solid #d4af37 !important; align-items: center; justify-content: center; text-align: center; }
+                                    .card-back { background: #ffffff !important; color: #0d1b2a !important; border: 4px solid #1e3a5f !important; display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 0.15in 0.2in; }
+                                    .gold-border { position: absolute; inset: 0.05in; border: 1px solid rgba(212, 175, 55, 0.4); pointer-events: none; }
+                                    .title-main { font-size: 18px; font-weight: 800; letter-spacing: 1px; color: #ffffff; margin: 0; }
+                                    .title-main-gold { color: #d4af37; }
+                                    .subtitle { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: #a0aec0; margin: 4px 0 0 0; }
+                                    .info-col { display: flex; flex-direction: column; gap: 4px; max-width: 2.1in; text-align: left; }
+                                    .info-col.rtl { text-align: right; }
+                                    .info-item { font-size: 8px; display: flex; align-items: center; gap: 5px; color: #4a5568; }
+                                    .info-item.rtl { flex-direction: row-reverse; }
+                                    .info-item strong { color: #0d1b2a; }
+                                    .qr-col { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+                                    .qr-code { width: 1.1in; height: 1.1in; border: 1px solid #e2e8f0; padding: 4px; background: white; border-radius: 6px; }
+                                    .qr-text { font-size: 6px; color: #718096; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+                                    .prices-row { display: flex; gap: 10px; margin-top: 6px; border-top: 1px solid #e2e8f0; padding-top: 4px; }
+                                    .price-tag { font-size: 7px; background: #f7fafc; padding: 2px 5px; border-radius: 3px; border: 1px solid #edf2f7; color: #2d3748; font-weight: 600; }
+                                  </style>
+                                </head>
+                                <body>
+                                  <!-- FRONT SIDE -->
+                                  <div class="card-print card-front">
+                                    <div class="gold-border"></div>
+                                    <div style="font-size: 24px; color: #d4af37; margin-bottom: 5px;">🔬</div>
+                                    <h1 class="title-main">THE SHATNEZ <span class="title-main-gold">LAB</span></h1>
+                                    <p class="subtitle" style="color: #ffffff; opacity: 0.9;">
+                                      ${isRtl ? "בדיקת שעטנז מקצועית ומוסמכת" : "Professional Shatnez Verification"}
+                                    </p>
+                                    <div style="margin-top: 15px; font-size: 10px; color: #d4af37; letter-spacing: 1px; font-weight: 600;">
+                                      📞 845-709-2022
+                                    </div>
+                                  </div>
+                                  <div class="page-break"></div>
+                                  <!-- BACK SIDE -->
+                                  <div class="card-print card-back">
+                                    <div class="info-col \${isRtl ? "rtl" : ""}">
+                                      <div style="font-size: 11px; font-weight: 800; color: #1e3a5f; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; \${isRtl ? "justify-content: flex-end;" : ""}">
+                                        <span>🔬</span>
+                                        <span>\${isRtl ? "מעבדת השעטנז" : "The Shatnez Lab"}</span>
+                                      </div>
+                                      <div class="info-item \${isRtl ? "rtl" : ""}"><strong>📞:</strong> <span>845-709-2022</span></div>
+                                      <div class="info-item \${isRtl ? "rtl" : ""}"><strong>📍:</strong> <span>14 Buchanan Rd, Spring Valley NY</span></div>
+                                      <div class="info-item \${isRtl ? "rtl" : ""}"><strong>🕒:</strong> <span>24/7 Drop-Off & Phone Check</span></div>
+                                      <div class="prices-row" style="\${isRtl ? "justify-content: flex-end;" : ""}">
+                                        <span class="price-tag">\${isRtl ? "בגד פשוט: $5" : "Simple Garment: $5"}</span>
+                                        <span class="price-tag">\${isRtl ? "בגד עם בטנה: $10" : "Lined (Suits/Coats): $10"}</span>
+                                      </div>
+                                    </div>
+                                    <div class="qr-col">
+                                      <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=\${encodeURIComponent(origin + "/track")}" alt="QR" />
+                                      <span class="qr-text">\${isRtl ? "סרוק למעקב הזמנה" : "Scan to track order"}</span>
+                                    </div>
+                                  </div>
+                                  <script>
+                                    setTimeout(() => { window.print(); window.close(); }, 500);
+                                  </script>
+                                </body>
+                              </html>
+                            `);
+                            printWindow.document.close();
+                          }}
+                          className="btn-primary flex-1 flex items-center justify-center gap-2 text-xs py-2 shadow"
+                        >
+                          <Printer className="w-4 h-4" />
+                          {isRtl ? "הדפס כרטיס" : "Print Card"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
