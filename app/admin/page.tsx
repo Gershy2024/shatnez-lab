@@ -51,6 +51,16 @@ export default function AdminPage() {
 
   const [adminNotes, setAdminNotes] = useState("");
 
+  const [notifications, setNotifications] = useState<{ id: string; message: string; type: "success" | "error" | "info" }[]>([]);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setNotifications((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 4500);
+  };
+
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: "received", label: t("status_received") },
     { value: "testing", label: t("status_testing") },
@@ -132,7 +142,7 @@ export default function AdminPage() {
     if (!audioFile || !audioName) return;
 
     if (audioFile.size > 1024 * 1024) {
-      alert(isRtl ? "גודל הקובץ עולה על 1MB. אנא בחר קובץ קטן יותר." : "File size exceeds 1MB. Please choose a smaller file.");
+      showToast(isRtl ? "גודל הקובץ עולה על 1MB. אנא בחר קובץ קטן יותר." : "File size exceeds 1MB. Please choose a smaller file.", "error");
       return;
     }
 
@@ -152,11 +162,11 @@ export default function AdminPage() {
           const fileInputModal = document.getElementById("audio-file-input-modal") as HTMLInputElement;
           if (fileInputModal) fileInputModal.value = "";
 
-          alert(isRtl ? "קובץ השמע הועלה בהצלחה!" : "Audio file uploaded successfully!");
+          showToast(isRtl ? "קובץ השמע הועלה בהצלחה!" : "Audio file uploaded successfully!", "success");
           loadAudioFiles();
         } catch (err) {
           console.error(err);
-          alert(isRtl ? "שגיאה בהעלאת הקובץ." : "Error uploading file.");
+          showToast(isRtl ? "שגיאה בהעלאת הקובץ." : "Error uploading file.", "error");
         } finally {
           setIsUploading(false);
         }
@@ -164,7 +174,7 @@ export default function AdminPage() {
       reader.readAsDataURL(audioFile);
     } catch (err) {
       console.error(err);
-      alert(isRtl ? "שגיאה בקריאת הקובץ." : "Error reading file.");
+      showToast(isRtl ? "שגיאה בקריאת הקובץ." : "Error reading file.", "error");
       setIsUploading(false);
     }
   };
@@ -173,11 +183,11 @@ export default function AdminPage() {
     if (confirm(isRtl ? `האם אתה בטוח שברצונך למחוק את קובץ השמע ${name}?` : `Are you sure you want to delete audio file ${name}?`)) {
       try {
         await deleteAudioFile(name);
-        alert(isRtl ? "קובץ השמע נמחק בהצלחה!" : "Audio file deleted successfully!");
+        showToast(isRtl ? "קובץ השמע נמחק בהצלחה!" : "Audio file deleted successfully!", "success");
         loadAudioFiles();
       } catch (err) {
         console.error(err);
-        alert(isRtl ? "שגיאה במחיקת הקובץ." : "Error deleting file.");
+        showToast(isRtl ? "שגיאה במחיקת הקובץ." : "Error deleting file.", "error");
       }
     }
   };
@@ -186,7 +196,7 @@ export default function AdminPage() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}`;
     navigator.clipboard.writeText(url);
-    alert(isRtl ? `הקישור הועתק ללוח ויכול לשמש ב-Twilio:\n${url}` : `Link copied to clipboard for use in Twilio:\n${url}`);
+    showToast(isRtl ? `הקישור הועתק ללוח ויכול לשמש ב-Twilio!` : `Link copied to clipboard for use in Twilio!`, "success");
   };
 
   const handleTogglePlay = (name: string) => {
@@ -251,11 +261,11 @@ export default function AdminPage() {
       setNewForwardingNumber(updatedForwarding);
       setSaveSuccess(true);
       
-      alert(isRtl ? "הגדרות עודכנו בהצלחה!" : "Settings updated successfully!");
+      showToast(isRtl ? "הגדרות עודכנו בהצלחה!" : "Settings updated successfully!", "success");
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to update settings:", err);
-      alert(isRtl ? "שגיאה בשמירת ההגדרות. נסה שוב." : "Error saving settings. Please try again.");
+      showToast(isRtl ? "שגיאה בשמירת ההגדרות. נסה שוב." : "Error saving settings. Please try again.", "error");
     }
   };
 
@@ -1380,6 +1390,38 @@ export default function AdminPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating Toast Notification Container */}
+      <div className={`fixed bottom-4 z-50 flex flex-col gap-2 w-full max-w-sm pointer-events-none ${isRtl ? "left-4 right-auto text-right" : "right-4 left-auto text-left"}`}>
+        <AnimatePresence>
+          {notifications.map((n) => (
+            <motion.div
+              key={n.id}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className={`pointer-events-auto p-4 rounded-xl shadow-lg border text-sm font-medium flex items-center gap-3 backdrop-blur-md ${
+                n.type === "success" 
+                  ? "bg-emerald-50/95 border-emerald-200 text-emerald-800" 
+                  : n.type === "error"
+                  ? "bg-rose-50/95 border-rose-200 text-rose-800"
+                  : "bg-blue-50/95 border-blue-200 text-blue-800"
+              }`}
+            >
+              {n.type === "success" && <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />}
+              {n.type === "error" && <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />}
+              {n.type === "info" && <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />}
+              <span className="flex-1">{n.message}</span>
+              <button 
+                onClick={() => setNotifications((prev) => prev.filter((notif) => notif.id !== n.id))}
+                className="text-primary-400 hover:text-primary-700 transition-colors text-xs font-bold px-1"
+              >
+                ✕
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
