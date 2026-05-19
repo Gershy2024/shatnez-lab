@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo } from "@/lib/db";
 import { Settings, Phone, Info } from "lucide-react";
@@ -49,6 +49,8 @@ export default function AdminPage() {
   const [showBlueprintModal, setShowBlueprintModal] = useState(false);
   const [activeBlueprintTab, setActiveBlueprintTab] = useState("flow");
 
+  const [adminNotes, setAdminNotes] = useState("");
+
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: "received", label: t("status_received") },
     { value: "testing", label: t("status_testing") },
@@ -87,6 +89,7 @@ export default function AdminPage() {
       setIvrGeneralHe(s.ivrGeneralHe || "");
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
+      setAdminNotes(s.adminNotes || "");
     });
 
     loadAudioFiles();
@@ -108,6 +111,7 @@ export default function AdminPage() {
       setIvrGeneralHe(s.ivrGeneralHe || "");
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
+      setAdminNotes(s.adminNotes || "");
     });
     if (isAuthenticated) {
       loadAudioFiles();
@@ -237,7 +241,8 @@ export default function AdminPage() {
         ivrGeneralEn,
         ivrGeneralHe,
         ivrSpecialEn,
-        ivrSpecialHe
+        ivrSpecialHe,
+        adminNotes
       });
       
       setAdminPin(updatedPin);
@@ -659,6 +664,27 @@ export default function AdminPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Admin Personal Notes & Scratchpad */}
+                <div className={`card p-6 bg-white shadow-sm border border-navy-100 lg:col-span-2 flex flex-col justify-between ${isRtl ? "text-right" : ""}`}>
+                  <div>
+                    <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      <FileText className="w-5 h-5 text-navy-600" />
+                      <h2 className="text-lg font-bold text-navy-900">{isRtl ? "הערות אישיות ומזכר מנהל" : "Admin Personal Notes & Scratchpad"}</h2>
+                    </div>
+                    <p className="text-xs text-primary-600 mb-4">
+                      {isRtl 
+                        ? "שטח אישי לכתוב בו תזכורות, רעיונות, שורות קוד של Twilio, או טיוטות. ההערות נשמרות אוטומטית בענן כשתלחץ על 'שמור הגדרות' מתחת לתיבת ה-PIN." 
+                        : "Your private scratchpad to store reminders, phone scripts, Twilio templates, or quick ideas. Saved automatically to the cloud when clicking 'Save Settings' under Pin Settings."}
+                    </p>
+                    <textarea
+                      value={adminNotes}
+                      onChange={(e) => setAdminNotes(e.target.value)}
+                      placeholder={isRtl ? "הקלד את ההערות האישיות שלך כאן..." : "Type your personal notes here..."}
+                      className={`w-full h-[220px] p-3 text-sm rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none resize-none font-sans leading-relaxed ${isRtl ? "text-right" : ""}`}
+                    />
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -920,35 +946,47 @@ export default function AdminPage() {
               <div className={`flex border-b border-primary-100 bg-primary-50/50 p-2 gap-2 text-sm font-semibold overflow-x-auto ${isRtl ? "flex-row-reverse" : ""}`}>
                 <button
                   onClick={() => setActiveBlueprintTab("flow")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
-                    activeBlueprintTab === "flow" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
-                  }`}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
+                  style={{
+                    backgroundColor: activeBlueprintTab === "flow" ? "#0f172a" : "transparent",
+                    color: activeBlueprintTab === "flow" ? "#ffffff" : "#0369a1"
+                  }}
                 >
-                  {isRtl ? "🌲 מפת זרימת השיחה" : "🌲 Call Flowchart"}
+                  <Network className="w-4 h-4 shrink-0" />
+                  <span>{isRtl ? "מפת זרימת השיחה" : "Call Flowchart"}</span>
                 </button>
                 <button
                   onClick={() => setActiveBlueprintTab("audio")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
-                    activeBlueprintTab === "audio" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
-                  }`}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
+                  style={{
+                    backgroundColor: activeBlueprintTab === "audio" ? "#0f172a" : "transparent",
+                    color: activeBlueprintTab === "audio" ? "#ffffff" : "#0369a1"
+                  }}
                 >
-                  {isRtl ? "🎤 ניהול קבצי קול (IVR)" : "🎤 IVR Audio Manager"}
+                  <Volume2 className="w-4 h-4 shrink-0" />
+                  <span>{isRtl ? "ניהול קבצי קול (IVR)" : "IVR Audio Manager"}</span>
                 </button>
                 <button
                   onClick={() => setActiveBlueprintTab("api")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
-                    activeBlueprintTab === "api" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
-                  }`}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
+                  style={{
+                    backgroundColor: activeBlueprintTab === "api" ? "#0f172a" : "transparent",
+                    color: activeBlueprintTab === "api" ? "#ffffff" : "#0369a1"
+                  }}
                 >
-                  {isRtl ? "🔌 ממשקי API ושרת" : "🔌 API & Webhooks"}
+                  <Webhook className="w-4 h-4 shrink-0" />
+                  <span>{isRtl ? "ממשקי API ושרת" : "API & Webhooks"}</span>
                 </button>
                 <button
                   onClick={() => setActiveBlueprintTab("twilio")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
-                    activeBlueprintTab === "twilio" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
-                  }`}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
+                  style={{
+                    backgroundColor: activeBlueprintTab === "twilio" ? "#0f172a" : "transparent",
+                    color: activeBlueprintTab === "twilio" ? "#ffffff" : "#0369a1"
+                  }}
                 >
-                  {isRtl ? "⚙️ הגדרות Twilio מתקדמות" : "⚙️ Advanced Twilio Guides"}
+                  <Sliders className="w-4 h-4 shrink-0" />
+                  <span>{isRtl ? "הגדרות Twilio מתקדמות" : "Advanced Twilio"}</span>
                 </button>
               </div>
 

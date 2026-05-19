@@ -31,6 +31,7 @@ export interface AdminSettings {
   ivrGeneralHe?: string;
   ivrSpecialEn?: string;
   ivrSpecialHe?: string;
+  adminNotes?: string;
 }
 
 const ORDERS_COLLECTION = "orders";
@@ -174,7 +175,8 @@ export async function getAdminSettings(): Promise<AdminSettings> {
     ivrGeneralEn: "",
     ivrGeneralHe: "",
     ivrSpecialEn: "",
-    ivrSpecialHe: ""
+    ivrSpecialHe: "",
+    adminNotes: ""
   };
   
   const now = Date.now();
