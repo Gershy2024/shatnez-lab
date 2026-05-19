@@ -249,14 +249,16 @@ export interface AudioFileInfo {
 export async function getAudioFiles(): Promise<AudioFileInfo[]> {
   if (isConfigured && db) {
     try {
-      const snapshot = await getDocs(collection(db, "audio_files"));
-      return snapshot.docs.map((d) => {
-        const data = d.data();
-        return {
-          name: d.id,
-          uploadedAt: data.uploadedAt || ""
-        };
-      });
+      const snapshot = await getDocs(collection(db, "settings"));
+      return snapshot.docs
+        .filter((d) => d.id.startsWith("audio_"))
+        .map((d) => {
+          const data = d.data();
+          return {
+            name: d.id.substring("audio_".length),
+            uploadedAt: data.uploadedAt || ""
+          };
+        });
     } catch (e) {
       console.error("Firestore getAudioFiles failed:", e);
     }
@@ -267,7 +269,7 @@ export async function getAudioFiles(): Promise<AudioFileInfo[]> {
 export async function uploadAudioFile(name: string, base64: string): Promise<void> {
   if (isConfigured && db) {
     try {
-      await setDoc(doc(db, "audio_files", name.toLowerCase().trim()), {
+      await setDoc(doc(db, "settings", "audio_" + name.toLowerCase().trim()), {
         base64,
         uploadedAt: new Date().toISOString()
       });
@@ -281,7 +283,7 @@ export async function uploadAudioFile(name: string, base64: string): Promise<voi
 export async function deleteAudioFile(name: string): Promise<void> {
   if (isConfigured && db) {
     try {
-      await deleteDoc(doc(db, "audio_files", name.toLowerCase().trim()));
+      await deleteDoc(doc(db, "settings", "audio_" + name.toLowerCase().trim()));
     } catch (e) {
       console.error("Firestore deleteAudioFile failed:", e);
       throw e;
