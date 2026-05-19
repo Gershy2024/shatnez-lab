@@ -145,6 +145,8 @@ export default function AdminPage() {
           // Clear file input manually
           const fileInput = document.getElementById("audio-file-input") as HTMLInputElement;
           if (fileInput) fileInput.value = "";
+          const fileInputModal = document.getElementById("audio-file-input-modal") as HTMLInputElement;
+          if (fileInputModal) fileInputModal.value = "";
 
           alert(isRtl ? "קובץ השמע הועלה בהצלחה!" : "Audio file uploaded successfully!");
           loadAudioFiles();
@@ -925,6 +927,14 @@ export default function AdminPage() {
                   {isRtl ? "🌲 מפת זרימת השיחה" : "🌲 Call Flowchart"}
                 </button>
                 <button
+                  onClick={() => setActiveBlueprintTab("audio")}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                    activeBlueprintTab === "audio" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
+                  }`}
+                >
+                  {isRtl ? "🎤 ניהול קבצי קול (IVR)" : "🎤 IVR Audio Manager"}
+                </button>
+                <button
                   onClick={() => setActiveBlueprintTab("api")}
                   className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
                     activeBlueprintTab === "api" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
@@ -1053,6 +1063,136 @@ export default function AdminPage() {
                             <p className="text-navy-200 mt-1">{isRtl ? "יוצר הזמנה חדשה עם מספר טלפון של לקוח. יוצר מזהה חדש אוטומטית ומקריא אותו ספרה-אחר-ספרה בהצלחה." : "Creates a new order for a customer. Auto-generates order ID and speaks it back as single digits."}</p>
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. IVR AUDIO MANAGER TAB */}
+                {activeBlueprintTab === "audio" && (
+                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${isRtl ? "text-right" : ""}`}>
+                    {/* Upload Card */}
+                    <div className="bg-white border border-primary-100 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <div className={`flex items-center gap-2 mb-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <Volume2 className="w-5 h-5 text-gold-600" />
+                          <h3 className="text-lg font-bold text-navy-900">{isRtl ? "העלה קובץ שמע חדש (MP3)" : "Upload Custom MP3"}</h3>
+                        </div>
+                        <p className="text-xs text-primary-600 mb-4 leading-relaxed">
+                          {isRtl 
+                            ? "הורד קובץ שמע מ-ElevenLabs, תן לו שם קצר באנגלית (למשל: welcome) והעלה אותו לכאן כדי לקבל קישור ישיר ל-Twilio Studio." 
+                            : "Download an MP3 from ElevenLabs, name it (e.g. welcome) and upload it here to get an instant Twilio link."}
+                        </p>
+                        
+                        <form onSubmit={handleUploadAudio} className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">
+                              {isRtl ? "שם הקובץ (באנגלית בלבד, ללא רווחים)" : "Audio File Name (English only)"}
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={audioName}
+                              onChange={(e) => setAudioName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                              placeholder="e.g. welcome, info, vip"
+                              className={`w-full px-3 py-2 rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">
+                              {isRtl ? "בחר קובץ MP3" : "Select MP3 File"}
+                            </label>
+                            <input
+                              id="audio-file-input-modal"
+                              type="file"
+                              required
+                              accept="audio/mpeg, audio/mp3"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setAudioFile(e.target.files[0]);
+                                }
+                              }}
+                              className={`w-full text-sm text-primary-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-navy-50 file:text-navy-700 hover:file:bg-navy-100 cursor-pointer`}
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={isUploading}
+                            className="btn-primary w-full py-2.5 text-sm inline-flex items-center justify-center gap-2"
+                          >
+                            <Plus className="w-4 h-4" />
+                            {isUploading ? (isRtl ? "מעלה קובץ..." : "Uploading...") : (isRtl ? "העלה קובץ שמע" : "Upload Audio")}
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+
+                    {/* Library Card */}
+                    <div className="bg-white border border-primary-100 rounded-2xl p-6 shadow-sm flex flex-col">
+                      <div className={`flex items-center justify-between border-b border-primary-100 pb-3 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <Music className="w-5 h-5 text-navy-600" />
+                          <h3 className="text-lg font-bold text-navy-900">{isRtl ? "ספריית קבצי הקול שלך" : "Your Audio Library"}</h3>
+                        </div>
+                        <span className="text-xs bg-navy-50 text-navy-700 px-2 py-0.5 rounded-full font-bold">
+                          {audioFiles.length} {isRtl ? "קבצים" : "Files"}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 flex-1 max-h-[300px] overflow-y-auto pr-1">
+                        {audioFiles.length === 0 ? (
+                          <div className="text-center py-12 text-primary-400">
+                            <Music className="w-12 h-12 mx-auto mb-2 text-primary-200" />
+                            <p className="text-xs italic">{isRtl ? "אין קבצי קול מועלים עדיין" : "No uploaded audio files yet"}</p>
+                          </div>
+                        ) : (
+                          audioFiles.map((file) => (
+                            <div key={file.name} className={`flex items-center justify-between p-3 bg-primary-50 hover:bg-primary-100/50 rounded-xl border border-primary-100 text-sm transition-colors ${isRtl ? "flex-row-reverse" : ""}`}>
+                              <div className="flex items-center gap-2.5 truncate">
+                                <FileAudio className="w-5 h-5 text-navy-500 shrink-0" />
+                                <div className="truncate text-left font-sans">
+                                  <span className="font-bold text-navy-800 truncate block text-xs md:text-sm" title={file.name}>
+                                    {file.name}.mp3
+                                  </span>
+                                  <span className="text-[10px] text-primary-400 block">
+                                    {new Date(file.uploadedAt).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => handleTogglePlay(file.name)}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    playingName === file.name 
+                                      ? "text-gold-600 bg-gold-50 hover:bg-gold-100" 
+                                      : "text-navy-500 hover:text-navy-700 hover:bg-navy-100"
+                                  }`}
+                                  title={playingName === file.name ? (isRtl ? "עצור" : "Pause") : (isRtl ? "שמע קובץ" : "Play")}
+                                >
+                                  {playingName === file.name ? (
+                                    <Pause className="w-4 h-4 animate-pulse" />
+                                  ) : (
+                                    <Play className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleCopyAudioUrl(file.name)}
+                                  className="p-1.5 rounded-lg text-navy-500 hover:text-navy-700 hover:bg-navy-100 border border-primary-100 bg-white transition-colors"
+                                  title={isRtl ? "העתק קישור ל-Twilio" : "Copy Twilio URL"}
+                                >
+                                  <Copy className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAudio(file.name)}
+                                  className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 border border-primary-100 bg-white transition-colors"
+                                  title={isRtl ? "מחק קובץ" : "Delete file"}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>
