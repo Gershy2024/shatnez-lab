@@ -37,9 +37,9 @@
         "number_of_digits": 1,
         "finish_on_key": "#",
         "timeout": 5,
-        "say": "Welcome to The Shatnez Lab. Press 1 for drop-off information. Press 2 to check your order status. Press 3 to hear about VIP services. Press 0 to speak with a representative.\n\nברוכים הבאים למעבדת השעטנז. להקש 1 למידע על מסירת בגדים. להקש 2 לבדיקת סטטוס הזמנה. להקש 3 לשירותי VIP. להקש 0 לשיחה עם נציג.",
-        "voice": "Polly.Avri",
-        "language": "he-IL"
+        "say": "Welcome to The Shatnez Lab. Press 1 for drop-off information. Press 2 to check your order status. Press 3 to hear about VIP services. Press 0 to speak with a representative. Press 9 for admin menu.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -87,7 +87,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "caller_lookup"
+          "next": "ask_lookup_choice"
         },
         {
           "event": "match",
@@ -142,9 +142,9 @@
           "x": -400,
           "y": 600
         },
-        "say": "Drop-off Information: You can drop off your garments at our main lab at any time. Testing usually takes 2 to 3 business days. The base price is 15 dollars per item.\n\nמידע על מסירת בגדים: ניתן למסור בגדים לבדיקה במעבדה בכל עת. הבדיקה אורכת בדרך כלל בין יומיים לשלושה ימי עסקים. המחיר הוא 15 דולר לפריט.",
-        "voice": "Polly.Avri",
-        "language": "he-IL"
+        "say": "Drop-off Information: You can drop off your garments at our main lab at any time. Testing usually takes 2 to 3 business days. The base price is 15 dollars per item.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -161,9 +161,9 @@
           "x": -200,
           "y": 600
         },
-        "say": "Exclusive VIP Services: We offer express same-day testing, and at-home pick-up and delivery services in selected locations.\n\nשירותי VIP: אנו מציעים בדיקת אקספרס באותו היום, ושירותי איסוף והחזרה עד הבית.",
-        "voice": "Polly.Avri",
-        "language": "he-IL"
+        "say": "Exclusive VIP Services: We offer express same-day testing, and at-home pick-up and delivery services in selected locations.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -194,12 +194,81 @@
       ]
     },
     {
-      "name": "caller_lookup",
-      "type": "make-http-request",
+      "name": "ask_lookup_choice",
+      "type": "gather-input-on-call",
       "properties": {
         "offset": {
           "x": 300,
           "y": 600
+        },
+        "number_of_digits": 1,
+        "finish_on_key": "#",
+        "timeout": 5,
+        "say": "I see you are calling from {{contact.channel.address}}. To search for orders using this phone number, press 1. To search using a different phone number or order number, press 2.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "split_lookup_choice"
+        },
+        {
+          "event": "timeout",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
+      "name": "split_lookup_choice",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 300,
+          "y": 800
+        },
+        "variable_to_test": "{{widgets.ask_lookup_choice.Digits}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 1",
+              "arguments": [
+                "1"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "caller_lookup"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 2",
+              "arguments": [
+                "2"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "ask_manual_query"
+        },
+        {
+          "event": "noMatch",
+          "next": "ask_lookup_choice"
+        }
+      ]
+    },
+    {
+      "name": "caller_lookup",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 150,
+          "y": 1000
         },
         "method": "POST",
         "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=caller_lookup",
@@ -214,40 +283,10 @@
       "transitions": [
         {
           "event": "success",
-          "next": "check_caller_lookup_success"
-        },
-        {
-          "event": "failed",
-          "next": "ask_manual_query"
-        }
-      ]
-    },
-    {
-      "name": "check_caller_lookup_success",
-      "type": "split-based-on",
-      "properties": {
-        "offset": {
-          "x": 300,
-          "y": 800
-        },
-        "variable_to_test": "{{widgets.caller_lookup.parsed.found}}"
-      },
-      "transitions": [
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If Found",
-              "arguments": [
-                "true"
-              ],
-              "type": "equal_to"
-            }
-          ],
           "next": "read_caller_orders"
         },
         {
-          "event": "noMatch",
+          "event": "failed",
           "next": "ask_manual_query"
         }
       ]
@@ -258,7 +297,7 @@
       "properties": {
         "offset": {
           "x": 150,
-          "y": 1000
+          "y": 1200
         },
         "say": "{{widgets.caller_lookup.parsed.messageEn}}",
         "voice": "Polly.Joey",
@@ -282,7 +321,7 @@
         "number_of_digits": 10,
         "finish_on_key": "#",
         "timeout": 10,
-        "say": "We could not find orders for your phone number. Please enter your 10 digit phone number or your order ID followed by pound.",
+        "say": "Please enter the phone number or order ID followed by the pound key.",
         "voice": "Polly.Joey",
         "language": "en-US"
       },
@@ -293,7 +332,7 @@
         },
         {
           "event": "timeout",
-          "next": "connect_call_1"
+          "next": "welcome_menu"
         }
       ]
     },
@@ -322,7 +361,7 @@
         },
         {
           "event": "failed",
-          "next": "welcome_menu"
+          "next": "say_play_not_found"
         }
       ]
     },
@@ -346,6 +385,25 @@
       ]
     },
     {
+      "name": "say_play_not_found",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 650,
+          "y": 1400
+        },
+        "say": "We could not find any order with that number. Returning to the main menu.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ]
+    },
+    {
       "name": "ask_admin_pin",
       "type": "gather-input-on-call",
       "properties": {
@@ -356,9 +414,9 @@
         "number_of_digits": 4,
         "finish_on_key": "#",
         "timeout": 10,
-        "say": "Please enter your 4 digit admin PIN.\n\nאנא הקש קוד מנהל בן 4 ספרות.",
-        "voice": "Polly.Madi",
-        "language": "he-IL"
+        "say": "Please enter your 4 digit admin PIN followed by the pound key.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -396,7 +454,7 @@
         },
         {
           "event": "failed",
-          "next": "welcome_menu"
+          "next": "bad_pin_msg"
         }
       ]
     },
@@ -422,7 +480,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "admin_menu"
+          "next": "admin"
         },
         {
           "event": "noMatch",
@@ -436,11 +494,11 @@
       "properties": {
         "offset": {
           "x": 650,
-          "y": 1200
+          "y": 1000
         },
-        "say": "Incorrect admin PIN. Returning to main menu.\n\nקוד שגוי.",
-        "voice": "Polly.Madi",
-        "language": "he-IL"
+        "say": "{{widgets.verify_pin.parsed.messageEn}} Returning to the main menu.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
@@ -450,7 +508,7 @@
       ]
     },
     {
-      "name": "admin_menu",
+      "name": "admin",
       "type": "gather-input-on-call",
       "properties": {
         "offset": {
@@ -460,14 +518,14 @@
         "number_of_digits": 1,
         "finish_on_key": "#",
         "timeout": 10,
-        "say": "Admin menu. Press 1 to hear recent orders. Press star to return.\n\nתפריט מנהל. להקש 1 לשמיעת הזמנות אחרונות.",
-        "voice": "Polly.Madi",
-        "language": "he-IL"
+        "say": "Admin menu. Press 1 to hear recent orders. Press 2 to add a new order. Press 3 to update an order status. Press star to return to the main menu.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
           "event": "keypress",
-          "next": "split_admin_menu"
+          "next": "split_29"
         },
         {
           "event": "timeout",
@@ -476,14 +534,14 @@
       ]
     },
     {
-      "name": "split_admin_menu",
+      "name": "split_29",
       "type": "split-based-on",
       "properties": {
         "offset": {
           "x": 950,
           "y": 1400
         },
-        "variable_to_test": "{{widgets.admin_menu.Digits}}"
+        "variable_to_test": "{{widgets.admin.Digits}}"
       },
       "transitions": [
         {
@@ -503,6 +561,32 @@
           "event": "match",
           "conditions": [
             {
+              "friendly_name": "If 2",
+              "arguments": [
+                "2"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "admin_ask_add_id"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If 3",
+              "arguments": [
+                "3"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "admin_ask_update_id"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
               "friendly_name": "If Star",
               "arguments": [
                 "*"
@@ -514,7 +598,7 @@
         },
         {
           "event": "noMatch",
-          "next": "admin_menu"
+          "next": "admin"
         }
       ]
     },
@@ -523,7 +607,7 @@
       "type": "make-http-request",
       "properties": {
         "offset": {
-          "x": 1100,
+          "x": 800,
           "y": 1600
         },
         "method": "POST",
@@ -537,7 +621,7 @@
         },
         {
           "event": "failed",
-          "next": "admin_menu"
+          "next": "admin"
         }
       ]
     },
@@ -546,17 +630,293 @@
       "type": "say-play",
       "properties": {
         "offset": {
-          "x": 1100,
+          "x": 800,
           "y": 1800
         },
-        "say": "{{widgets.admin_get_recent.parsed.messageEn}}\n\n{{widgets.admin_get_recent.parsed.messageHe}}",
-        "voice": "Polly.Madi",
-        "language": "he-IL"
+        "say": "{{widgets.admin_get_recent.parsed.messageEn}}",
+        "voice": "Polly.Joey",
+        "language": "en-US"
       },
       "transitions": [
         {
           "event": "audioComplete",
-          "next": "admin_menu"
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_ask_add_id",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 1000,
+          "y": 1600
+        },
+        "number_of_digits": 10,
+        "finish_on_key": "#",
+        "timeout": 15,
+        "say": "Please enter the new ten digit order ID followed by the pound key.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "admin_ask_add_phone"
+        },
+        {
+          "event": "timeout",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_ask_add_phone",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 1000,
+          "y": 1800
+        },
+        "number_of_digits": 10,
+        "finish_on_key": "#",
+        "timeout": 15,
+        "say": "Please enter the customer's ten digit phone number followed by the pound key.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "admin_add_order_http"
+        },
+        {
+          "event": "timeout",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_add_order_http",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 1000,
+          "y": 2000
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_add_order",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "orderId",
+            "value": "{{widgets.admin_ask_add_id.Digits}}"
+          },
+          {
+            "key": "customerPhone",
+            "value": "{{widgets.admin_ask_add_phone.Digits}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "say_add_order_success"
+        },
+        {
+          "event": "failed",
+          "next": "say_add_order_fail"
+        }
+      ]
+    },
+    {
+      "name": "say_add_order_success",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 900,
+          "y": 2200
+        },
+        "say": "{{widgets.admin_add_order_http.parsed.messageEn}}",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "say_add_order_fail",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 1100,
+          "y": 2200
+        },
+        "say": "Failed to add order. Returning to the admin menu.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_ask_update_id",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 1300,
+          "y": 1600
+        },
+        "number_of_digits": 10,
+        "finish_on_key": "#",
+        "timeout": 15,
+        "say": "Please enter the ten digit order ID you would like to update, followed by the pound key.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "admin_ask_update_status"
+        },
+        {
+          "event": "timeout",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_ask_update_status",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 1300,
+          "y": 1800
+        },
+        "number_of_digits": 1,
+        "finish_on_key": "#",
+        "timeout": 15,
+        "say": "Enter the status digit. Press 1 for received, 2 for testing, 3 for review, 4 for ready, 5 for delivered, or 6 for attention needed.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "admin_ask_update_result"
+        },
+        {
+          "event": "timeout",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_ask_update_result",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 1300,
+          "y": 2000
+        },
+        "number_of_digits": 1,
+        "finish_on_key": "#",
+        "timeout": 15,
+        "say": "Enter the result selection. Press 1 for clean, 2 if shatnez was found, 3 to request a call, or star to keep the current result.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "admin_update_order_http"
+        },
+        {
+          "event": "timeout",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_update_order_http",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 1300,
+          "y": 2200
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_update_order",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "orderId",
+            "value": "{{widgets.admin_ask_update_id.Digits}}"
+          },
+          {
+            "key": "statusDigit",
+            "value": "{{widgets.admin_ask_update_status.Digits}}"
+          },
+          {
+            "key": "resultSelection",
+            "value": "{{widgets.admin_ask_update_result.Digits}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "say_update_success"
+        },
+        {
+          "event": "failed",
+          "next": "say_update_fail"
+        }
+      ]
+    },
+    {
+      "name": "say_update_success",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 1200,
+          "y": 2400
+        },
+        "say": "{{widgets.admin_update_order_http.parsed.messageEn}}",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "say_update_fail",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": 1400,
+          "y": 2400
+        },
+        "say": "Failed to update order. Returning to the admin menu.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
         }
       ]
     }
