@@ -54,7 +54,6 @@ export async function GET(req: NextRequest) {
 async function handleRequest(req: NextRequest) {
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get("action") || "";
     
     // Parse body parameters safely (can be urlencoded from Twilio or JSON)
     let body: any = {};
@@ -71,6 +70,7 @@ async function handleRequest(req: NextRequest) {
     }
     
     // Fallback to query params if not in body
+    const action = (body.action || url.searchParams.get("action") || "").trim();
     const query = (body.query || url.searchParams.get("query") || "").trim();
     const phone = (body.phone || url.searchParams.get("phone") || "").trim();
     const pin = (body.pin || url.searchParams.get("pin") || "").trim();
