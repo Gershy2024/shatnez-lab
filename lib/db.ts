@@ -239,3 +239,53 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<void> 
     console.warn("Firebase not configured, settings saved to localStorage only");
   }
 }
+
+/* ── IVR Audio Files ── */
+export interface AudioFileInfo {
+  name: string;
+  uploadedAt: string;
+}
+
+export async function getAudioFiles(): Promise<AudioFileInfo[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(collection(db, "audio_files"));
+      return snapshot.docs.map((d) => {
+        const data = d.data();
+        return {
+          name: d.id,
+          uploadedAt: data.uploadedAt || ""
+        };
+      });
+    } catch (e) {
+      console.error("Firestore getAudioFiles failed:", e);
+    }
+  }
+  return [];
+}
+
+export async function uploadAudioFile(name: string, base64: string): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      await setDoc(doc(db, "audio_files", name.toLowerCase().trim()), {
+        base64,
+        uploadedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Firestore uploadAudioFile failed:", e);
+      throw e;
+    }
+  }
+}
+
+export async function deleteAudioFile(name: string): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      await deleteDoc(doc(db, "audio_files", name.toLowerCase().trim()));
+    } catch (e) {
+      console.error("Firestore deleteAudioFile failed:", e);
+      throw e;
+    }
+  }
+}
+

@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
-import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings } from "@/lib/db";
+import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo } from "@/lib/db";
 import { Settings, Phone, Info } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
@@ -37,6 +37,11 @@ export default function AdminPage() {
   const [ivrGeneralHe, setIvrGeneralHe] = useState("");
   const [ivrSpecialEn, setIvrSpecialEn] = useState("");
   const [ivrSpecialHe, setIvrSpecialHe] = useState("");
+
+  const [audioFiles, setAudioFiles] = useState<AudioFileInfo[]>([]);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioName, setAudioName] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: "received", label: t("status_received") },
@@ -78,6 +83,8 @@ export default function AdminPage() {
       setIvrSpecialHe(s.ivrSpecialHe || "");
     });
 
+    loadAudioFiles();
+
     const unsub = subscribeToOrders((data) => {
       setOrders(data);
       setLoading(false);
@@ -96,7 +103,79 @@ export default function AdminPage() {
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
     });
-  }, []);
+    if (isAuthenticated) {
+      loadAudioFiles();
+    }
+  }, [isAuthenticated]);
+
+  const loadAudioFiles = async () => {
+    try {
+      const list = await getAudioFiles();
+      setAudioFiles(list || []);
+    } catch (err) {
+      console.error("Failed to load audio files:", err);
+    }
+  };
+
+  const handleUploadAudio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!audioFile || !audioName) return;
+
+    if (audioFile.size > 1024 * 1024) {
+      alert(isRtl ? "גודל הקובץ עולה על 1MB. אנא בחר קובץ קטן יותר." : "File size exceeds 1MB. Please choose a smaller file.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          await uploadAudioFile(audioName, base64);
+          setAudioFile(null);
+          setAudioName("");
+          
+          // Clear file input manually
+          const fileInput = document.getElementById("audio-file-input") as HTMLInputElement;
+          if (fileInput) fileInput.value = "";
+
+          alert(isRtl ? "קובץ השמע הועלה בהצלחה!" : "Audio file uploaded successfully!");
+          loadAudioFiles();
+        } catch (err) {
+          console.error(err);
+          alert(isRtl ? "שגיאה בהעלאת הקובץ." : "Error uploading file.");
+        } finally {
+          setIsUploading(false);
+        }
+      };
+      reader.readAsDataURL(audioFile);
+    } catch (err) {
+      console.error(err);
+      alert(isRtl ? "שגיאה בקריאת הקובץ." : "Error reading file.");
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteAudio = async (name: string) => {
+    if (confirm(isRtl ? `האם אתה בטוח שברצונך למחוק את קובץ השמע ${name}?` : `Are you sure you want to delete audio file ${name}?`)) {
+      try {
+        await deleteAudioFile(name);
+        alert(isRtl ? "קובץ השמע נמחק בהצלחה!" : "Audio file deleted successfully!");
+        loadAudioFiles();
+      } catch (err) {
+        console.error(err);
+        alert(isRtl ? "שגיאה במחיקת הקובץ." : "Error deleting file.");
+      }
+    }
+  };
+
+  const handleCopyAudioUrl = (name: string) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}`;
+    navigator.clipboard.writeText(url);
+    alert(isRtl ? `הקישור הועתק ללוח ויכול לשמש ב-Twilio:\n${url}` : `Link copied to clipboard for use in Twilio:\n${url}`);
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -429,6 +508,94 @@ export default function AdminPage() {
                   <div className={`mt-4 pt-4 border-t border-navy-800 flex items-start gap-2 text-xs text-navy-300 ${isRtl ? "flex-row-reverse text-right" : ""}`}>
                     <Info className="w-4 h-4 mt-0.5" />
                     <p>{isRtl ? "קודי סטטוס לעדכון: 1=התקבל, 2=בבדיקה, 3=בביקורת, 4=מוכן, 5=נמסר, 6=בעיה" : "Status Codes for Updates: 1=Received, 2=Testing, 3=Review, 4=Ready, 5=Delivered, 6=Issue"}</p>
+                  </div>
+                </div>
+
+                {/* IVR Audio Files Manager */}
+                <div className={`card p-6 bg-white shadow-sm border border-navy-100 lg:col-span-1 flex flex-col justify-between ${isRtl ? "text-right" : ""}`}>
+                  <div>
+                    <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      <Volume2 className="w-5 h-5 text-navy-600" />
+                      <h2 className="text-lg font-bold text-navy-900">{isRtl ? "ניהול קבצי שמע ל-IVR" : "IVR Audio Manager"}</h2>
+                    </div>
+                    <p className="text-xs text-primary-600 mb-4">
+                      {isRtl 
+                        ? "העלה קבצי MP3 (עד 1MB) כדי לקבל קישורים שתוכל להדביק בווידג'טים של Twilio Studio (למשל welcome, info, vip)." 
+                        : "Upload custom MP3 audio files (max 1MB) to generate links you can paste directly into Twilio Studio."}
+                    </p>
+
+                    {/* Upload Form */}
+                    <form onSubmit={handleUploadAudio} className="space-y-3 mb-4 pb-4 border-b border-primary-100">
+                      <div>
+                        <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">{isRtl ? "שם הקובץ (באנגלית בלבד)" : "Audio File Name (English)"}</label>
+                        <input
+                          type="text"
+                          required
+                          value={audioName}
+                          onChange={(e) => setAudioName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                          placeholder="e.g. welcome, info, vip"
+                          className={`w-full px-3 py-1.5 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-xs ${isRtl ? "text-right" : ""}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">{isRtl ? "קובץ MP3" : "Select MP3 File"}</label>
+                        <input
+                          id="audio-file-input"
+                          type="file"
+                          required
+                          accept="audio/mpeg, audio/mp3"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAudioFile(e.target.files[0]);
+                            }
+                          }}
+                          className={`w-full text-xs text-primary-600 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-navy-50 file:text-navy-700 hover:file:bg-navy-100 cursor-pointer`}
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isUploading}
+                        className="btn-primary w-full py-1.5 text-xs inline-flex items-center justify-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        {isUploading ? (isRtl ? "מעלה..." : "Uploading...") : (isRtl ? "העלה קובץ" : "Upload File")}
+                      </button>
+                    </form>
+
+                    {/* Audio Files List */}
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                      <h3 className="text-xs font-bold text-navy-900 uppercase tracking-wider mb-2">{isRtl ? "קבצים שהועלו:" : "Uploaded Files:"}</h3>
+                      {audioFiles.length === 0 ? (
+                        <p className="text-xs text-primary-400 italic text-center py-2">{isRtl ? "אין קבצים" : "No custom audio files"}</p>
+                      ) : (
+                        audioFiles.map((file) => (
+                          <div key={file.name} className={`flex items-center justify-between p-2 bg-primary-50 rounded-lg border border-primary-100 text-xs ${isRtl ? "flex-row-reverse" : ""}`}>
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Music className="w-3.5 h-3.5 text-navy-500 shrink-0" />
+                              <span className="font-medium text-navy-800 truncate" title={file.name}>
+                                {file.name}.mp3
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleCopyAudioUrl(file.name)}
+                                className="p-1 rounded text-navy-500 hover:text-navy-700 hover:bg-navy-100 transition-colors"
+                                title={isRtl ? "העתק קישור" : "Copy URL"}
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAudio(file.name)}
+                                className="p-1 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                                title={isRtl ? "מחק קובץ" : "Delete file"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
