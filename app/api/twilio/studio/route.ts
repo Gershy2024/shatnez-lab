@@ -1,6 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings } from "@/lib/db";
 
+function formatSpokenDate(dateStr: string): { he: string; en: string } {
+  if (!dateStr) return { he: "", en: "" };
+  try {
+    const parts = dateStr.split("-");
+    if (parts.length !== 3) return { he: "", en: "" };
+    
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // 0-based
+    const day = parseInt(parts[2], 10);
+    
+    const date = new Date(year, month, day);
+    if (isNaN(date.getTime())) return { he: "", en: "" };
+
+    const daysHe = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+    const daysEn = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    
+    const monthsHe = [
+      "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", 
+      "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"
+    ];
+    const monthsEn = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    const dayOfWeekHe = daysHe[date.getDay()];
+    const dayOfWeekEn = daysEn[date.getDay()];
+    
+    const monthHe = monthsHe[month];
+    const monthEn = monthsEn[month];
+
+    let suffix = "th";
+    if (day === 1 || day === 21 || day === 31) suffix = "st";
+    else if (day === 2 || day === 22) suffix = "nd";
+    else if (day === 3 || day === 23) suffix = "rd";
+
+    return {
+      he: `ביום ${dayOfWeekHe}, ${day} ב${monthHe}`,
+      en: `on ${dayOfWeekEn}, ${monthEn} the ${day}${suffix}`
+    };
+  } catch {
+    return { he: "", en: "" };
+  }
+}
+
 // Helper to translate status to friendly Hebrew
 function translateStatus(status: string): string {
   const map: Record<string, string> = {
@@ -258,8 +303,12 @@ async function handleRequest(req: NextRequest) {
         const enStatus = translateStatusEn(o.status || "received");
         const heStatus = translateStatus(o.status || "received");
         
-        enMsg += `Order ${safeId} for ${customer} is ${enStatus}. `;
-        heMsg += `הזמנה ${safeIdHe} עבור ${customer} היא ${heStatus}. `;
+        const spokenDate = formatSpokenDate(o.dateReceived);
+        const dateEn = spokenDate.en ? `, received ${spokenDate.en}` : "";
+        const dateHe = spokenDate.he ? `, התקבלה ${spokenDate.he}` : "";
+        
+        enMsg += `Order ${safeId} for ${customer} is ${enStatus}${dateEn}. `;
+        heMsg += `הזמנה ${safeIdHe} עבור ${customer} היא ${heStatus}${dateHe}. `;
       }
 
       return jsonResponse({
