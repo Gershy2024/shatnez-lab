@@ -204,7 +204,7 @@
         "number_of_digits": 1,
         "finish_on_key": "#",
         "timeout": 5,
-        "say": "I see you are calling from {{contact.channel.address}}. To search for orders using this phone number, press 1. To search using a different phone number or order number, press 2.",
+        "say": "<speak>I see you are calling from <say-as interpret-as=\"digits\">{{contact.channel.address}}</say-as>. To search for orders using this phone number, press 1. To search using a different phone number or order number, press 2.</speak>",
         "voice": "Polly.Joey",
         "language": "en-US"
       },
