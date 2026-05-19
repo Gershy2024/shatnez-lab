@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo } from "@/lib/db";
 import { Settings, Phone, Info } from "lucide-react";
@@ -42,6 +42,9 @@ export default function AdminPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioName, setAudioName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+
+  const [playingName, setPlayingName] = useState<string | null>(null);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: "received", label: t("status_received") },
@@ -176,6 +179,37 @@ export default function AdminPage() {
     navigator.clipboard.writeText(url);
     alert(isRtl ? `הקישור הועתק ללוח ויכול לשמש ב-Twilio:\n${url}` : `Link copied to clipboard for use in Twilio:\n${url}`);
   };
+
+  const handleTogglePlay = (name: string) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}`;
+
+    if (playingName === name && currentAudio) {
+      currentAudio.pause();
+      setPlayingName(null);
+      setCurrentAudio(null);
+    } else {
+      if (currentAudio) {
+        currentAudio.pause();
+      }
+      const audio = new Audio(url);
+      audio.play().catch(err => console.error("Playback failed:", err));
+      audio.onended = () => {
+        setPlayingName(null);
+        setCurrentAudio(null);
+      };
+      setCurrentAudio(audio);
+      setPlayingName(name);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (currentAudio) {
+        currentAudio.pause();
+      }
+    };
+  }, [currentAudio]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -577,6 +611,21 @@ export default function AdminPage() {
                               </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleTogglePlay(file.name)}
+                                className={`p-1 rounded transition-colors ${
+                                  playingName === file.name 
+                                    ? "text-gold-600 bg-gold-50 hover:bg-gold-100" 
+                                    : "text-navy-500 hover:text-navy-700 hover:bg-navy-100"
+                                }`}
+                                title={playingName === file.name ? (isRtl ? "עצור שמיעה" : "Pause preview") : (isRtl ? "שמע קובץ" : "Play preview")}
+                              >
+                                {playingName === file.name ? (
+                                  <Pause className="w-3.5 h-3.5 animate-pulse" />
+                                ) : (
+                                  <Play className="w-3.5 h-3.5" />
+                                )}
+                              </button>
                               <button
                                 onClick={() => handleCopyAudioUrl(file.name)}
                                 className="p-1 rounded text-navy-500 hover:text-navy-700 hover:bg-navy-100 transition-colors"
