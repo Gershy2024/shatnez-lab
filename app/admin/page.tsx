@@ -46,6 +46,9 @@ export default function AdminPage() {
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
+  const [showBlueprintModal, setShowBlueprintModal] = useState(false);
+  const [activeBlueprintTab, setActiveBlueprintTab] = useState("flow");
+
   const statusOptions: { value: OrderStatus; label: string }[] = [
     { value: "received", label: t("status_received") },
     { value: "testing", label: t("status_testing") },
@@ -380,6 +383,13 @@ export default function AdminPage() {
             >
               <Settings className="w-4 h-4" />
               {t("phone_settings")}
+            </button>
+            <button
+              onClick={() => setShowBlueprintModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gold-600 hover:bg-gold-50 transition-colors"
+            >
+              <FileAudio className="w-4 h-4" />
+              {isRtl ? "מפת מערכת IVR" : "IVR System Blueprint"}
             </button>
             <button
               onClick={() => {
@@ -874,6 +884,322 @@ export default function AdminPage() {
       <AnimatePresence>
         {printOrder && (
           <PrintCard order={printOrder} onClose={() => setPrintOrder(null)} />
+        )}
+
+        {showBlueprintModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[85vh] overflow-hidden flex flex-col border border-navy-50"
+            >
+              {/* Modal Header */}
+              <div className={`p-6 border-b border-primary-100 flex items-center justify-between bg-navy-900 text-white ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gold-400 flex items-center gap-2">
+                    <FileAudio className="w-6 h-6 shrink-0" />
+                    {isRtl ? "מרכז מפות ומדריכי מערכת ה-IVR" : "IVR System Blueprint & Developer Hub"}
+                  </h2>
+                  <p className="text-xs text-navy-300 mt-1">
+                    {isRtl ? "כל הנתונים, ממשקי ה-API ומפת הזרימה של המערכת הטלפונית במקום אחד." : "Complete flowchart, API endpoints, and configuration blueprints for the telephone system."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowBlueprintModal(false)}
+                  className="p-2 rounded-full hover:bg-navy-800 text-navy-300 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Modal Tabs */}
+              <div className={`flex border-b border-primary-100 bg-primary-50/50 p-2 gap-2 text-sm font-semibold overflow-x-auto ${isRtl ? "flex-row-reverse" : ""}`}>
+                <button
+                  onClick={() => setActiveBlueprintTab("flow")}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                    activeBlueprintTab === "flow" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
+                  }`}
+                >
+                  {isRtl ? "🌲 מפת זרימת השיחה" : "🌲 Call Flowchart"}
+                </button>
+                <button
+                  onClick={() => setActiveBlueprintTab("api")}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                    activeBlueprintTab === "api" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
+                  }`}
+                >
+                  {isRtl ? "🔌 ממשקי API ושרת" : "🔌 API & Webhooks"}
+                </button>
+                <button
+                  onClick={() => setActiveBlueprintTab("twilio")}
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                    activeBlueprintTab === "twilio" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
+                  }`}
+                >
+                  {isRtl ? "⚙️ הגדרות Twilio מתקדמות" : "⚙️ Advanced Twilio Guides"}
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 p-6 overflow-y-auto bg-primary-50/20">
+                {/* 1. CALL FLOW TAB */}
+                {activeBlueprintTab === "flow" && (
+                  <div className={`space-y-6 ${isRtl ? "text-right" : ""}`}>
+                    <div className="bg-navy-50 border border-navy-100 rounded-2xl p-4 text-sm text-navy-900">
+                      <p className="font-bold mb-1 text-navy-800">
+                        {isRtl ? "💡 הכלל החשוב ביותר להודעות מוקלטות:" : "💡 Quick Tip for Pre-recorded Audios:"}
+                      </p>
+                      <p className="text-xs text-primary-600 leading-relaxed">
+                        {isRtl 
+                          ? "המערכת תומכת בהשמעת קולות אנושיים יוקרתיים של ElevenLabs. פשוט תעלה את הקובץ ל-IVR Audio Manager, תעתיק את הקישור ותשנה בווידג'טים של Twilio מ-Say a message ל-Play an audio file."
+                          : "You can play natural human-sounding voices from ElevenLabs. Upload them in the 'IVR Audio Manager', copy the URL, and in Twilio Studio change 'Say a message' to 'Play an audio file'."}
+                      </p>
+                    </div>
+
+                    {/* Flowchart Timeline */}
+                    <div className={`relative border-l-2 border-gold-300 ml-4 pl-6 space-y-8 ${isRtl ? "border-l-0 border-r-2 ml-0 pl-0 pr-6 mr-4" : ""}`}>
+                      {/* Step 1 */}
+                      <div className="relative">
+                        <div className={`absolute top-1.5 -left-[31px] w-4 h-4 rounded-full bg-gold-400 ring-4 ring-white ${isRtl ? "-left-0 -right-[31px]" : ""}`}></div>
+                        <h4 className="font-bold text-navy-900 text-base">{isRtl ? "1️⃣ כניסה לשיחה וברכת שלום" : "1️⃣ Call Entry & Welcome Menu"}</h4>
+                        <p className="text-xs text-primary-600 mt-1 max-w-3xl leading-relaxed">
+                          {isRtl 
+                            ? "השיחה מתחילה בברכת שלום וזיהוי מספר המתקשר. המערכת מקריאה את ה-welcome_menu. הקשה על מקשים מעבירה את המתקשר לתפריטים הבאים:"
+                            : "The call starts with a greeting and automated caller ID detection. Plays the welcome_menu. Standard DTMF keypresses route the user to:"}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                          <div className="p-3 bg-white border border-primary-100 rounded-xl">
+                            <span className="font-bold text-navy-900 bg-primary-100 px-2 py-0.5 rounded text-xs">Key 1</span>
+                            <span className="text-xs text-primary-700 block mt-2 font-medium">{isRtl ? "מידע כללי ומחירים (ivrGeneralEn/He)" : "General Info & Pricing (ivrGeneralEn/He)"}</span>
+                          </div>
+                          <div className="p-3 bg-white border border-primary-100 rounded-xl">
+                            <span className="font-bold text-navy-900 bg-primary-100 px-2 py-0.5 rounded text-xs">Key 2</span>
+                            <span className="text-xs text-primary-700 block mt-2 font-medium">{isRtl ? "מעקב הזמנות אוטומטי (Check Order Status)" : "Track Order Status (Automatic Caller ID)"}</span>
+                          </div>
+                          <div className="p-3 bg-white border border-primary-100 rounded-xl">
+                            <span className="font-bold text-navy-900 bg-primary-100 px-2 py-0.5 rounded text-xs">Key 3</span>
+                            <span className="text-xs text-primary-700 block mt-2 font-medium">{isRtl ? "שירותי VIP וחנויות (ivrSpecialEn/He)" : "VIP & Store Services (ivrSpecialEn/He)"}</span>
+                          </div>
+                          <div className="p-3 bg-white border border-primary-100 rounded-xl">
+                            <span className="font-bold text-navy-900 bg-primary-100 px-2 py-0.5 rounded text-xs">Key 0</span>
+                            <span className="text-xs text-primary-700 block mt-2 font-medium">{isRtl ? "העברת שיחה לנציג (Forwarding Number)" : "Forward Call to representative"}</span>
+                          </div>
+                          <div className="p-3 bg-gold-50 border border-gold-200 rounded-xl">
+                            <span className="font-bold text-gold-900 bg-gold-200 px-2 py-0.5 rounded text-xs">Key 9</span>
+                            <span className="text-xs text-gold-800 block mt-2 font-semibold">{isRtl ? "תפריט אדמין מוסתר (הזנת קוד PIN)" : "Hidden Admin Mode (Enter PIN)"}</span>
+                          </div>
+                          <div className="p-3 bg-white border border-primary-100 rounded-xl">
+                            <span className="font-bold text-navy-900 bg-primary-100 px-2 py-0.5 rounded text-xs">Direct #</span>
+                            <span className="text-xs text-primary-700 block mt-2 font-medium">{isRtl ? "הקלדת מספר הזמנה ישירות מהפתיח" : "Type Order ID + # directly from menu"}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 2 */}
+                      <div className="relative">
+                        <div className={`absolute top-1.5 -left-[31px] w-4 h-4 rounded-full bg-gold-400 ring-4 ring-white ${isRtl ? "-left-0 -right-[31px]" : ""}`}></div>
+                        <h4 className="font-bold text-navy-900 text-base">{isRtl ? "2️⃣ אופציה 2: מעקב הזמנות חכם" : "2️⃣ Option 2: Smart Order Tracking"}</h4>
+                        <p className="text-xs text-primary-600 mt-1 max-w-3xl leading-relaxed">
+                          {isRtl 
+                            ? "מעקב ההזמנות מבוצע בצורה חכמה ומורכבת בשני נתיבים:"
+                            : "Order status check follows a highly refined automated logic:"}
+                        </p>
+                        <div className="bg-white border border-primary-100 rounded-2xl p-4 mt-3 space-y-3">
+                          <div>
+                            <h5 className="text-xs font-bold text-navy-800 uppercase tracking-wide">{isRtl ? "נתיב א: מזהה שיחה אוטומטי (Auto ID Lookup)" : "Path A: Automated ID Lookup"}</h5>
+                            <p className="text-xs text-primary-600 mt-1 leading-relaxed">
+                              {isRtl 
+                                ? "המערכת שולחת את מספר הטלפון המזהה ל-caller_lookup. אם נמצאו הזמנות המקושרות למספר זה, המערכת תשאל: 'האם לבקש הזמנה עם מספר X או שתרצה להאזין ידנית?'. הקשת 1 מקריאה את הסטטוס, והקשת 2 מאפשרת הקשת מספר ידנית."
+                                : "The server checks if any orders are linked to the calling phone number. If yes, it asks: 'Do you want to check order X or enter another number manually?'. Pressing 1 speaks the status, pressing 2 goes to manual input."}
+                            </p>
+                          </div>
+                          <div className="border-t border-primary-50 pt-3">
+                            <h5 className="text-xs font-bold text-navy-800 uppercase tracking-wide">{isRtl ? "נתיב ב: הזנה ידנית (Manual Lookup)" : "Path B: Manual Lookup"}</h5>
+                            <p className="text-xs text-primary-600 mt-1 leading-relaxed">
+                              {isRtl 
+                                ? "אם לא מזוהה טלפון או אם נבחר חיפוש ידני, המשתמש מקליד את מספר ההזמנה. השרת מבצע manual_lookup ומקריא את הממצאים באנגלית או עברית עם SSML לתוצאות מדויקות."
+                                : "If no number matches or manual input is selected, the user types the order ID. The server calls manual_lookup and speaks the status/results in English or Hebrew."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Step 3 */}
+                      <div className="relative">
+                        <div className={`absolute top-1.5 -left-[31px] w-4 h-4 rounded-full bg-gold-400 ring-4 ring-white ${isRtl ? "-left-0 -right-[31px]" : ""}`}></div>
+                        <h4 className="font-bold text-navy-900 text-base">{isRtl ? "3️⃣ אופציה 9: תפריט ניהול טלפוני (Admin)" : "3️⃣ Option 9: Phone Admin Menu"}</h4>
+                        <p className="text-xs text-primary-600 mt-1 max-w-3xl leading-relaxed">
+                          {isRtl 
+                            ? "כניסה מתבצעת על ידי הקשת 9 ולאחריה קוד PIN בן 4 ספרות (מסונכרן עם האתר). פעולות מנהל מאושרות:"
+                            : "Accessed by typing 9 followed by the admin 4-digit PIN (synced live with the website). Supported admin actions:"}
+                        </p>
+                        <div className="bg-navy-900 text-white rounded-2xl p-4 mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                          <div>
+                            <span className="font-bold text-gold-400">1: Play Recent Orders</span>
+                            <p className="text-navy-200 mt-1">{isRtl ? "מקריא את 5 ההזמנות האחרונות שנוספו למערכת." : "Speaks the IDs and statuses of the last 5 added orders."}</p>
+                          </div>
+                          <div>
+                            <span className="font-bold text-gold-400">2: Update Order Status & Results</span>
+                            <p className="text-navy-200 mt-1">{isRtl ? "מקלידים מספר הזמנה, מעדכנים סטטוס (1-6) ותוצאת שעטנז. המערכת מקריאה אישור מלא ספרה-אחר-ספרה." : "Input order ID, select status (1-6) and shatnez result. Speaks exact details back as digits."}</p>
+                          </div>
+                          <div>
+                            <span className="font-bold text-gold-400">3: Search by Phone Number</span>
+                            <p className="text-navy-200 mt-1">{isRtl ? "הקלדת מספר טלפון משמיעה את רשימת כל ההזמנות המשויכות אליו." : "Inputting a phone number speaks all associated order IDs."}</p>
+                          </div>
+                          <div>
+                            <span className="font-bold text-gold-400">4: Add New Order</span>
+                            <p className="text-navy-200 mt-1">{isRtl ? "יוצר הזמנה חדשה עם מספר טלפון של לקוח. יוצר מזהה חדש אוטומטית ומקריא אותו ספרה-אחר-ספרה בהצלחה." : "Creates a new order for a customer. Auto-generates order ID and speaks it back as single digits."}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. API WEBHOOKS TAB */}
+                {activeBlueprintTab === "api" && (
+                  <div className={`space-y-6 text-left ${isRtl ? "direction-ltr" : ""}`}>
+                    <p className={`text-xs text-primary-600 ${isRtl ? "text-right" : ""}`}>
+                      {isRtl 
+                        ? "ווידג'טים של Twilio Studio מסוג HTTP Request פונים לממשק הבא של השרת שלך. הפנייה נעשית תמיד בשיטת POST עם פרמטר action:" 
+                        : "Twilio HTTP Request widgets query your Next.js backend. Calls are routed to this endpoint via POST using the action parameter:"}
+                    </p>
+                    
+                    <div className="bg-navy-950 text-gold-400 p-3 rounded-lg font-mono text-xs select-all">
+                      POST https://shatnez-lab.vercel.app/api/twilio/studio
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Action 1 */}
+                      <div className="p-4 bg-white border border-primary-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-navy-900 bg-navy-50 px-2 py-0.5 rounded">action: caller_lookup</span>
+                          <span className="text-xs text-green-600 font-semibold">{isRtl ? "מעקב אוטומטי" : "Caller Lookup"}</span>
+                        </div>
+                        <p className="text-xs text-primary-600">{isRtl ? "בודק אם מספר הטלפון המזהה קיים." : "Checks if the caller's incoming phone number exists in Firestore."}</p>
+                        <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
+                          Body: {"{ \"From\": \"+18457092022\" }"}
+                        </div>
+                      </div>
+
+                      {/* Action 2 */}
+                      <div className="p-4 bg-white border border-primary-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-navy-900 bg-navy-50 px-2 py-0.5 rounded">action: manual_lookup</span>
+                          <span className="text-xs text-green-600 font-semibold">{isRtl ? "חיפוש ידני" : "Manual Lookup"}</span>
+                        </div>
+                        <p className="text-xs text-primary-600">{isRtl ? "מחפש הזמנה ספציפית לפי מספר מזהה." : "Looks up order by typed order ID."}</p>
+                        <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
+                          Body: {"{ \"orderId\": \"105\" }"}
+                        </div>
+                      </div>
+
+                      {/* Action 3 */}
+                      <div className="p-4 bg-white border border-primary-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-navy-900 bg-navy-50 px-2 py-0.5 rounded">action: admin_login</span>
+                          <span className="text-xs text-gold-600 font-semibold">{isRtl ? "כניסת אדמין" : "Admin Auth"}</span>
+                        </div>
+                        <p className="text-xs text-primary-600">{isRtl ? "מאמת קוד PIN לגישת מנהל טלפונית." : "Authenticates phone input PIN."}</p>
+                        <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
+                          Body: {"{ \"pin\": \"1234\" }"}
+                        </div>
+                      </div>
+
+                      {/* Action 4 */}
+                      <div className="p-4 bg-white border border-primary-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-navy-900 bg-navy-50 px-2 py-0.5 rounded">action: admin_add_order</span>
+                          <span className="text-xs text-navy-600 font-semibold">{isRtl ? "הוספת הזמנה בטלפון" : "Add Order via Phone"}</span>
+                        </div>
+                        <p className="text-xs text-primary-600">{isRtl ? "מנהל יוצר הזמנה חדשה בשיחה." : "Enables admin to create new orders on the fly."}</p>
+                        <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
+                          Body: {"{ \"phone\": \"8457092022\" }"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. TWILIO STUDIO CONFIG TAB */}
+                {activeBlueprintTab === "twilio" && (
+                  <div className={`space-y-6 ${isRtl ? "text-right" : ""}`}>
+                    <h3 className="font-bold text-navy-900 text-base">{isRtl ? "🛠️ הגדרת השמעה מבוססת SSML ופולי (Polly)" : "🛠️ Premium SSML & Amazon Polly Guides"}</h3>
+                    <p className="text-xs text-primary-600 leading-relaxed">
+                      {isRtl 
+                        ? "מערכת Polly.Joey תומכת בתגי speak שמלמדים את הרובוט להקריא מספרים ספרה-אחר-ספרה במקום מספר שלם. כדי לעשות זאת, יש להשתמש תמיד בהגדרות Custom בווידג'טים הבאים:"
+                        : "Amazon Polly.Joey enables speech customization like pronouncing letters and digits one-by-one. Make sure to configure your widgets to Custom language format:"}
+                    </p>
+
+                    <div className="bg-white border border-primary-100 rounded-2xl p-5 space-y-4">
+                      {/* Configuration Parameter Table */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs border-b border-primary-50 pb-4">
+                        <div>
+                          <span className="block text-primary-500 font-semibold uppercase">{isRtl ? "פרמטר" : "Field"}</span>
+                          <span className="block font-bold text-navy-900 mt-1">{isRtl ? "Language Type" : "Language Type"}</span>
+                        </div>
+                        <div>
+                          <span className="block text-primary-500 font-semibold uppercase">{isRtl ? "ערך מומלץ" : "Value"}</span>
+                          <span className="block font-bold text-navy-900 mt-1">Custom</span>
+                        </div>
+                        <div>
+                          <span className="block text-primary-500 font-semibold uppercase">{isRtl ? "הסבר" : "Why"}</span>
+                          <span className="block text-primary-700 mt-1">{isRtl ? "מאפשר שימוש ב-SSML ופולי" : "Allows tags and customized voice engines"}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs border-b border-primary-50 pb-4">
+                        <div>
+                          <span className="block font-bold text-navy-900">{isRtl ? "Custom Language Code" : "Custom Language Code"}</span>
+                        </div>
+                        <div>
+                          <span className="block font-bold text-navy-900 text-gold-600 font-mono">en-US</span>
+                        </div>
+                        <div>
+                          <span className="block text-primary-700">{isRtl ? "קוד שפה לאנגלית. לעברית כתוב he-IL" : "Language code. Use he-IL for Hebrew"}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pb-2">
+                        <div>
+                          <span className="block font-bold text-navy-900">{isRtl ? "Custom Voice" : "Custom Voice"}</span>
+                        </div>
+                        <div>
+                          <span className="block font-bold text-navy-900 text-gold-600 font-mono">Polly.Joey</span>
+                        </div>
+                        <div>
+                          <span className="block text-primary-700">{isRtl ? "קול של Amazon Polly הגברי. לעברית מומלץ Polly.Madlene" : "Polly Joey voice. For Hebrew, use Polly.Madlene"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <h3 className="font-bold text-navy-900 text-base mt-6">{isRtl ? "🧹 ניקוי סימן הפלוס (+) ממספרי טלפון ב-Twilio Studio" : "🧹 Filtering Special Characters in Liquid"}</h3>
+                    <p className="text-xs text-primary-600 leading-relaxed">
+                      {isRtl 
+                        ? "כאשר מעבירים את מספר הטלפון המזוהה של המתקשר (contact.channel.address) לרובוט, הוא עלול להתבלבל בגלל סימן הפלוס. לכן, בתוך הטקסט של ask_lookup_choice ב-Twilio Studio, מומלץ תמיד להשתמש בסינון הבא של Liquid:"
+                        : "When using the caller's incoming phone number variable in a Say/Play widget, special characters like '+' can confuse Polly. Use this filter inside the speak block:"}
+                    </p>
+
+                    <div className="bg-navy-950 text-gold-400 p-3 rounded-lg font-mono text-xs select-all">
+                      {"<speak>I see you are calling from <say-as interpret-as=\"digits\">{{contact.channel.address | remove: \"+\"}}</say-as>...</speak>"}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-primary-100 bg-primary-50/50 flex justify-end">
+                <button
+                  onClick={() => setShowBlueprintModal(false)}
+                  className="btn-primary px-6 py-2"
+                >
+                  {isRtl ? "סגור מדריך" : "Close Hub"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
