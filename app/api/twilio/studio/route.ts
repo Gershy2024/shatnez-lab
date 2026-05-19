@@ -288,7 +288,7 @@ async function handleRequest(req: NextRequest) {
       if (existing) {
         return jsonResponse({
           success: false,
-          messageEn: `Order number ${newOrderId.split("").join(" ")} already exists in the system.`,
+          messageEn: `<speak>Order number <say-as interpret-as="digits">${newOrderId}</say-as> already exists in the system.</speak>`,
           messageHe: `מספר הזמנה ${newOrderId} כבר קיים במערכת.`
         });
       }
@@ -307,7 +307,7 @@ async function handleRequest(req: NextRequest) {
 
       return jsonResponse({
         success: true,
-        messageEn: `Order ${newOrderId.split("").join(" ")} was successfully added.`,
+        messageEn: `<speak>Order <say-as interpret-as="digits">${newOrderId}</say-as> was successfully added.</speak>`,
         messageHe: `הזמנה ${newOrderId} נוספה בהצלחה למערכת.`
       });
     }
@@ -370,7 +370,7 @@ async function handleRequest(req: NextRequest) {
 
       return jsonResponse({
         success: true,
-        messageEn: `Updated order number ${orderId.split("").join(" ")} to status ${friendlyStatusEn} and result ${friendlyResultEn}.`,
+        messageEn: `<speak>Updated order number <say-as interpret-as="digits">${orderId}</say-as> to status ${friendlyStatusEn} and result ${friendlyResultEn}.</speak>`,
         messageHe: `הזמנה מספר ${orderId} עודכנה בהצלחה לסטטוס ${friendlyStatusHe} ותוצאה ${friendlyResultHe}.`
       });
     }
