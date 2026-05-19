@@ -920,7 +920,7 @@ export default function AdminPage() {
               <div className={`flex border-b border-primary-100 bg-primary-50/50 p-2 gap-2 text-sm font-semibold overflow-x-auto ${isRtl ? "flex-row-reverse" : ""}`}>
                 <button
                   onClick={() => setActiveBlueprintTab("flow")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
                     activeBlueprintTab === "flow" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
                   }`}
                 >
@@ -928,7 +928,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={() => setActiveBlueprintTab("audio")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
                     activeBlueprintTab === "audio" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
                   }`}
                 >
@@ -936,7 +936,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={() => setActiveBlueprintTab("api")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
                     activeBlueprintTab === "api" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
                   }`}
                 >
@@ -944,7 +944,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={() => setActiveBlueprintTab("twilio")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 ${
+                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none ${
                     activeBlueprintTab === "twilio" ? "bg-navy-900 text-white" : "text-primary-700 hover:bg-primary-100"
                   }`}
                 >
