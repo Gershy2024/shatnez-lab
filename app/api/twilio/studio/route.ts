@@ -365,11 +365,13 @@ async function handleRequest(req: NextRequest) {
 
       const friendlyStatusEn = translateStatusEn(order.status);
       const friendlyStatusHe = translateStatus(order.status);
+      const friendlyResultEn = order.result || "no result";
+      const friendlyResultHe = order.result || "ללא תוצאה";
 
       return jsonResponse({
         success: true,
-        messageEn: `Order ${orderId.split("").join(" ")} has been updated to ${friendlyStatusEn}.`,
-        messageHe: `הזמנה ${orderId} עודכנה בהצלחה לסטטוס ${friendlyStatusHe}.`
+        messageEn: `Updated order number ${orderId.split("").join(" ")} to status ${friendlyStatusEn} and result ${friendlyResultEn}.`,
+        messageHe: `הזמנה מספר ${orderId} עודכנה בהצלחה לסטטוס ${friendlyStatusHe} ותוצאה ${friendlyResultHe}.`
       });
     }
 
