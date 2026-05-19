@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download } from "lucide-react";
 import PrintCard from "@/components/PrintCard";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo } from "@/lib/db";
 import { Settings, Phone, Info, Microscope, ShieldCheck, MapPin } from "lucide-react";
@@ -60,6 +60,99 @@ export default function AdminPage() {
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 4500);
+  };
+
+  const downloadCardSvg = (side: "front" | "back") => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(origin + "/track")}`;
+    
+    let svgContent = "";
+    if (side === "front") {
+      svgContent = `<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 600" width="1050" height="600">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f" />
+      <stop offset="100%" stop-color="#0d1b2a" />
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1050" height="600" fill="url(#bgGrad)" rx="30" />
+  <!-- Gold Border -->
+  <rect x="25" y="25" width="1000" height="550" fill="none" stroke="#d4af37" stroke-width="8" rx="20" />
+  <rect x="35" y="35" width="980" height="530" fill="none" stroke="#d4af37" stroke-width="2" stroke-opacity="0.4" rx="15" />
+  
+  <!-- Microscope Emblem -->
+  <g transform="translate(495, 100) scale(2)">
+    <rect width="32" height="32" rx="8" fill="#d4af37" />
+    <path d="M12 22h8M16 18v4M9 22h14M16 12v3M14 6c0-2 2-2 2-2s2 0 2 2v6c0 1-1 2-2 2s-2-1-2-2V6z" fill="none" stroke="#0d1b2a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+
+  <!-- Typography -->
+  <text x="525" y="320" font-family="'Inter', 'Arial', sans-serif" font-weight="900" font-size="54" fill="#ffffff" text-anchor="middle" letter-spacing="2">THE SHATNEZ <tspan fill="#d4af37">LAB</tspan></text>
+  <text x="525" y="375" font-family="'Inter', 'Arial', sans-serif" font-weight="700" font-size="22" fill="#d4af37" text-anchor="middle" letter-spacing="4">PROFESSIONAL SHATNEZ INSPECTION</text>
+  <text x="525" y="415" font-family="'Inter', 'Arial', sans-serif" font-weight="700" font-size="18" fill="#ffffff" fill-opacity="0.8" text-anchor="middle" letter-spacing="3">בדיקת שעטנז מקצועית ומוסמכת</text>
+  
+  <!-- Footer Contact -->
+  <text x="525" y="500" font-family="'Courier New', monospace" font-weight="bold" font-size="28" fill="#d4af37" text-anchor="middle" letter-spacing="1">📞 845-709-2022</text>
+</svg>`;
+    } else {
+      svgContent = `<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1050 600" width="1050" height="600">
+  <!-- Background -->
+  <rect width="1050" height="600" fill="#ffffff" rx="30" />
+  <!-- Navy Border -->
+  <rect x="25" y="25" width="1000" height="550" fill="none" stroke="#1e3a5f" stroke-width="10" rx="20" />
+  
+  <!-- Left Side Info -->
+  <g transform="translate(80, 80)">
+    <!-- Title -->
+    <text x="0" y="40" font-family="'Inter', 'Arial', sans-serif" font-weight="900" font-size="44" fill="#1e3a5f">The Shatnez Lab</text>
+    <text x="0" y="75" font-family="'Inter', 'Arial', sans-serif" font-weight="700" font-size="20" fill="#d4af37">Spring Valley, NY</text>
+    
+    <!-- Info Items -->
+    <text x="0" y="150" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="28" fill="#0d1b2a">📞 Phone: 845-709-2022</text>
+    <text x="0" y="210" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="24" fill="#4a5568">📍 Drop-off: 14 Buchanan Rd</text>
+    <text x="0" y="270" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="24" fill="#4a5568">🕒 Hours: 24/7 Automated System</text>
+    
+    <!-- Pricing Tier Tags -->
+    <!-- Tag 1 -->
+    <rect x="0" y="340" width="220" height="60" rx="10" fill="#f7fafc" stroke="#e2e8f0" stroke-width="2" />
+    <text x="110" y="378" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="20" fill="#0d1b2a" text-anchor="middle">Simple Garment: $5</text>
+    
+    <!-- Tag 2 -->
+    <rect x="240" y="340" width="260" height="60" rx="10" fill="#f7fafc" stroke="#e2e8f0" stroke-width="2" />
+    <text x="370" y="378" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="20" fill="#0d1b2a" text-anchor="middle">Lined (Suits/Coats): $10</text>
+
+    <!-- Hebrew Tag 1 -->
+    <rect x="0" y="420" width="220" height="60" rx="10" fill="#f7fafc" stroke="#e2e8f0" stroke-width="2" />
+    <text x="110" y="458" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="20" fill="#0d1b2a" text-anchor="middle">בגד פשוט: $5</text>
+    
+    <!-- Hebrew Tag 2 -->
+    <rect x="240" y="420" width="260" height="60" rx="10" fill="#f7fafc" stroke="#e2e8f0" stroke-width="2" />
+    <text x="370" y="458" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="20" fill="#0d1b2a" text-anchor="middle">בגד עם בטנה: $10</text>
+  </g>
+  
+  <!-- Right Side QR Code -->
+  <g transform="translate(680, 130)">
+    <rect x="0" y="0" width="280" height="280" fill="#ffffff" stroke="#e2e8f0" stroke-width="4" rx="15" />
+    <image x="15" y="15" width="250" height="250" href="${qrUrl}" />
+    <text x="140" y="320" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="18" fill="#4a5568" text-anchor="middle" letter-spacing="1">SCAN TO TRACK ORDER</text>
+    <text x="140" y="345" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="18" fill="#4a5568" text-anchor="middle" letter-spacing="1">סרוק למעקב הזמנה</text>
+  </g>
+</svg>`;
+    }
+
+    const blob = new Blob([svgContent], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `shatnez_lab_card_${side}.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(isRtl ? "קובץ וקטורי (SVG) ירד בהצלחה!" : "Vector SVG file downloaded successfully!", "success");
   };
 
   const statusOptions: { value: OrderStatus; label: string }[] = [
@@ -1526,7 +1619,7 @@ export default function AdminPage() {
                       </div>
 
                       {/* Buttons Action */}
-                      <div className="flex gap-3 justify-center max-w-xs mx-auto">
+                      <div className="flex flex-col gap-3 justify-center max-w-sm mx-auto w-full">
                         <button
                           onClick={() => {
                             const printWindow = window.open("", "_blank");
@@ -1602,11 +1695,30 @@ export default function AdminPage() {
                             `);
                             printWindow.document.close();
                           }}
-                          className="btn-primary flex-1 flex items-center justify-center gap-2 text-xs py-2 shadow"
+                          className="btn-primary flex items-center justify-center gap-2 text-xs py-2 shadow w-full"
                         >
                           <Printer className="w-4 h-4" />
                           {isRtl ? "הדפס כרטיס" : "Print Card"}
                         </button>
+                        
+                        <div className="grid grid-cols-2 gap-2 w-full">
+                          <button
+                            onClick={() => downloadCardSvg("front")}
+                            className="bg-navy-900 text-white hover:bg-navy-800 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-xl border border-navy-700 transition-colors shadow"
+                            title={isRtl ? "הורד קובץ וקטורי של הצד הקדמי (אילוסטרייטור)" : "Download Front Vector SVG"}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            {isRtl ? "וקטור קדמי" : "Front Vector"}
+                          </button>
+                          <button
+                            onClick={() => downloadCardSvg("back")}
+                            className="bg-white text-navy-950 hover:bg-primary-50 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-xl border border-primary-200 transition-colors shadow"
+                            title={isRtl ? "הורד קובץ וקטורי של הצד האחורי (אילוסטרייטור)" : "Download Back Vector SVG"}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            {isRtl ? "וקטור אחורי" : "Back Vector"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
