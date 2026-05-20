@@ -425,10 +425,36 @@ async function handleRequest(req: NextRequest) {
     }
 
     // ─── 7. VOICEMAIL RECORDING TO EMAIL ───
-    if (action === "voicemail") {
-      const recordingUrl = (body.recordingUrl || url.searchParams.get("recordingUrl") || "").trim();
-      const recordingDuration = (body.recordingDuration || url.searchParams.get("recordingDuration") || "").trim();
-      const callerPhone = (body.phone || body.From || url.searchParams.get("phone") || url.searchParams.get("From") || "Unknown").trim();
+    if (action === "voicemail" || action === "voice") {
+      const recordingUrl = (
+        body.recordingUrl || 
+        body.RecordingUrl || 
+        body.recording_url || 
+        url.searchParams.get("recordingUrl") || 
+        url.searchParams.get("RecordingUrl") || 
+        url.searchParams.get("recording_url") || 
+        ""
+      ).trim();
+      
+      const recordingDuration = (
+        body.recordingDuration || 
+        body.RecordingDuration || 
+        body.recording_duration || 
+        url.searchParams.get("recordingDuration") || 
+        url.searchParams.get("RecordingDuration") || 
+        url.searchParams.get("recording_duration") || 
+        ""
+      ).trim();
+      
+      const callerPhone = (
+        body.phone || 
+        body.From || 
+        body.phone_number || 
+        url.searchParams.get("phone") || 
+        url.searchParams.get("From") || 
+        url.searchParams.get("phone_number") || 
+        "Unknown"
+      ).trim();
 
       console.log(`[Twilio Studio API] Voicemail received from ${callerPhone}. Duration: ${recordingDuration}s, URL: ${recordingUrl}`);
 
