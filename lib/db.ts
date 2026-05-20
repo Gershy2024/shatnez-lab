@@ -32,6 +32,11 @@ export interface AdminSettings {
   ivrSpecialEn?: string;
   ivrSpecialHe?: string;
   adminNotes?: string;
+  voicemailEmail?: string;
+  smtpHost?: string;
+  smtpPort?: string;
+  smtpUser?: string;
+  smtpPass?: string;
 }
 
 const ORDERS_COLLECTION = "orders";
@@ -176,7 +181,12 @@ export async function getAdminSettings(): Promise<AdminSettings> {
     ivrGeneralHe: "",
     ivrSpecialEn: "",
     ivrSpecialHe: "",
-    adminNotes: ""
+    adminNotes: "",
+    voicemailEmail: "",
+    smtpHost: "",
+    smtpPort: "",
+    smtpUser: "",
+    smtpPass: ""
   };
   
   const now = Date.now();

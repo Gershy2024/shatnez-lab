@@ -38,6 +38,12 @@ export default function AdminPage() {
   const [ivrSpecialEn, setIvrSpecialEn] = useState("");
   const [ivrSpecialHe, setIvrSpecialHe] = useState("");
 
+  const [voicemailEmail, setVoicemailEmail] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+
   const [audioFiles, setAudioFiles] = useState<AudioFileInfo[]>([]);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioName, setAudioName] = useState("");
@@ -194,6 +200,11 @@ export default function AdminPage() {
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
       setAdminNotes(s.adminNotes || "");
+      setVoicemailEmail(s.voicemailEmail || "");
+      setSmtpHost(s.smtpHost || "");
+      setSmtpPort(s.smtpPort || "");
+      setSmtpUser(s.smtpUser || "");
+      setSmtpPass(s.smtpPass || "");
     });
 
     loadAudioFiles();
@@ -216,6 +227,11 @@ export default function AdminPage() {
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
       setAdminNotes(s.adminNotes || "");
+      setVoicemailEmail(s.voicemailEmail || "");
+      setSmtpHost(s.smtpHost || "");
+      setSmtpPort(s.smtpPort || "");
+      setSmtpUser(s.smtpUser || "");
+      setSmtpPass(s.smtpPass || "");
     });
     if (isAuthenticated) {
       loadAudioFiles();
@@ -346,7 +362,12 @@ export default function AdminPage() {
         ivrGeneralHe,
         ivrSpecialEn,
         ivrSpecialHe,
-        adminNotes
+        adminNotes,
+        voicemailEmail,
+        smtpHost,
+        smtpPort,
+        smtpUser,
+        smtpPass
       });
       
       setAdminPin(updatedPin);
@@ -560,6 +581,75 @@ export default function AdminPage() {
                       className="btn-primary w-full py-2"
                     >
                       {isRtl ? "עדכן הגדרות" : "Update Settings"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Voicemail to Email Settings */}
+                <div className={`card p-6 bg-white shadow-sm border border-navy-100 ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                    <Volume2 className="w-5 h-5 text-navy-600" />
+                    <h2 className="text-lg font-bold text-navy-900">{isRtl ? "הגדרות תא קולי לאימייל" : "Voicemail-to-Email Settings"}</h2>
+                  </div>
+                  <p className="text-sm text-primary-600 mb-4">
+                    {isRtl ? "הגדר את כתובת האימייל לקבלת הקלטות של הודעות קוליות מהמתקשרים ב-IVR." : "Receive audio recordings left by callers on the IVR flow directly to your email."}
+                  </p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "כתובת אימייל ליעד" : "Destination Email"}</label>
+                      <input
+                        type="email"
+                        value={voicemailEmail}
+                        onChange={(e) => setVoicemailEmail(e.target.value)}
+                        placeholder="e.g. yourname@gmail.com"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "שרת SMTP" : "SMTP Host"}</label>
+                      <input
+                        type="text"
+                        value={smtpHost}
+                        onChange={(e) => setSmtpHost(e.target.value)}
+                        placeholder="e.g. smtp.gmail.com"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "פורט SMTP" : "SMTP Port"}</label>
+                      <input
+                        type="text"
+                        value={smtpPort}
+                        onChange={(e) => setSmtpPort(e.target.value)}
+                        placeholder="e.g. 465 (SSL) or 587 (TLS)"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "שם משתמש SMTP" : "SMTP Username"}</label>
+                      <input
+                        type="text"
+                        value={smtpUser}
+                        onChange={(e) => setSmtpUser(e.target.value)}
+                        placeholder="e.g. yourname@gmail.com"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "סיסמת SMTP" : "SMTP Password"}</label>
+                      <input
+                        type="password"
+                        value={smtpPass}
+                        onChange={(e) => setSmtpPass(e.target.value)}
+                        placeholder="••••••••"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <button 
+                      onClick={handleUpdateSettings}
+                      className="btn-primary w-full py-2"
+                    >
+                      {isRtl ? "שמור הגדרות אימייל" : "Save Email Settings"}
                     </button>
                   </div>
                 </div>
@@ -1410,6 +1500,18 @@ export default function AdminPage() {
                         <p className="text-xs text-primary-600">{isRtl ? "מנהל יוצר הזמנה חדשה בשיחה." : "Enables admin to create new orders on the fly."}</p>
                         <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
                           Body: {"{ \"phone\": \"8457092022\" }"}
+                        </div>
+                      </div>
+
+                      {/* Action 5 */}
+                      <div className="p-4 bg-white border border-primary-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-navy-900 bg-navy-50 px-2 py-0.5 rounded">action: voicemail</span>
+                          <span className="text-xs text-navy-600 font-semibold">{isRtl ? "הודעה קולית לאימייל" : "Voicemail to Email"}</span>
+                        </div>
+                        <p className="text-xs text-primary-600">{isRtl ? "שולח הודעת הקלטה קולית ופרטי מתקשר לתיבת האימייל שלך." : "Sends recorded voicemail link and caller details to configured email address."}</p>
+                        <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
+                          Body: {"{ \"recordingUrl\": \"https://api.twilio.com/...\", \"recordingDuration\": \"15\", \"phone\": \"+18457092022\" }"}
                         </div>
                       </div>
                     </div>

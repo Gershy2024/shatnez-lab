@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings } from "@/lib/db";
+import nodemailer from "nodemailer";
 
 function formatSpokenDate(dateStr: string): { he: string; en: string } {
   if (!dateStr) return { he: "", en: "" };
@@ -420,6 +421,101 @@ async function handleRequest(req: NextRequest) {
         success: true,
         messageEn: `<speak>Updated order number <say-as interpret-as="digits">${orderId}</say-as> to status ${friendlyStatusEn} and result ${friendlyResultEn}.</speak>`,
         messageHe: `הזמנה מספר ${orderId} עודכנה בהצלחה לסטטוס ${friendlyStatusHe} ותוצאה ${friendlyResultHe}.`
+      });
+    }
+
+    // ─── 7. VOICEMAIL RECORDING TO EMAIL ───
+    if (action === "voicemail") {
+      const recordingUrl = (body.recordingUrl || url.searchParams.get("recordingUrl") || "").trim();
+      const recordingDuration = (body.recordingDuration || url.searchParams.get("recordingDuration") || "").trim();
+      const callerPhone = (body.phone || body.From || url.searchParams.get("phone") || url.searchParams.get("From") || "Unknown").trim();
+
+      console.log(`[Twilio Studio API] Voicemail received from ${callerPhone}. Duration: ${recordingDuration}s, URL: ${recordingUrl}`);
+
+      if (!recordingUrl) {
+        return jsonResponse({
+          success: false,
+          messageEn: "No recording URL provided.",
+          messageHe: "לא התקבלה הקלטת שמע."
+        });
+      }
+
+      const settings = await getAdminSettings();
+      const toEmail = settings.voicemailEmail;
+      
+      if (!toEmail) {
+        console.warn("No voicemailEmail configured in admin settings.");
+        return jsonResponse({
+          success: false,
+          messageEn: "Voicemail email notifications are not configured.",
+          messageHe: "קבלת הודעות באימייל אינה מוגדרת."
+        });
+      }
+
+      const host = settings.smtpHost || "smtp.gmail.com";
+      const port = parseInt(settings.smtpPort || "465", 10);
+      const user = settings.smtpUser;
+      const pass = settings.smtpPass;
+
+      if (!user || !pass) {
+        console.error("SMTP User or Password is not configured in Admin Settings.");
+        return jsonResponse({
+          success: false,
+          messageEn: "Voicemail email SMTP is not configured.",
+          messageHe: "שרת הדואר היוצא אינו מוגדר."
+        });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: {
+          user,
+          pass,
+        },
+      });
+
+      const mailOptions = {
+        from: `"Shatnez Lab IVR" <${user}>`,
+        to: toEmail,
+        subject: `New Voicemail from ${callerPhone} - Shatnez Lab IVR`,
+        text: `You have received a new voice message on the Shatnez Lab IVR system.\n\n` +
+              `Caller: ${callerPhone}\n` +
+              `Duration: ${recordingDuration} seconds\n` +
+              `Recording Link: ${recordingUrl}\n\n` +
+              `Please click the link above to listen to the message.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #f8fafc;">
+            <h2 style="color: #1e3a5f; margin-bottom: 20px; border-bottom: 2px solid #d4af37; padding-bottom: 10px;">🔬 Shatnez Lab IVR Notification</h2>
+            <p style="font-size: 16px; color: #0d1b2a;">You have received a new voicemail/message from a caller.</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <tr style="background-color: #f1f5f9;">
+                <td style="padding: 10px; font-weight: bold; color: #475569;">Caller Phone:</td>
+                <td style="padding: 10px; color: #0d1b2a; font-family: monospace; font-size: 15px;">${callerPhone}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px; font-weight: bold; color: #475569;">Duration:</td>
+                <td style="padding: 10px; color: #0d1b2a;">${recordingDuration} seconds</td>
+              </tr>
+              <tr style="background-color: #f1f5f9;">
+                <td style="padding: 10px; font-weight: bold; color: #475569;">Recording:</td>
+                <td style="padding: 10px;">
+                  <a href="${recordingUrl}" target="_blank" style="color: #d4af37; font-weight: bold; text-decoration: underline;">Listen to Recording</a>
+                </td>
+              </tr>
+            </table>
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 30px; text-align: center;">This is an automated notification from your Shatnez Lab Telephony System.</p>
+          </div>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      return jsonResponse({
+        success: true,
+        messageEn: "Voicemail notification sent successfully.",
+        messageHe: "הודעת האימייל נשלחה בהצלחה."
       });
     }
 
