@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Microscope, Truck, Home, ShieldCheck, Clock, Phone, ChevronRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Microscope, Truck, Home, ShieldCheck, Clock, Phone, ChevronRight, Plus, Minus } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
 const fadeInUp = {
@@ -20,6 +21,7 @@ const staggerContainer = {
 
 export default function HomePage() {
   const { t, isRtl } = useLanguage();
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   return (
     <div className="space-y-0">
@@ -185,6 +187,65 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* FAQ Section for SEO and Authority */}
+      <section className="section-padding bg-primary-50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl sm:text-4xl font-bold text-navy-900 mb-4">{t("faq_title")}</h2>
+            <p className="text-lg text-primary-600">
+              {t("faq_desc")}
+            </p>
+          </motion.div>
+
+          <div className="space-y-4">
+            {[1, 2, 3].map((num, index) => (
+              <motion.div
+                key={num}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="bg-white rounded-2xl shadow-sm border border-primary-100 overflow-hidden"
+              >
+                <button
+                  onClick={() => setOpenFaq(openFaq === num ? null : num)}
+                  className={`w-full px-6 py-5 flex items-center justify-between text-left transition-colors duration-200 ${
+                    openFaq === num ? "bg-navy-50" : "hover:bg-primary-50"
+                  }`}
+                >
+                  <h3 className={`text-lg font-bold ${openFaq === num ? "text-navy-900" : "text-navy-800"}`}>
+                    {t(`faq_q${num}`)}
+                  </h3>
+                  <div className={`flex-shrink-0 ml-4 ${openFaq === num ? "text-gold-500" : "text-primary-400"}`}>
+                    {openFaq === num ? <Minus className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                  </div>
+                </button>
+                <AnimatePresence>
+                  {openFaq === num && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                    >
+                      <div className="px-6 pb-6 text-primary-600 leading-relaxed border-t border-primary-100/50 pt-4">
+                        {t(`faq_a${num}`)}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="section-padding bg-navy-900 text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gold-500/10 via-transparent to-transparent" />
@@ -201,11 +262,11 @@ export default function HomePage() {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <a 
-                href="tel:845-709-2022" 
+                href="tel:845-552-4744" 
                 className="btn-primary inline-flex items-center gap-2"
               >
                 <Phone className="w-5 h-5" />
-                {t("call_now")}: 845-709-2022
+                <span dir="ltr">{t("call_now")}: 845-552-4744</span>
               </a>
               <Link href="/track" className="inline-flex items-center gap-2 px-8 py-3 rounded-lg font-semibold border-2 border-white/20 text-white hover:bg-white/10 transition-all duration-300">
                 {t("track_your_order")}

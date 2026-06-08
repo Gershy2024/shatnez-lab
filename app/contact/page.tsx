@@ -1,14 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Phone, MapPin, Clock, MessageCircle, Send, CheckCircle } from "lucide-react";
+import { Phone, MapPin, Clock, MessageCircle, Send, CheckCircle, Mail } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
 export default function ContactPage() {
   const { t, isRtl } = useLanguage();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", message: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyEmail = (e: React.MouseEvent) => {
+    try {
+      navigator.clipboard.writeText("info@theshatnezlab.com");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy: ", err);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,10 +70,10 @@ export default function ContactPage() {
             initial={{ opacity: 0, x: isRtl ? 20 : -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="lg:col-span-1 space-y-6"
+            className="lg:col-span-1 flex flex-col justify-between lg:space-y-0 space-y-6 h-full"
           >
             <a 
-              href="tel:845-709-2022"
+              href="tel:845-552-4744"
               className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
             >
               <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-gold-200 transition-colors">
@@ -69,13 +81,35 @@ export default function ContactPage() {
               </div>
               <div className={isRtl ? "text-right" : ""}>
                 <h3 className="font-semibold text-navy-900 mb-1">{t("call_us")}</h3>
-                <p className="text-primary-600">845-709-2022</p>
+                <p className="text-primary-600" dir="ltr">845-552-4744</p>
                 <p className="text-sm text-primary-400 mt-1">{t("tap_to_call")}</p>
               </div>
             </a>
 
-            <div className="card p-6 flex items-start gap-4">
-              <div className="w-12 h-12 bg-navy-100 rounded-xl flex items-center justify-center shrink-0">
+            <a 
+              href="mailto:info@theshatnezlab.com"
+              onClick={handleCopyEmail}
+              className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
+            >
+              <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-gold-200 transition-colors">
+                <Mail className="w-6 h-6 text-gold-600" />
+              </div>
+              <div className={isRtl ? "text-right" : ""}>
+                <h3 className="font-semibold text-navy-900 mb-1">{t("email_us")}</h3>
+                <p className="text-primary-600" dir="ltr">info@theshatnezlab.com</p>
+                <p className={`text-sm mt-1 transition-colors duration-200 ${copied ? "text-green-600 font-semibold" : "text-primary-400"}`}>
+                  {copied ? t("copied") : t("tap_to_email")}
+                </p>
+              </div>
+            </a>
+
+            <a 
+              href="https://maps.google.com/?q=14+Buchanan+Rd,+Spring+Valley,+NY+10977"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
+            >
+              <div className="w-12 h-12 bg-navy-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-navy-200 transition-colors">
                 <MapPin className="w-6 h-6 text-navy-600" />
               </div>
               <div className={isRtl ? "text-right" : ""}>
@@ -84,8 +118,9 @@ export default function ContactPage() {
                   14 Buchanan Rd<br />
                   Spring Valley, NY 10977
                 </p>
+                <p className="text-sm text-primary-400 mt-1">{t("tap_to_map")}</p>
               </div>
-            </div>
+            </a>
 
             <div className="card p-6 flex items-start gap-4">
               <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0">
@@ -157,6 +192,17 @@ export default function ContactPage() {
                       />
                     </div>
                   </div>
+                  
+                  <p className="text-[10px] text-primary-500 mt-1 leading-relaxed">
+                    {t("sms_consent_text")}{" "}
+                    <Link href="/privacy" className="underline hover:text-gold-500 font-medium text-gold-600">
+                      {t("privacy_policy")}
+                    </Link>{" "}
+                    {t("and")}{" "}
+                    <Link href="/terms" className="underline hover:text-gold-500 font-medium text-gold-600">
+                      {t("terms_conditions")}
+                    </Link>.
+                  </p>
                   
                   <div>
                     <label className="block text-sm font-medium text-navy-800 mb-2">{t("email")}</label>

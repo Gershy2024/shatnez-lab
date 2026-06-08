@@ -13,8 +13,9 @@ export default function Navbar() {
   const navLinks = [
     { href: "/", label: t("home") },
     { href: "/track", label: t("track_order") },
+    { href: "/stats", label: t("shatnez_info") },
+    { href: "/shipping", label: t("shipping") },
     { href: "/contact", label: t("contact") },
-    { href: "/admin", label: t("admin") },
   ];
 
   const languages: { code: Language; label: string; text: string }[] = [

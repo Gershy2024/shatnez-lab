@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { Microscope, Phone, MapPin, Mail } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 export default function Footer() {
+  const { t } = useLanguage();
   return (
     <footer className="bg-navy-900 text-primary-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
@@ -29,9 +31,10 @@ export default function Footer() {
             <h3 className="font-semibold text-white">Quick Links</h3>
             <ul className="space-y-2">
               {[
-                { href: "/", label: "Home" },
-                { href: "/track", label: "Track Your Order" },
-                { href: "/contact", label: "Contact Us" },
+                { href: "/", label: t("home") },
+                { href: "/track", label: t("track_order") },
+                { href: "/shipping", label: t("shipping") },
+                { href: "/contact", label: t("contact") },
               ].map((link) => (
                 <li key={link.href}>
                   <Link 
@@ -59,20 +62,28 @@ export default function Footer() {
               <li className="flex items-center gap-3">
                 <Phone className="w-5 h-5 text-gold-400 shrink-0" />
                 <a 
-                  href="tel:845-709-2022" 
+                  href="tel:845-552-4744" 
                   className="text-sm text-primary-300 hover:text-gold-400 transition-colors"
                 >
-                  845-709-2022
+                  <span dir="ltr">845-552-4744</span>
                 </a>
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-navy-800 text-center">
+        <div className="mt-12 pt-8 border-t border-navy-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <p className="text-sm text-primary-400">
             &copy; {new Date().getFullYear()} The Shatnez Lab. All rights reserved.
           </p>
+          <div className="flex gap-6 text-sm text-primary-400">
+            <Link href="/privacy" className="hover:text-gold-400 transition-colors duration-200">
+              {t("privacy_policy")}
+            </Link>
+            <Link href="/terms" className="hover:text-gold-400 transition-colors duration-200">
+              {t("terms_conditions")}
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

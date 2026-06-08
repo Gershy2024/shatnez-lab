@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage } from "@/lib/db";
+import { triggerOutboundCall } from "@/lib/twilioCall";
 import nodemailer from "nodemailer";
 
 function formatSpokenDate(dateStr: string): { he: string; en: string } {
@@ -73,6 +74,21 @@ function translateStatusEn(status: string): string {
   return map[status] || status;
 }
 
+// Helper to check and generate a unique order ID by appending -2, -3 etc. if needed
+async function getUniqueOrderId(baseId: string): Promise<string> {
+  const cleanBaseId = baseId.trim();
+  let finalId = cleanBaseId;
+  let existing = await getOrderById(finalId);
+  if (existing) {
+    let counter = 2;
+    while (await getOrderById(`${cleanBaseId}-${counter}`)) {
+      counter++;
+    }
+    finalId = `${cleanBaseId}-${counter}`;
+  }
+  return finalId;
+}
+
 // Global CORS or response headers if needed, but since it's an API, simple JSON response is fine.
 function jsonResponse(data: any, status = 200) {
   return NextResponse.json(data, {
@@ -116,12 +132,153 @@ async function handleRequest(req: NextRequest) {
     }
     
     // Fallback to query params if not in body
-    const action = (body.action || url.searchParams.get("action") || "").trim();
-    const query = (body.query || url.searchParams.get("query") || "").trim();
-    const phone = (body.phone || url.searchParams.get("phone") || "").trim();
-    const pin = (body.pin || url.searchParams.get("pin") || "").trim();
+    const rawAction = (body.action || url.searchParams.get("action") || "").trim();
     
-    console.log(`[Twilio Studio API] Action: "${action}", Query: "${query}", Phone: "${phone}", PIN: "${pin}"`);
+    // Auto-detect action if there's any recording-related parameter
+    let action = rawAction;
+    const hasRecordingParam = !!(
+      body.recordingUrl || body.RecordingUrl || body.recording_url ||
+      body.RecordingSid || body.recordingSid || body.recording_sid ||
+      url.searchParams.get("recordingUrl") || url.searchParams.get("RecordingUrl") || url.searchParams.get("recording_url") ||
+      url.searchParams.get("RecordingSid") || url.searchParams.get("recordingSid") || url.searchParams.get("recording_sid")
+    );
+    if (!action && hasRecordingParam) {
+      action = "voicemail";
+      console.log(`[Twilio Studio API] Auto-detected action as "voicemail" due to recording parameters`);
+    }
+
+    const getParam = (name: string) => {
+      const lowerName = name.trim().toLowerCase();
+      for (const [key, value] of Object.entries(body)) {
+        if (key.trim().toLowerCase() === lowerName) return (typeof value === "string" ? value : "").trim();
+      }
+      for (const [key, value] of Array.from(url.searchParams.entries())) {
+        if (key.trim().toLowerCase() === lowerName) return value.trim();
+      }
+      return "";
+    };
+
+    const query = getParam("query");
+    const phone = getParam("phone") || getParam("From") || getParam("Caller") || "";
+    const pin = getParam("pin");
+    const callSid = getParam("CallSid") || getParam("callSid") || getParam("call_sid") || getParam("FromSid") || "";
+    
+    console.log(`[Twilio Studio API] Action: "${action}" (Raw: "${rawAction}"), Query: "${query}", Phone: "${phone}", PIN: "${pin}", CallSid: "${callSid}"`);
+
+    // ─── 0.0 LOG CALL START ───
+    if (action === "log_call_start") {
+      console.log(`[Twilio Studio API] Logging call start for CallSid: ${callSid}, Phone: ${phone}`);
+      await logCallEvent(callSid, phone, "Call started", "active");
+      return jsonResponse({ success: true });
+    }
+
+    // ─── 0.1 LOG MENU KEYPRESS ───
+    if (action === "log_keypress") {
+      const digit = getParam("digit");
+      console.log(`[Twilio Studio API] Logging keypress for CallSid: ${callSid}, Phone: ${phone}, Digit: ${digit}`);
+      
+      const labelMap: Record<string, string> = {
+        "1": "Pressed Option 1 (Garment Dropoff)",
+        "2": "Pressed Option 2 (Check Order Status)",
+        "3": "Pressed Option 3 (Special Services)",
+        "9": "Pressed Option 9 (Admin Access Request)",
+        "0": "Requested Representative"
+      };
+
+      const logLabel = labelMap[digit] || `Pressed Option ${digit}`;
+      await logCallEvent(callSid, phone, logLabel);
+      return jsonResponse({ success: true });
+    }
+
+    // ─── 0. CHECK BUSINESS HOURS ───
+    if (action === "check_hours") {
+      const settings = await getAdminSettings();
+      
+      await logCallEvent(callSid, phone, "Requested Representative");
+
+      if (settings.holidayModeActive) {
+        console.log(`[Twilio Studio API] check_hours - Holiday Mode Active. Routing to Voicemail.`);
+        await logCallEvent(callSid, phone, "Redirected to Voicemail (Holiday Mode)", "voicemail");
+        const holEn = settings.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.";
+        const holHe = settings.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.";
+        return jsonResponse({
+          isWithinHours: false,
+          forwardingNumber: "",
+          callerId: "",
+          messageEn: holEn,
+          messageHe: holHe
+        });
+      }
+
+      const nyTime = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const dayOfWeek = nyTime.getDay(); // 0 is Sunday, 6 is Saturday
+      const currentHour = nyTime.getHours();
+      const currentMin = nyTime.getMinutes();
+
+      const startStr = settings.forwardingHoursStart || "09:00";
+      const endStr = settings.forwardingHoursEnd || "21:00";
+      
+      const parseTime = (timeStr: string) => {
+        const parts = timeStr.split(":");
+        if (parts.length !== 2) return { h: 0, m: 0 };
+        return { h: parseInt(parts[0], 10), m: parseInt(parts[1], 10) };
+      };
+
+      const start = parseTime(startStr);
+      const end = parseTime(endStr);
+
+      const currentMinsTotal = currentHour * 60 + currentMin;
+      const startMinsTotal = start.h * 60 + start.m;
+      const endMinsTotal = end.h * 60 + end.m;
+
+      let isWithinHours = false;
+      
+      if (dayOfWeek === 6) {
+         isWithinHours = false; // Block completely on Shabbat (Saturday)
+      } else {
+         if (startMinsTotal <= endMinsTotal) {
+           isWithinHours = currentMinsTotal >= startMinsTotal && currentMinsTotal <= endMinsTotal;
+         } else {
+           isWithinHours = currentMinsTotal >= startMinsTotal || currentMinsTotal <= endMinsTotal;
+         }
+      }
+
+      const num = settings.forwardingNumber || "8457092022";
+      const formatDialNumber = (n: string) => {
+        const clean = n.replace(/\D/g, "");
+        if (clean.length === 10) return `+1${clean}`;
+        if (clean.length === 11 && clean.startsWith("1")) return `+${clean}`;
+        if (clean.length > 0) return `+${clean}`;
+        return `+18457092022`;
+      };
+      const formattedNum = formatDialNumber(num);
+
+      // Determine Caller ID to use for forwarding
+      const callerIdType = settings.callerIdType || "caller";
+      let callerId = phone; // default is customer's phone number
+      if (callerIdType === "twilio" && settings.twilioPhoneNumber) {
+        callerId = settings.twilioPhoneNumber;
+      }
+      if (!callerId) {
+        callerId = getParam("From") || settings.twilioPhoneNumber || "";
+      }
+
+      console.log(`[Twilio Studio API] check_hours: isWithinHours=${isWithinHours}, forwardingTo=${formattedNum}, callerId=${callerId}, currentNYTime=${nyTime.toISOString()}`);
+
+      if (isWithinHours) {
+        await logCallEvent(callSid, phone || callerId, "Forwarded to Representative", "completed");
+      } else {
+        await logCallEvent(callSid, phone || callerId, "Redirected to Voicemail (Outside Hours)", "voicemail");
+      }
+
+      return jsonResponse({
+        isWithinHours,
+        forwardingNumber: formattedNum,
+        callerId,
+        messageEn: "Our office is currently closed. Please leave a message after the beep, and we will get back to you.",
+        messageHe: "המשרד סגור כעת. אנא השאירו הודעה לאחר הצפצוף, ונחזור אליכם בהקדם."
+      });
+    }
 
     // ─── DEBUG DIAGNOSTICS ───
     if (action === "debug") {
@@ -146,7 +303,7 @@ async function handleRequest(req: NextRequest) {
           found: false,
           ordersCount: 0,
           messageEn: "No phone number detected.",
-          messageHe: "לא זוהה מספר טלפון."
+          messageHe: "No phone number detected."
         });
       }
 
@@ -155,41 +312,46 @@ async function handleRequest(req: NextRequest) {
       const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
       
       console.log(`[Twilio Studio API] Performing Caller Lookup for: "${searchPhone}"`);
-      const orders = await getOrdersByPhone(searchPhone);
+      await logCallEvent(callSid, phone, "Auto Caller Lookup");
+      const rawOrders = await getOrdersByPhone(searchPhone);
+      const orders = rawOrders.filter(o => !o.archived);
 
       if (orders.length === 0) {
         return jsonResponse({
           found: false,
           ordersCount: 0,
           messageEn: `No orders found for phone number ${phone.split("").join(" ")}.`,
-          messageHe: `לא נמצאו הזמנות עבור מספר הטלפון המבוקש.`
+          messageHe: `No orders found for phone number ${phone.split("").join(" ")}.`
         }, 404);
       }
 
       let enMsg = `We found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
-      let heMsg = `נמצאו ${orders.length} הזמנות עבורך. `;
 
       for (const o of orders) {
-        const safeId = String(o.id).replace(/-/g, " dash ");
-        const safeIdHe = String(o.id).replace(/-/g, " מקף ");
+        const safeId = String(o.id).split("").join(" ");
         const enStatus = translateStatusEn(o.status || "received");
-        const heStatus = translateStatus(o.status || "received");
         
         enMsg += `Order ${safeId} is ${enStatus}. `;
-        heMsg += `הזמנה ${safeIdHe} היא ${heStatus}. `;
         
         if (o.result) {
-          const translatedResult = o.result === "Clean / No Shatnez" ? "נקי משעטנז" : o.result === "Shatnez Found" ? "נמצא שעטנז" : o.result;
           enMsg += `Test result is: ${o.result}. `;
-          heMsg += `תוצאת הבדיקה היא: ${translatedResult}. `;
+        } else {
+          enMsg += `Test result is: not available yet. `;
+        }
+
+        if (o.status === "ready") {
+          const locEn = o.location || "14 Buchanan Rd";
+          enMsg += `Please pick up at ${locEn}. `;
         }
       }
+
+      enMsg += "Thank you for calling The Shatnez Lab. Goodbye.";
 
       return jsonResponse({
         found: true,
         ordersCount: orders.length,
         messageEn: enMsg.trim(),
-        messageHe: heMsg.trim()
+        messageHe: enMsg.trim()
       });
     }
 
@@ -199,34 +361,41 @@ async function handleRequest(req: NextRequest) {
         return jsonResponse({
           found: false,
           messageEn: "Please enter an order number or phone number.",
-          messageHe: "אנא הקש מספר הזמנה או מספר טלפון."
+          messageHe: "Please enter an order number or phone number."
         });
       }
 
       console.log(`[Twilio Studio API] Performing Manual Lookup for: "${query}"`);
+      await logCallEvent(callSid, phone || "Unknown", `Typed status check: ${query}`);
       
       // Try Order ID first
       let order = await getOrderById(query);
+      if (order && order.archived) {
+        order = null;
+      }
       
       // If not found, check if it looks like a phone number to search by phone
       if (!order && query.replace(/\D/g, "").length >= 7) {
-        const byPhone = await getOrdersByPhone(query);
+        const allByPhone = await getOrdersByPhone(query);
+        const byPhone = allByPhone.filter(o => !o.archived);
         if (byPhone.length === 1) {
           order = byPhone[0];
         } else if (byPhone.length > 1) {
           let enMsg = `We found ${byPhone.length} orders for this phone number. `;
-          let heMsg = `נמצאו ${byPhone.length} הזמנות למספר זה. `;
           for (const o of byPhone) {
-            const safeId = String(o.id).replace(/-/g, " dash ");
-            const safeIdHe = String(o.id).replace(/-/g, " מקף ");
+            const safeId = String(o.id).split("").join(" ");
             enMsg += `Order ${safeId}, status ${translateStatusEn(o.status || "received")}. `;
-            heMsg += `הזמנה ${safeIdHe}, סטטוס ${translateStatus(o.status || "received")}. `;
+            if (o.status === "ready") {
+              const locEn = o.location || "14 Buchanan Rd";
+              enMsg += `Pick up at ${locEn}. `;
+            }
           }
+          enMsg += "Thank you for using The Shatnez Lab. Goodbye.";
           return jsonResponse({
             found: true,
             isMultiple: true,
             messageEn: enMsg.trim(),
-            messageHe: heMsg.trim()
+            messageHe: enMsg.trim()
           });
         }
       }
@@ -235,34 +404,37 @@ async function handleRequest(req: NextRequest) {
         return jsonResponse({
           found: false,
           messageEn: `We could not find any order with number ${query.split("").join(" ")}.`,
-          messageHe: `לא מצאנו הזמנה עם המספר המבוקש.`
+          messageHe: `We could not find any order with number ${query.split("").join(" ")}.`
         }, 404);
       }
 
       const enStatus = translateStatusEn(order.status || "received");
-      const heStatus = translateStatus(order.status || "received");
       const safeId = String(order.id).replace(/-/g, " dash ");
-      const safeIdHe = String(order.id).replace(/-/g, " מקף ");
       
       let enMsg = `Order ${safeId} is currently ${enStatus}. `;
-      let heMsg = `הזמנה ${safeIdHe} היא כרגע ${heStatus}. `;
       
       if (order.estimatedCompletion) {
         enMsg += `Estimated completion is ${order.estimatedCompletion}. `;
-        heMsg += `תאריך סיום משוער הוא ${order.estimatedCompletion}. `;
       }
       
       if (order.result) {
-        const translatedResult = order.result === "Clean / No Shatnez" ? "נקי משעטנז" : order.result === "Shatnez Found" ? "נמצא שעטנז" : order.result;
         enMsg += `Test result is: ${order.result}. `;
-        heMsg += `תוצאת הבדיקה היא: ${translatedResult}. `;
+      } else {
+        enMsg += `Test result is: not available yet. `;
       }
+
+      if (order.status === "ready") {
+        const locEn = order.location || "14 Buchanan Rd";
+        enMsg += `Please pick up at ${locEn}. `;
+      }
+
+      enMsg += "Thank you for using The Shatnez Lab. Goodbye.";
 
       return jsonResponse({
         found: true,
         isMultiple: false,
         messageEn: enMsg.trim(),
-        messageHe: heMsg.trim()
+        messageHe: enMsg.trim()
       });
     }
 
@@ -273,6 +445,7 @@ async function handleRequest(req: NextRequest) {
       const authenticated = pin === expectedPin;
       
       console.log(`[Twilio Studio API] Admin Auth attempt. Provided: "${pin}", Success: ${authenticated}`);
+      await logCallEvent(callSid, phone, authenticated ? "Admin Logged In (PIN check)" : "Admin PIN Failed");
       return jsonResponse({
         authenticated,
         messageEn: authenticated ? "Access granted." : "Incorrect personal identification number.",
@@ -284,7 +457,15 @@ async function handleRequest(req: NextRequest) {
     if (action === "admin_get_recent") {
       console.log(`[Twilio Studio API] Fetching recent orders for Admin Menu`);
       const orders = await getAllOrders();
-      const recent = orders.slice(-5).reverse();
+      // Sort by createdAt descending, fallback to dateReceived
+      orders.sort((a, b) => {
+        if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+        if (a.createdAt) return -1;
+        if (b.createdAt) return 1;
+        return new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime();
+      });
+      
+      const recent = orders.slice(0, 5);
       
       if (recent.length === 0) {
         return jsonResponse({
@@ -320,12 +501,69 @@ async function handleRequest(req: NextRequest) {
 
     // ─── 5. ADMIN ADD NEW ORDER ───
     if (action === "admin_add_order") {
-      const newOrderId = (body.orderId || url.searchParams.get("orderId") || "").trim();
-      const customerPhone = (body.customerPhone || url.searchParams.get("customerPhone") || "").trim();
+      let newOrderId = getParam("orderId");
+      let customerPhone = getParam("customerPhone");
+      let locationDigit = getParam("locationDigit");
       
-      console.log(`[Twilio Studio API] Admin adding new order: "${newOrderId}", Phone: "${customerPhone}"`);
+      console.log(`[Twilio Studio API] Admin adding new order: "${newOrderId}", Phone: "${customerPhone}", LocationDigit: "${locationDigit}"`);
       
-      if (!newOrderId) {
+      if (!newOrderId && !customerPhone) {
+        return jsonResponse({
+          success: false,
+          messageEn: "System error: No phone number was received from Twilio.",
+          messageHe: "תקלה במערכת: לא התקבל מספר טלפון מהטלפון."
+        });
+      }
+      
+      // If one is missing, fallback to the other
+      if (!newOrderId) newOrderId = customerPhone;
+      if (!customerPhone) customerPhone = newOrderId;
+
+      let finalOrderId = newOrderId;
+      let existing = await getOrderById(finalOrderId);
+      if (existing) {
+        let counter = 2;
+        while (await getOrderById(`${newOrderId}-${counter}`)) {
+          counter++;
+        }
+        finalOrderId = `${newOrderId}-${counter}`;
+        console.log(`[Twilio Studio API] Order ID ${newOrderId} already exists, using ${finalOrderId}`);
+      }
+
+      let selectedLoc = "14 Buchanan Rd";
+      if (String(locationDigit).replace(/[^0-9]/g, "") === "2") {
+        selectedLoc = "166 Clinton Lane";
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      await saveOrder({
+        id: finalOrderId,
+        customerName: "Phone Admin",
+        phone: customerPhone,
+        status: "received",
+        dateReceived: today,
+        estimatedCompletion: "",
+        notes: "Created via Phone IVR Admin Menu",
+        result: "",
+        location: selectedLoc,
+        createdAt: Date.now()
+      });
+
+      const spokenLocation = selectedLoc === "166 Clinton Lane" ? "at 166 Clinton Lane" : "at 14 Buchanan Road";
+      const spokenLocationHe = selectedLoc === "166 Clinton Lane" ? "במיקום קלינטון 166" : "במיקום ביוקנן 14";
+
+      return jsonResponse({
+        success: true,
+        messageEn: `<speak>Phone number <say-as interpret-as="digits">${newOrderId.split("").join(" ")}</say-as> was successfully added ${spokenLocation}.</speak>`,
+        messageHe: `הזמנה עבור מספר טלפון ${newOrderId.split("").join(" ")} נוספה בהצלחה למערכת ${spokenLocationHe}.`
+      });
+    }
+
+    // ─── 5.5 ADMIN CHECK ORDER EXISTS ───
+    if (action === "admin_check_order") {
+      const orderId = getParam("orderId");
+      
+      if (!orderId) {
         return jsonResponse({
           success: false,
           messageEn: "Missing order ID.",
@@ -333,41 +571,42 @@ async function handleRequest(req: NextRequest) {
         });
       }
 
-      const existing = await getOrderById(newOrderId);
-      if (existing) {
+      let order = await getOrderById(orderId);
+      if (!order && orderId.replace(/\D/g, "").length >= 7) {
+        const byPhone = await getOrdersByPhone(orderId.replace(/\D/g, ""));
+        if (byPhone.length > 0) {
+          byPhone.sort((a, b) => {
+            if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+            if (a.createdAt) return -1;
+            if (b.createdAt) return 1;
+            return new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime();
+          });
+          order = byPhone[0];
+        }
+      }
+
+      if (!order) {
         return jsonResponse({
           success: false,
-          messageEn: `<speak>Order number <say-as interpret-as="digits">${newOrderId}</say-as> already exists in the system.</speak>`,
-          messageHe: `מספר הזמנה ${newOrderId} כבר קיים במערכת.`
+          messageEn: `We could not find an order for phone number ${orderId.split("").join(" ")}.`,
+          messageHe: `לא מצאנו הזמנה עבור מספר הטלפון ${orderId.split("").join(" ")}.`
         });
       }
 
-      const today = new Date().toISOString().split("T")[0];
-      await saveOrder({
-        id: newOrderId,
-        customerName: "Phone Admin",
-        phone: customerPhone,
-        status: "received",
-        dateReceived: today,
-        estimatedCompletion: "",
-        notes: "Created via Phone IVR Admin Menu",
-        result: ""
-      });
-
       return jsonResponse({
         success: true,
-        messageEn: `<speak>Order <say-as interpret-as="digits">${newOrderId}</say-as> was successfully added.</speak>`,
-        messageHe: `הזמנה ${newOrderId} נוספה בהצלחה למערכת.`
+        messageEn: "Order found.",
+        messageHe: "הזמנה נמצאה."
       });
     }
-
     // ─── 6. ADMIN UPDATE ORDER STATUS ───
     if (action === "admin_update_order") {
-      const orderId = (body.orderId || url.searchParams.get("orderId") || "").trim();
-      const newStatusDigit = (body.statusDigit || url.searchParams.get("statusDigit") || "").trim();
-      const resultSelection = (body.resultSelection || url.searchParams.get("resultSelection") || "").trim();
+      const orderId = getParam("orderId");
+      const newStatusDigit = getParam("statusDigit");
+      const resultSelection = getParam("resultSelection");
+      const locationDigit = getParam("locationDigit");
       
-      console.log(`[Twilio Studio API] Admin updating order: "${orderId}", statusDigit: "${newStatusDigit}", resultSelection: "${resultSelection}"`);
+      console.log(`[Twilio Studio API] Admin updating order: "${orderId}", statusDigit: "${newStatusDigit}", resultSelection: "${resultSelection}", locationDigit: "${locationDigit}"`);
 
       if (!orderId) {
         return jsonResponse({
@@ -377,12 +616,25 @@ async function handleRequest(req: NextRequest) {
         });
       }
 
-      const order = await getOrderById(orderId);
+      let order = await getOrderById(orderId);
+      if (!order && orderId.replace(/\D/g, "").length >= 7) {
+        const byPhone = await getOrdersByPhone(orderId.replace(/\D/g, ""));
+        if (byPhone.length > 0) {
+          byPhone.sort((a, b) => {
+            if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+            if (a.createdAt) return -1;
+            if (b.createdAt) return 1;
+            return new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime();
+          });
+          order = byPhone[0];
+        }
+      }
+
       if (!order) {
         return jsonResponse({
           success: false,
-          messageEn: `We could not find order number ${orderId.split("").join(" ")}.`,
-          messageHe: `לא מצאנו את הזמנה מספר ${orderId}.`
+          messageEn: `We could not find an order for phone number ${orderId.split("").join(" ")}.`,
+          messageHe: `לא מצאנו הזמנה עבור מספר הטלפון ${orderId.split("").join(" ")}.`
         });
       }
 
@@ -395,66 +647,141 @@ async function handleRequest(req: NextRequest) {
         "5": "delivered",
         "6": "issue"
       };
+      const oldStatus = order.status;
 
-      const mappedStatus = statusMap[newStatusDigit];
+      const cleanStatusDigit = newStatusDigit.replace(/[^0-9]/g, "");
+      const mappedStatus = statusMap[cleanStatusDigit];
       if (mappedStatus) {
         order.status = mappedStatus;
       }
 
       // Map digits to result values
-      if (resultSelection === "1") {
+      const cleanResultSelection = String(resultSelection).replace(/[^0-9]/g, "");
+      if (cleanResultSelection === "1") {
         order.result = "Clean / No Shatnez";
-      } else if (resultSelection === "2") {
+      } else if (cleanResultSelection === "2") {
         order.result = "Shatnez Found";
-      } else if (resultSelection === "3") {
+      } else if (cleanResultSelection === "3") {
         order.result = "Call to Discuss";
+      } else {
+        // Debugging injection to help diagnose the "not updating" issue
+        order.notes = (order.notes || "") + `\n[System Debug] Failed to parse resultSelection. Raw body: ${JSON.stringify(body)}. Clean result: '${cleanResultSelection}'`;
       }
 
+      // Map digits to location values
+      const cleanLocationDigit = String(locationDigit).replace(/[^0-9]/g, "");
+      if (cleanLocationDigit === "1") {
+        order.location = "14 Buchanan Rd";
+      } else if (cleanLocationDigit === "2") {
+        order.location = "166 Clinton Lane";
+      }
+
+      const origin = `https://${req.headers.get("host")}`;
+      const notifyDigit = getParam("notifyDigit");
+      const cleanNotifyDigit = notifyDigit.replace(/[^0-9]/g, "");
+
       await saveOrder(order);
+
+      if (order.status === "ready" && oldStatus !== "ready" && order.phone) {
+        // If notifyDigit is "2", we skip the notification
+        if (cleanNotifyDigit !== "2") {
+          triggerOutboundCall(order.phone, order.id, origin);
+        }
+      }
 
       const friendlyStatusEn = translateStatusEn(order.status);
       const friendlyStatusHe = translateStatus(order.status);
       const friendlyResultEn = order.result || "no result";
-      const friendlyResultHe = order.result || "ללא תוצאה";
+      let friendlyResultHe = "ללא תוצאה";
+      if (order.result === "Clean / No Shatnez") friendlyResultHe = "נקי משעטנז";
+      else if (order.result === "Shatnez Found") friendlyResultHe = "נמצא שעטנז";
+      else if (order.result === "Call to Discuss") friendlyResultHe = "להתקשר לבירור";
+      else if (order.result) friendlyResultHe = order.result;
+
+      const locationTextEn = order.location ? `. Location is ${order.location}` : "";
+      const locationTextHe = order.location ? `. המיקום הוא ${order.location === "166 Clinton Lane" ? "קלינטון 166" : "ביוקנן 14"}` : "";
 
       return jsonResponse({
         success: true,
-        messageEn: `<speak>Updated order number <say-as interpret-as="digits">${orderId}</say-as> to status ${friendlyStatusEn} and result ${friendlyResultEn}.</speak>`,
-        messageHe: `הזמנה מספר ${orderId} עודכנה בהצלחה לסטטוס ${friendlyStatusHe} ותוצאה ${friendlyResultHe}.`
+        messageEn: `<speak>Phone number <say-as interpret-as="digits">${orderId.split("").join(" ")}</say-as> was successfully updated to ${friendlyStatusEn}. Result is ${friendlyResultEn}${locationTextEn}.</speak>`,
+        messageHe: `הזמנה עבור מספר טלפון ${orderId.split("").join(" ")} עודכנה לסטטוס ${friendlyStatusHe}. תוצאה: ${friendlyResultHe}${locationTextHe}.`
       });
     }
 
     // ─── 7. VOICEMAIL RECORDING TO EMAIL ───
     if (action === "voicemail" || action === "voice") {
-      const recordingUrl = (
-        body.recordingUrl || 
-        body.RecordingUrl || 
-        body.recording_url || 
-        url.searchParams.get("recordingUrl") || 
-        url.searchParams.get("RecordingUrl") || 
-        url.searchParams.get("recording_url") || 
-        ""
-      ).trim();
-      
-      const recordingDuration = (
-        body.recordingDuration || 
-        body.RecordingDuration || 
-        body.recording_duration || 
-        url.searchParams.get("recordingDuration") || 
-        url.searchParams.get("RecordingDuration") || 
-        url.searchParams.get("recording_duration") || 
-        ""
-      ).trim();
-      
-      const callerPhone = (
-        body.phone || 
-        body.From || 
-        body.phone_number || 
-        url.searchParams.get("phone") || 
-        url.searchParams.get("From") || 
-        url.searchParams.get("phone_number") || 
-        "Unknown"
-      ).trim();
+      console.log("[Twilio Studio API] Voicemail Body:", JSON.stringify(body));
+      console.log("[Twilio Studio API] Voicemail SearchParams:", url.search);
+      // Helper function to resolve parameters robustly
+      const resolveParam = (possibleKeys: string[], containsKeywords: string[]): string => {
+        // 1. Exact or case-insensitive match (stripping special chars)
+        const cleanedPossible = possibleKeys.map(k => k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+        for (const [k, v] of Object.entries(body)) {
+          const cleanedK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (cleanedPossible.includes(cleanedK)) return String(v).trim();
+        }
+        let foundQueryVal = "";
+        url.searchParams.forEach((v, k) => {
+          const cleanedK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (cleanedPossible.includes(cleanedK)) {
+            foundQueryVal = v.trim();
+          }
+        });
+        if (foundQueryVal) return foundQueryVal;
+
+        // 2. Keyword/substring match
+        for (const kw of containsKeywords) {
+          const lowerKw = kw.toLowerCase();
+          for (const [k, v] of Object.entries(body)) {
+            if (k.toLowerCase().includes(lowerKw)) return String(v).trim();
+          }
+          let foundKeywordVal = "";
+          url.searchParams.forEach((v, k) => {
+            if (k.toLowerCase().includes(lowerKw)) {
+              foundKeywordVal = v.trim();
+            }
+          });
+          if (foundKeywordVal) return foundKeywordVal;
+        }
+        return "";
+      };
+
+      let recordingUrl = resolveParam(["recordingurl", "recording_url"], ["url", "recor"]);
+      let recordingDuration = resolveParam(["recordingduration", "recording_duration"], ["duration", "dur"]);
+      let callerPhone = resolveParam(["phone", "from", "phonenumber", "phone_number"], ["phone", "from", "number"]);
+
+      // ─── EXTRA BULLETPROOF FALLBACK FOR URL ───
+      if (!recordingUrl) {
+        for (const [k, v] of Object.entries(body)) {
+          const valStr = String(v).trim();
+          if (valStr.startsWith("http") || valStr.includes("twilio.com")) {
+            recordingUrl = valStr;
+            console.log(`[Twilio Studio API] Fallback matched recordingUrl from key "${k}": ${recordingUrl}`);
+            break;
+          }
+        }
+        if (!recordingUrl) {
+          url.searchParams.forEach((v, k) => {
+            const valStr = v.trim();
+            if ((valStr.startsWith("http") || valStr.includes("twilio.com")) && !recordingUrl) {
+              recordingUrl = valStr;
+              console.log(`[Twilio Studio API] Fallback matched recordingUrl from key "${k}" in searchParams: ${recordingUrl}`);
+            }
+          });
+        }
+      }
+
+      // If duration is still empty, try to find a number that isn't the phone number
+      if (!recordingDuration) {
+        for (const [k, v] of Object.entries(body)) {
+          const valStr = String(v).trim();
+          if (/^\d+$/.test(valStr) && valStr !== callerPhone.replace(/\D/g, "")) {
+            recordingDuration = valStr;
+            console.log(`[Twilio Studio API] Fallback matched recordingDuration from key "${k}": ${recordingDuration}`);
+            break;
+          }
+        }
+      }
 
       console.log(`[Twilio Studio API] Voicemail received from ${callerPhone}. Duration: ${recordingDuration}s, URL: ${recordingUrl}`);
 
@@ -464,6 +791,23 @@ async function handleRequest(req: NextRequest) {
           messageEn: "No recording URL provided.",
           messageHe: "לא התקבלה הקלטת שמע."
         });
+      }
+
+      // ── SAVE TO DATABASE FIRST ──
+      const vmId = Date.now().toString();
+      try {
+        await saveVoicemail({
+          id: vmId,
+          phone: callerPhone,
+          duration: recordingDuration || "Unknown",
+          url: recordingUrl,
+          timestamp: Date.now(),
+          read: false,
+        });
+        console.log(`[Twilio Studio API] Voicemail ${vmId} saved to database.`);
+        await logCallEvent(callSid, callerPhone, `Voicemail Left (${recordingDuration}s)`, "voicemail", recordingDuration);
+      } catch (err) {
+        console.error("Failed to save voicemail to db:", err);
       }
 
       const settings = await getAdminSettings();
@@ -479,7 +823,7 @@ async function handleRequest(req: NextRequest) {
       }
 
       const host = settings.smtpHost || "smtp.gmail.com";
-      const port = parseInt(settings.smtpPort || "465", 10);
+      const port = parseInt(String(settings.smtpPort || "465").trim(), 10);
       const user = settings.smtpUser;
       const pass = settings.smtpPass;
 
@@ -492,56 +836,803 @@ async function handleRequest(req: NextRequest) {
         });
       }
 
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: {
-          user,
-          pass,
-        },
-      });
+      try {
+        const transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: {
+            user,
+            pass,
+          },
+        });
 
-      const mailOptions = {
-        from: `"Shatnez Lab IVR" <${user}>`,
-        to: toEmail,
-        subject: `New Voicemail from ${callerPhone} - Shatnez Lab IVR`,
-        text: `You have received a new voice message on the Shatnez Lab IVR system.\n\n` +
-              `Caller: ${callerPhone}\n` +
-              `Duration: ${recordingDuration} seconds\n` +
-              `Recording Link: ${recordingUrl}\n\n` +
-              `Please click the link above to listen to the message.`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #f8fafc;">
-            <h2 style="color: #1e3a5f; margin-bottom: 20px; border-bottom: 2px solid #d4af37; padding-bottom: 10px;">🔬 Shatnez Lab IVR Notification</h2>
-            <p style="font-size: 16px; color: #0d1b2a;">You have received a new voicemail/message from a caller.</p>
-            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-              <tr style="background-color: #f1f5f9;">
-                <td style="padding: 10px; font-weight: bold; color: #475569;">Caller Phone:</td>
-                <td style="padding: 10px; color: #0d1b2a; font-family: monospace; font-size: 15px;">${callerPhone}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px; font-weight: bold; color: #475569;">Duration:</td>
-                <td style="padding: 10px; color: #0d1b2a;">${recordingDuration} seconds</td>
-              </tr>
-              <tr style="background-color: #f1f5f9;">
-                <td style="padding: 10px; font-weight: bold; color: #475569;">Recording:</td>
-                <td style="padding: 10px;">
-                  <a href="${recordingUrl}" target="_blank" style="color: #d4af37; font-weight: bold; text-decoration: underline;">Listen to Recording</a>
-                </td>
-              </tr>
-            </table>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 30px; text-align: center;">This is an automated notification from your Shatnez Lab Telephony System.</p>
-          </div>
-        `,
-      };
+        const mailOptions = {
+          from: `"Shatnez Lab IVR" <${user}>`,
+          to: toEmail,
+          subject: `New Voicemail from ${callerPhone} - Shatnez Lab IVR`,
+          text: `You have received a new voice message on the Shatnez Lab IVR system.\n\n` +
+                `Caller: ${callerPhone}\n` +
+                `Duration: ${recordingDuration} seconds\n` +
+                `Recording Link: ${recordingUrl}\n\n` +
+                `Please click the link above to listen to the message.`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #f8fafc;">
+              <h2 style="color: #1e3a5f; margin-bottom: 20px; border-bottom: 2px solid #d4af37; padding-bottom: 10px;">🔬 Shatnez Lab IVR Notification</h2>
+              <p style="font-size: 16px; color: #0d1b2a;">You have received a new voicemail/message from a caller.</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <tr style="background-color: #f1f5f9;">
+                  <td style="padding: 10px; font-weight: bold; color: #475569;">Caller Phone:</td>
+                  <td style="padding: 10px; color: #0d1b2a; font-family: monospace; font-size: 15px;">${callerPhone}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; font-weight: bold; color: #475569;">Duration:</td>
+                  <td style="padding: 10px; color: #0d1b2a;">${recordingDuration} seconds</td>
+                </tr>
+                <tr style="background-color: #f1f5f9;">
+                  <td style="padding: 10px; font-weight: bold; color: #475569;">Recording:</td>
+                  <td style="padding: 10px;">
+                    <a href="${recordingUrl}" target="_blank" style="color: #d4af37; font-weight: bold; text-decoration: underline;">Listen to Recording</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 30px; text-align: center;">This is an automated notification from your Shatnez Lab Telephony System.</p>
+            </div>
+          `,
+        };
 
-      await transporter.sendMail(mailOptions);
+        await transporter.sendMail(mailOptions);
+        console.log(`[Twilio Studio API] Voicemail email sent successfully to ${toEmail}`);
+      } catch (mailErr) {
+        console.error("[Twilio Studio API] Failed to send voicemail email:", mailErr);
+      }
 
       return jsonResponse({
         success: true,
-        messageEn: "Voicemail notification sent successfully.",
-        messageHe: "הודעת האימייל נשלחה בהצלחה."
+        messageEn: "Voicemail recorded successfully.",
+        messageHe: "הודעת הקלטה נשמרה בהצלחה."
+      });
+    }
+
+    // ─── 8. INCOMING SMS HANDLER ───
+    const globalJsonResponse = jsonResponse;
+    if (action === "incoming_sms") {
+      const fromPhone = getParam("phone") || "";
+      const msgBody = getParam("msg") || "";
+      
+      console.log(`[Twilio Studio API] Incoming SMS from: "${fromPhone}", body: "${msgBody}"`);
+
+      // Log the incoming SMS message immediately in database
+      await logSmsMessage(fromPhone, msgBody, "inbound");
+      await logCallEvent(undefined, fromPhone, `SMS: "${msgBody}"`, "completed");
+
+      // Shadow the jsonResponse function for the scope of incoming_sms to log all replies
+      const jsonResponse = (data: any, status = 200) => {
+        if (data && data.replyMessage) {
+          logSmsMessage(fromPhone, data.replyMessage, "outbound").catch(e => {
+            console.error("Error logging outbound SMS reply:", e);
+          });
+          logCallEvent(undefined, fromPhone, `SMS Outbound: "${data.replyMessage}"`, "completed").catch(e => {
+            console.error("Error logging call event for outbound SMS reply:", e);
+          });
+        }
+        return globalJsonResponse(data, status);
+      };
+      
+      // ─── ADMIN SMS COMMANDS CHECK ───
+      const settings = await getAdminSettings();
+      const pin = settings.pin || "1234";
+      
+      const isAdminPhone = fromPhone === "+18455524744" || fromPhone === "+18457092022";
+      const isPinProvided = msgBody.startsWith(pin + " ") || msgBody.trim() === pin;
+      
+      const partsRaw = msgBody.trim().split(/\s+/);
+      const firstWord = partsRaw[0].toLowerCase();
+      const validCommands = [
+        "recent", "אחרונים", "אחרונות", 
+        "add", "הוסף", "הזן", "חדש", 
+        "update", "עדכן", "ערוך", 
+        "admin", "help", "היי", "hi", "עזרה", "מנהל",
+        "cancel", "ביטול", "exit"
+      ];
+      const isCommandWithoutPin = isAdminPhone && validCommands.includes(firstWord);
+
+      let activeState = isAdminPhone ? await getAdminState(fromPhone) : null;
+
+      if (isPinProvided || isCommandWithoutPin || activeState) {
+        let parts = partsRaw;
+        // Normalize parts array so command is always the first element in parts
+        if (isPinProvided) {
+          parts = partsRaw.slice(1);
+          if (parts.length === 0) {
+            parts = [""];
+          }
+        }
+        
+        const inputMsg = parts.join(" ").trim();
+        const inputWord = parts[0]?.toLowerCase() || "";
+
+        // If user entered a fresh command word, clear any active state to let it fall through
+        const overrideCommands = ["add", "הוסף", "הזן", "חדש", "update", "עדכן", "ערוך", "recent", "אחרונים", "אחרונות", "cancel", "ביטול", "exit", "help", "עזרה"];
+        if (activeState && overrideCommands.includes(inputWord)) {
+          await clearAdminState(fromPhone);
+          activeState = null;
+        }
+
+        // Check for cancel command
+        if (inputWord === "cancel" || inputWord === "ביטול" || inputWord === "exit") {
+          await clearAdminState(fromPhone);
+          return jsonResponse({
+            success: true,
+            replyMessage: "Process cancelled."
+          });
+        }
+
+        let adminReply = isCommandWithoutPin && !activeState ? "Hey Boss!\n" : "";
+
+        // If there is an active state, process it as a step in the state machine
+        if (activeState) {
+          if (activeState.action === "add") {
+            if (activeState.step === 1) {
+              // Received Customer Phone
+              const customerPhone = inputMsg.trim();
+              if (!customerPhone) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Invalid phone. Enter customer phone number:"
+                });
+              }
+              const finalId = await getUniqueOrderId(customerPhone);
+              const messagePrefix = finalId !== customerPhone ? `using ID: ${finalId}.\n` : "";
+              
+              activeState.tempData.orderId = finalId;
+              activeState.tempData.customerPhone = customerPhone;
+              activeState.step = 2;
+              activeState.lastUpdated = Date.now();
+              await saveAdminState(fromPhone, activeState);
+              return jsonResponse({
+                success: true,
+                replyMessage: `${messagePrefix}Enter customer name (optional - reply 'no', 'skip', or '0' to skip):`
+              });
+            }
+
+            if (activeState.step === 2) {
+              // Received Optional Customer Name
+              const nameInput = inputMsg.trim();
+              const skipWords = ["no", "skip", "0", "none", "לא", "בלי", "no name"];
+              const isSkip = skipWords.includes(nameInput.toLowerCase());
+              
+              activeState.tempData.customerName = isSkip ? "SMS Admin" : nameInput;
+              activeState.step = 3;
+              activeState.lastUpdated = Date.now();
+              await saveAdminState(fromPhone, activeState);
+              return jsonResponse({
+                success: true,
+                replyMessage: "Select pickup location:\n1: 14 Buchanan Rd\n2: 166 Clinton Lane"
+              });
+            }
+            
+            if (activeState.step === 3) {
+              // Received Location Digit
+              const locationDigit = inputMsg.replace(/[^0-9]/g, "");
+              let selectedLoc = "";
+              if (locationDigit === "1") {
+                selectedLoc = "14 Buchanan Rd";
+              } else if (locationDigit === "2") {
+                selectedLoc = "166 Clinton Lane";
+              } else {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Invalid choice. Reply 1 for Buchanan, 2 for Clinton:"
+                });
+              }
+
+              const today = new Date().toISOString().split("T")[0];
+              const orderId = activeState.tempData.orderId!;
+              const phoneNum = activeState.tempData.customerPhone || "";
+              const customerName = activeState.tempData.customerName || "SMS Admin";
+              
+              await saveOrder({
+                id: orderId,
+                customerName: customerName,
+                phone: phoneNum,
+                status: "received",
+                dateReceived: today,
+                estimatedCompletion: "",
+                notes: "Created via interactive SMS Admin",
+                result: "",
+                location: selectedLoc,
+                createdAt: Date.now()
+              });
+
+              await clearAdminState(fromPhone);
+              const nameMessage = customerName !== "SMS Admin" ? `, Name: ${customerName}` : "";
+              return jsonResponse({
+                success: true,
+                replyMessage: `Order added! ID: ${orderId}${nameMessage}, Location: ${selectedLoc}`
+              });
+            }
+          }
+
+          if (activeState.action === "update") {
+            if (activeState.step === 1) {
+              // Received Order ID or Phone query to search
+              let queryStr = inputMsg.trim();
+              const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
+              const queryParts = queryStr.split(/\s+/);
+              if (queryParts.length > 1 && noiseWords.includes(queryParts[0].toLowerCase())) {
+                queryStr = queryParts.slice(1).join(" ").trim();
+              }
+              let order = await getOrderById(queryStr);
+              if (!order && queryStr.replace(/\D/g, "").length >= 7) {
+                const byPhone = await getOrdersByPhone(queryStr);
+                if (byPhone.length === 1) {
+                  order = byPhone[0];
+                } else if (byPhone.length > 1) {
+                  let reply = "Multiple found. Reply exact ID:\n";
+                  for (const o of byPhone) {
+                    reply += `- ${o.id} (${o.status})\n`;
+                  }
+                  return jsonResponse({
+                    success: true,
+                    replyMessage: reply
+                  });
+                }
+              }
+
+              if (!order) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Order not found. Enter valid Order ID to update:"
+                });
+              }
+
+              activeState.tempData.orderId = order.id;
+              activeState.step = 2;
+              activeState.lastUpdated = Date.now();
+              await saveAdminState(fromPhone, activeState);
+              return jsonResponse({
+                success: true,
+                replyMessage: `Order ${order.id} found. Select status:\n1:Received 2:Testing 3:Review 4:Ready 5:Delivered 6:Issue`
+              });
+            }
+
+            if (activeState.step === 2) {
+              // Received Status Digit
+              const statusDigit = inputMsg.replace(/[^0-9]/g, "");
+              const statusMap: Record<string, string> = { "1": "received", "2": "testing", "3": "review", "4": "ready", "5": "delivered", "6": "issue" };
+              if (!statusMap[statusDigit]) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Invalid choice. Select status (1-6):\n1:Received 2:Testing 3:Review 4:Ready 5:Delivered 6:Issue"
+                });
+              }
+              activeState.tempData.statusDigit = statusDigit;
+              activeState.step = 3;
+              activeState.lastUpdated = Date.now();
+              await saveAdminState(fromPhone, activeState);
+              return jsonResponse({
+                success: true,
+                replyMessage: "Select test result:\n1:Clean 2:Shatnez Found 3:Call to Discuss 4:No Change"
+              });
+            }
+
+            if (activeState.step === 3) {
+              // Received Result Digit
+              const resultDigit = inputMsg.replace(/[^0-9]/g, "");
+              if (!["1", "2", "3", "4"].includes(resultDigit)) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Invalid choice. Select result (1-4):\n1:Clean 2:Shatnez Found 3:Call to Discuss 4:No Change"
+                });
+              }
+              activeState.tempData.resultDigit = resultDigit;
+              activeState.step = 4;
+              activeState.lastUpdated = Date.now();
+              await saveAdminState(fromPhone, activeState);
+              return jsonResponse({
+                success: true,
+                replyMessage: "Select pickup location:\n1: 14 Buchanan 2: 166 Clinton 3: No Change"
+              });
+            }
+
+            if (activeState.step === 4) {
+              // Received Location Digit
+              const locationDigit = inputMsg.replace(/[^0-9]/g, "");
+              if (!["1", "2", "3"].includes(locationDigit)) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Invalid choice. Select location (1-3):\n1: 14 Buchanan 2: 166 Clinton 3: No Change"
+                });
+              }
+              activeState.tempData.locationDigit = locationDigit;
+              activeState.step = 5;
+              activeState.lastUpdated = Date.now();
+              await saveAdminState(fromPhone, activeState);
+              return jsonResponse({
+                success: true,
+                replyMessage: "Trigger customer robocall?\n1: Yes\n2: No"
+              });
+            }
+
+            if (activeState.step === 5) {
+              // Received Notify Digit
+              const notifyDigit = inputMsg.replace(/[^0-9]/g, "");
+              if (!["1", "2"].includes(notifyDigit)) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Invalid choice. Reply 1 for Yes or 2 for No:"
+                });
+              }
+
+              const orderId = activeState.tempData.orderId!;
+              const order = await getOrderById(orderId);
+              if (!order) {
+                await clearAdminState(fromPhone);
+                return jsonResponse({
+                  success: true,
+                  replyMessage: "Order not found in system. Process aborted."
+                });
+              }
+
+              const statusMap: Record<string, "received" | "testing" | "review" | "ready" | "delivered" | "issue"> = {
+                "1": "received", "2": "testing", "3": "review", "4": "ready", "5": "delivered", "6": "issue"
+              };
+              const oldStatus = order.status;
+              const mappedStatus = statusMap[activeState.tempData.statusDigit!];
+              if (mappedStatus) order.status = mappedStatus;
+
+              const resultDigit = activeState.tempData.resultDigit!;
+              if (resultDigit === "1") order.result = "Clean / No Shatnez";
+              else if (resultDigit === "2") order.result = "Shatnez Found";
+              else if (resultDigit === "3") order.result = "Call to Discuss";
+
+              const locationDigit = activeState.tempData.locationDigit!;
+              if (locationDigit === "1") order.location = "14 Buchanan Rd";
+              else if (locationDigit === "2") order.location = "166 Clinton Lane";
+
+              await saveOrder(order);
+
+              // Notification call
+              let callTriggered = false;
+              if (order.status === "ready" && oldStatus !== "ready" && order.phone && notifyDigit !== "2") {
+                const origin = `https://${req.headers.get("host")}`;
+                triggerOutboundCall(order.phone, order.id, origin);
+                callTriggered = true;
+              }
+
+              await clearAdminState(fromPhone);
+
+              const friendlyStatusEn = translateStatusEn(order.status);
+              const friendlyResultEn = order.result || "N/A";
+              const locEn = order.location || "N/A";
+              
+              return jsonResponse({
+                success: true,
+                replyMessage: `Order ${orderId} updated!\nStatus: ${friendlyStatusEn}\nResult: ${friendlyResultEn}\nLocation: ${locEn}\nCall: ${callTriggered ? 'Yes' : 'No'}`
+              });
+            }
+          }
+        }
+
+        // Process top-level commands (not in activeState)
+        let cmd = inputWord;
+        if (["אחרונים", "אחרונות"].includes(cmd)) cmd = "recent";
+        else if (["הוסף", "הזן", "חדש"].includes(cmd)) cmd = "add";
+        else if (["עדכן", "ערוך"].includes(cmd)) cmd = "update";
+        else if (["עזרה", "מנהל", "היי", "hi"].includes(cmd)) cmd = "help";
+
+        if (cmd === "recent") {
+          const orders = await getAllOrders();
+          orders.sort((a, b) => new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime());
+          const recent = orders.slice(0, 5);
+          if (recent.length === 0) {
+            adminReply += "No orders in system.";
+          } else {
+            adminReply += "Recent Orders:\n";
+            for (const o of recent) {
+               adminReply += `ID: ${o.id} | Status: ${o.status}\n`;
+            }
+          }
+          return jsonResponse({ success: true, replyMessage: adminReply });
+        }
+        
+        if (cmd === "add") {
+          // Syntax: 
+          // - add -> guided flow (Step 1: Phone)
+          // - add [Phone] -> guided flow (Step 2: Name)
+          // - add [Name] [Phone] -> guided flow (Step 3: Location)
+          // - add [Phone] [Name] -> guided flow (Step 3: Location)
+          // - add [Phone] [LocationDigit] -> one-shot
+          // - add [Name] [Phone] [LocationDigit] -> one-shot
+          // - add [Phone] [Name] [LocationDigit] -> one-shot
+          
+          let args = parts.slice(1);
+          const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
+          if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
+            args = args.slice(1);
+          }
+
+          if (args.length === 0) {
+            // Interactive ADD start - Enter customer phone
+            await saveAdminState(fromPhone, {
+              action: "add",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Enter customer phone number:"
+            });
+          }
+
+          // Check if last word is a valid location digit
+          const lastWord = args[args.length - 1];
+          const hasLocation = args.length > 1 && (lastWord === "1" || lastWord === "2");
+          const locationDigit = hasLocation ? lastWord : undefined;
+          const remainingArgs = hasLocation ? args.slice(0, args.length - 1) : args;
+
+          // Find phone number among remaining arguments
+          // A phone number has at least 7 digits when non-digits are removed
+          const phoneIdx = remainingArgs.findIndex(word => word.replace(/\D/g, "").length >= 7);
+          
+          if (phoneIdx === -1) {
+            // No phone number found in input. Start at Step 1.
+            await saveAdminState(fromPhone, {
+              action: "add",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Enter customer phone number:"
+            });
+          }
+
+          const customerPhone = remainingArgs[phoneIdx];
+          const finalId = await getUniqueOrderId(customerPhone);
+          const messagePrefix = finalId !== customerPhone ? `using ID: ${finalId}.\n` : "";
+
+          // The name parts are everything else in remainingArgs
+          const nameParts = [
+            ...remainingArgs.slice(0, phoneIdx),
+            ...remainingArgs.slice(phoneIdx + 1)
+          ];
+          const customerName = nameParts.length > 0 ? nameParts.join(" ") : "";
+
+          if (hasLocation) {
+            // One-shot ADD
+            const selectedLoc = locationDigit === "1" ? "14 Buchanan Rd" : "166 Clinton Lane";
+            const finalName = customerName || "SMS Admin";
+            
+            const today = new Date().toISOString().split("T")[0];
+            await saveOrder({
+              id: finalId,
+              customerName: finalName,
+              phone: customerPhone,
+              status: "received",
+              dateReceived: today,
+              estimatedCompletion: "",
+              notes: "Created via SMS Admin (One-shot)",
+              result: "",
+              location: selectedLoc,
+              createdAt: Date.now()
+            });
+
+            const nameMessage = finalName !== "SMS Admin" ? `, Name: ${finalName}` : "";
+            adminReply += `Order added! ID: ${finalId}${nameMessage}, Location: ${selectedLoc}`;
+            return jsonResponse({ success: true, replyMessage: adminReply });
+          } else {
+            // Guided flow / shortcut
+            if (!customerName) {
+              // Only phone provided -> guide to Step 2 (Optional Name)
+              await saveAdminState(fromPhone, {
+                action: "add",
+                step: 2,
+                tempData: { orderId: finalId, customerPhone },
+                lastUpdated: Date.now()
+              });
+              return jsonResponse({
+                success: true,
+                replyMessage: `${messagePrefix}Enter customer name (optional - reply 'no', 'skip', or '0' to skip):`
+              });
+            } else {
+              // Phone and Name provided, missing Location -> guide to Step 3
+              await saveAdminState(fromPhone, {
+                action: "add",
+                step: 3,
+                tempData: { orderId: finalId, customerPhone, customerName },
+                lastUpdated: Date.now()
+              });
+              return jsonResponse({
+                success: true,
+                replyMessage: `${messagePrefix}Select pickup location:\n1: 14 Buchanan Rd\n2: 166 Clinton Lane`
+              });
+            }
+          }
+        }
+        
+        if (cmd === "update") {
+          // Syntax: update [orderId] [statusDigit] [resultDigit] [locationDigit] [notifyDigit]
+          let args = parts.slice(1);
+          const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
+          if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
+            args = args.slice(1);
+          }
+
+          const orderId = args[0];
+          const statusDigit = args[1];
+          const resultDigit = args[2];
+          const locationDigit = args[3];
+          const notifyDigit = args[4];
+
+          if (!orderId) {
+            // Interactive UPDATE start from beginning
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Enter Order ID to update:"
+            });
+          }
+
+          // We have orderId, let's lookup the order
+          let order = await getOrderById(orderId);
+          if (!order && orderId.replace(/\D/g, "").length >= 7) {
+            const byPhone = await getOrdersByPhone(orderId);
+            if (byPhone.length === 1) {
+              order = byPhone[0];
+            } else if (byPhone.length > 1) {
+              let reply = "Multiple found. Reply exact ID:\n";
+              for (const o of byPhone) {
+                reply += `- ${o.id} (${o.status})\n`;
+              }
+              await saveAdminState(fromPhone, {
+                action: "update",
+                step: 1,
+                tempData: {},
+                lastUpdated: Date.now()
+              });
+              return jsonResponse({ success: true, replyMessage: reply });
+            }
+          }
+
+          if (!order) {
+            // Order not found
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Order not found. Enter valid ID to update:"
+            });
+          }
+
+          // Order found. Check which arguments are missing.
+          const statusMap: Record<string, "received" | "testing" | "review" | "ready" | "delivered" | "issue"> = {
+            "1": "received", "2": "testing", "3": "review", "4": "ready", "5": "delivered", "6": "issue"
+          };
+
+          if (!statusDigit) {
+            // Missing status -> start guided at Step 2
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 2,
+              tempData: { orderId: order.id },
+              lastUpdated: Date.now()
+            });
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Order ${order.id} found. Continue?\nSelect status:\n1:Received 2:Testing 3:Review 4:Ready 5:Delivered 6:Issue`
+            });
+          }
+
+          // Validate statusDigit
+          const cleanStatus = statusDigit.replace(/[^0-9]/g, "");
+          const mappedStatus = statusMap[cleanStatus];
+          if (!mappedStatus) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid status (${statusDigit}). Enter 1 to 6.`
+            });
+          }
+
+          if (!resultDigit) {
+            // Missing result -> start guided at Step 3
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 3,
+              tempData: { orderId: order.id, statusDigit: cleanStatus },
+              lastUpdated: Date.now()
+            });
+
+            const friendlyStatusEn = translateStatusEn(mappedStatus);
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Status set to: ${friendlyStatusEn}.\nSelect test result:\n1:Clean 2:Shatnez Found 3:Call to Discuss 4:No Change`
+            });
+          }
+
+          // Validate resultDigit
+          const cleanResult = resultDigit.replace(/[^0-9]/g, "");
+          if (!["1", "2", "3", "4"].includes(cleanResult)) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid result (${resultDigit}). Enter 1 to 4.`
+            });
+          }
+
+          if (!locationDigit) {
+            // Missing location -> start guided at Step 4
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 4,
+              tempData: { orderId: order.id, statusDigit: cleanStatus, resultDigit: cleanResult },
+              lastUpdated: Date.now()
+            });
+
+            const friendlyStatusEn = translateStatusEn(mappedStatus);
+            const resultNamesEn = { "1": "Clean / No Shatnez", "2": "Shatnez Found", "3": "Call to Discuss", "4": "No Change" };
+            const friendlyResultEn = resultNamesEn[cleanResult as keyof typeof resultNamesEn] || "No Change";
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Status: ${friendlyStatusEn}, Result: ${friendlyResultEn}.\nSelect location:\n1: 14 Buchanan 2: 166 Clinton 3: No Change`
+            });
+          }
+
+          // Validate locationDigit
+          const cleanLoc = locationDigit.replace(/[^0-9]/g, "");
+          if (!["1", "2", "3"].includes(cleanLoc)) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid location (${locationDigit}). Enter 1 to 3.`
+            });
+          }
+
+          if (!notifyDigit) {
+            // Missing notify -> start guided at Step 5
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 5,
+              tempData: { orderId: order.id, statusDigit: cleanStatus, resultDigit: cleanResult, locationDigit: cleanLoc },
+              lastUpdated: Date.now()
+            });
+
+            const friendlyStatusEn = translateStatusEn(mappedStatus);
+            const resultNamesEn = { "1": "Clean / No Shatnez", "2": "Shatnez Found", "3": "Call to Discuss", "4": "No Change" };
+            const friendlyResultEn = resultNamesEn[cleanResult as keyof typeof resultNamesEn] || "No Change";
+            const locNamesEn = { "1": "14 Buchanan Rd", "2": "166 Clinton Lane", "3": "No Change" };
+            const friendlyLocEn = locNamesEn[cleanLoc as keyof typeof locNamesEn] || "No Change";
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Status: ${friendlyStatusEn}, Result: ${friendlyResultEn}, Location: ${friendlyLocEn}.\nTrigger customer robocall?\n1: Yes\n2: No`
+            });
+          }
+
+          // Validate notifyDigit
+          const cleanNotify = notifyDigit.replace(/[^0-9]/g, "");
+          if (!["1", "2"].includes(cleanNotify)) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid notify digit (${notifyDigit}). Enter 1 or 2.`
+            });
+          }
+
+          // All 5 provided -> One-shot UPDATE
+          const oldStatus = order.status;
+          order.status = mappedStatus;
+
+          if (cleanResult === "1") order.result = "Clean / No Shatnez";
+          else if (cleanResult === "2") order.result = "Shatnez Found";
+          else if (cleanResult === "3") order.result = "Call to Discuss";
+
+          if (cleanLoc === "1") order.location = "14 Buchanan Rd";
+          else if (cleanLoc === "2") order.location = "166 Clinton Lane";
+
+          await saveOrder(order);
+
+          let callTriggered = false;
+          if (order.status === "ready" && oldStatus !== "ready" && order.phone && cleanNotify !== "2") {
+            const origin = `https://${req.headers.get("host")}`;
+            triggerOutboundCall(order.phone, order.id, origin);
+            callTriggered = true;
+          }
+          
+          adminReply += `Order ${order.id} updated! Status: ${order.status}, Result: ${order.result || "N/A"}, Loc: ${order.location || "N/A"}, Call: ${callTriggered ? 'Yes' : 'No'}`;
+          return jsonResponse({ success: true, replyMessage: adminReply });
+        }
+
+        // Help menu response
+        const prefix = isPinProvided ? pin + " " : "";
+        adminReply += `Admin SMS Menu:\n\n` +
+          `1. guided add: ${prefix}add\n` +
+          `2. guided update: ${prefix}update\n` +
+          `3. cancel flow: cancel\n\n` +
+          `One-shot commands:\n` +
+          `- ${prefix}recent\n` +
+          `- ${prefix}add [ID] [Phone] [Loc 1-2]\n` +
+          `- ${prefix}update [ID] [Stat 1-6] [Res 1-3] [Loc 1-2] [Call 1-2]`;
+
+        return jsonResponse({
+          success: true,
+          replyMessage: adminReply
+        });
+      }
+
+      // ─── NORMAL CUSTOMER FLOW ───
+      // Try to find by msgBody if it looks like an order ID or phone
+      const cleanMsg = msgBody.replace(/\D/g, "");
+      let foundOrder = null;
+      let multipleOrders: any[] = [];
+
+      if (cleanMsg.length >= 7) {
+        // Try as order ID
+        foundOrder = await getOrderById(cleanMsg);
+        if (!foundOrder) {
+          // Try as phone
+          const byPhone = await getOrdersByPhone(cleanMsg);
+          if (byPhone.length === 1) {
+            foundOrder = byPhone[0];
+          } else if (byPhone.length > 1) {
+            multipleOrders = byPhone;
+          }
+        }
+      }
+
+      // If not found by body, try by fromPhone
+      if (!foundOrder && multipleOrders.length === 0 && fromPhone) {
+        const cleanPhone = fromPhone.replace(/\D/g, "");
+        const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
+        const byPhone = await getOrdersByPhone(searchPhone);
+        if (byPhone.length === 1) {
+          foundOrder = byPhone[0];
+        } else if (byPhone.length > 1) {
+          multipleOrders = byPhone;
+        }
+      }
+
+      let reply = "ברוכים הבאים למעבדת שעטנז! Welcome to the Shatnez Lab.\n\n";
+      
+      if (foundOrder) {
+        const heStatus = translateStatus(foundOrder.status || "received");
+        const enStatus = translateStatusEn(foundOrder.status || "received");
+        reply += `הזמנה / Order ${foundOrder.id}:\n`;
+        reply += `סטטוס: ${heStatus}\n`;
+        reply += `Status: ${enStatus}\n`;
+        if (foundOrder.result) {
+            const translatedResult = foundOrder.result === "Clean / No Shatnez" ? "נקי משעטנז" : foundOrder.result === "Shatnez Found" ? "נמצא שעטנז" : foundOrder.result === "Call to Discuss" ? "להתקשר לבירור" : foundOrder.result;
+            reply += `תוצאה: ${translatedResult}\n`;
+            reply += `Result: ${foundOrder.result}\n`;
+        }
+      } else if (multipleOrders.length > 0) {
+        reply += `נמצאו ${multipleOrders.length} הזמנות במספר זה. We found ${multipleOrders.length} orders for this number.\n\n`;
+        for (const o of multipleOrders.slice(0, 3)) {
+          const heStatus = translateStatus(o.status || "received");
+          const enStatus = translateStatusEn(o.status || "received");
+          reply += `הזמנה ${o.id}: ${heStatus} / ${enStatus}\n`;
+        }
+        if (multipleOrders.length > 3) reply += "...\n";
+      } else {
+        reply += "לא מצאנו הזמנה התואמת לפרטים אלו. הקלד מספר הזמנה כדי לבדוק סטטוס.\n";
+        reply += "We could not find an order. Please reply with your order number to check status.";
+      }
+
+      return jsonResponse({
+        success: true,
+        replyMessage: reply.trim()
       });
     }
 

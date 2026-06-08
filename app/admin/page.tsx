@@ -1,19 +1,162 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download } from "lucide-react";
+import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3 } from "lucide-react";
+import { auth, googleProvider } from "@/lib/firebase";
+import { signInWithPopup } from "firebase/auth";
 import PrintCard from "@/components/PrintCard";
-import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo } from "@/lib/db";
-import { Settings, Phone, Info, Microscope, ShieldCheck, MapPin } from "lucide-react";
+import VirtualPhone from "@/components/VirtualPhone";
+import Script from "next/script";
+import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages } from "@/lib/db";
+import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
+
+function formatDateTime(timestamp: number): string {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  const hoursStr = String(hours).padStart(2, "0");
+  
+  return `${day}.${month}.${year}, ${hoursStr}:${minutes}:${seconds} ${ampm}`;
+}
+
+function parseCallAction(action: string) {
+  if (action.startsWith("Voice input:")) {
+    const hasQuotes = action.includes('"');
+    if (hasQuotes) {
+      const quoteMatch = action.match(/"([^"]*)"/);
+      const transcript = quoteMatch ? quoteMatch[1] : "";
+      
+      const actionMatch = action.match(/Action:\s*([^,)]+)/i);
+      const orderIdMatch = action.match(/orderId:\s*([^,)]+)/i);
+      const statusMatch = action.match(/status:\s*([^,)]+)/i);
+      const resultMatch = action.match(/result:\s*([^,)]+)/i);
+      const phoneMatch = action.match(/phone:\s*([^,)]+)/i);
+
+      const parsedAction = actionMatch ? actionMatch[1].trim() : "none";
+      const parsedOrderId = orderIdMatch ? orderIdMatch[1].trim() : "none";
+      const parsedStatus = statusMatch ? statusMatch[1].trim() : "none";
+      const parsedResult = resultMatch ? resultMatch[1].trim() : "none";
+      const parsedPhone = phoneMatch ? phoneMatch[1].trim() : "none";
+
+      return {
+        type: "voice",
+        transcript,
+        action: parsedAction !== "none" ? parsedAction : null,
+        orderId: parsedOrderId !== "none" ? parsedOrderId : null,
+        status: parsedStatus !== "none" ? parsedStatus : null,
+        result: parsedResult !== "none" ? parsedResult : null,
+        phone: parsedPhone !== "none" ? parsedPhone : null,
+        raw: action
+      };
+    } else {
+      const command = action.substring("Voice input:".length).trim();
+      return {
+        type: "system",
+        label: `🗣️ פקודה קולית: "${command}"`,
+        labelEn: `🗣️ Voice Command: "${command}"`
+      };
+    }
+  }
+  
+  return {
+    type: "system",
+    label: action,
+    labelEn: action
+  };
+}
+
+function translateSystemLabel(parsed: { label?: string; labelEn?: string }, isRtl: boolean): string {
+  const label = parsed.label || "";
+  const labelEn = parsed.labelEn || label;
+  
+  const mapHe: Record<string, string> = {
+    "Call started": "📞 השיחה התחילה",
+    "Welcome Menu": "🏠 תפריט פתיח ראשי",
+    "Requested Representative": "🙋 ביקש נציג",
+    "Redirected to Voicemail (Holiday Mode)": "🏝️ הופנה לתא קולי (מצב חופשה)",
+    "Redirected to Voicemail (Outside Hours)": "🌙 הופנה לתא קולי (מחוץ לשעות הפעילות)",
+    "Forwarded to Representative": "↗️ שיחה הועברה לנציג",
+    "Voice cancel detected. Redirecting to admin menu.": "🔙 ביטול קולי - חזרה לתפריט הניהול",
+    "Voice input: exit": "🗣️ פקודה קולית: exit",
+    "Voice input: cancel": "🗣️ פקודה קולית: cancel",
+    "Voice input: main menu": "🗣️ פקודה קולית: main menu",
+    "Voice input: go back": "🗣️ פקודה קולית: go back",
+    "Voice input: welcome": "🗣️ פקודה קולית: welcome",
+    "Voice input: star": "🗣️ פקודה קולית: star",
+    "Pressed Option 1 (Garment Dropoff)": "הקיש אופציה 1 (הוראות מסירה ומחירים)",
+    "Pressed Option 2 (Check Order Status)": "הקיש אופציה 2 (בדיקת סטטוס הזמנה)",
+    "Pressed Option 3 (Special Services)": "הקיש אופציה 3 (שירותים מיוחדים)",
+    "Pressed Option 9 (Admin Access Request)": "הקיש אופציה 9 (בקשת גישה לניהול)",
+  };
+  
+  if (isRtl) {
+    return mapHe[label] || label;
+  }
+  return labelEn;
+}
+
+function getTimelineIcon(parsed: any) {
+  if (parsed.type === "voice") {
+    return <Mic className="w-3 h-3 text-gold-600" />;
+  }
+  const label = (parsed.label || "").toLowerCase();
+  if (label.includes("started") || label.includes("התחילה")) {
+    return <Phone className="w-3 h-3 text-emerald-600" />;
+  }
+  if (label.includes("voicemail") || label.includes("קולי")) {
+    return <Volume2 className="w-3 h-3 text-rose-600" />;
+  }
+  if (label.includes("representative") || label.includes("נציג")) {
+    return <PhoneIncoming className="w-3 h-3 text-sky-600" />;
+  }
+  if (label.includes("welcome") || label.includes("תפריט") || label.includes("pressed option") || label.includes("הקיש")) {
+    return <Sliders className="w-3 h-3 text-indigo-600" />;
+  }
+  if (label.includes("voice command") || label.includes("פקודה קולית")) {
+    return <Mic className="w-3 h-3 text-gold-600" />;
+  }
+  return <Info className="w-3 h-3 text-primary-500" />;
+}
+
+function getRelativeTime(timestamp: number, isRtl: boolean): string {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (isRtl) {
+    if (mins < 1) return "עכשיו";
+    if (mins < 60) return `לפני ${mins} דקות`;
+    if (hours < 24) return `לפני ${hours} שעות`;
+    return `לפני ${days} ימים`;
+  } else {
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+  }
+}
 
 export default function AdminPage() {
   const { t, isRtl } = useLanguage();
+  const dragControls = useDragControls();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [voicemails, setVoicemails] = useState<Voicemail[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
@@ -23,13 +166,32 @@ export default function AdminPage() {
     notes: "",
     result: "",
     phone: "",
+    location: "14 Buchanan Rd",
   });
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [adminPin, setAdminPin] = useState("1234");
-  const [forwardingNumber, setForwardingNumber] = useState("8457092022");
+  const [adminUser, setAdminUser] = useState("Gershy");
+  const [adminEmail, setAdminEmail] = useState("gershybraun@gmail.com");
+  const [forwardingNumber, setForwardingNumber] = useState("8455524744");
+  const [forwardingHoursStart, setForwardingHoursStart] = useState("09:00");
+  const [forwardingHoursEnd, setForwardingHoursEnd] = useState("21:00");
+  const [callerIdType, setCallerIdType] = useState<"caller" | "twilio">("caller");
+  const [calls, setCalls] = useState<CallRecord[]>([]);
+  const [callSearchQuery, setCallSearchQuery] = useState("");
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [smsMessages, setSmsMessages] = useState<SmsMessage[]>([]);
+  const [callLogSubTab, setCallLogSubTab] = useState<"timeline" | "sms">("timeline");
+  const [smsInput, setSmsInput] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
+  const [holidayModeActive, setHolidayModeActive] = useState(false);
+  const [dndActive, setDndActive] = useState(false);
+  const [ivrHolidayMsgEn, setIvrHolidayMsgEn] = useState("");
+  const [ivrHolidayMsgHe, setIvrHolidayMsgHe] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [newPin, setNewPin] = useState("");
+  const [newAdminUser, setNewAdminUser] = useState("");
+  const [newAdminEmail, setNewAdminEmail] = useState("");
   const [newForwardingNumber, setNewForwardingNumber] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -37,28 +199,114 @@ export default function AdminPage() {
   const [ivrGeneralHe, setIvrGeneralHe] = useState("");
   const [ivrSpecialEn, setIvrSpecialEn] = useState("");
   const [ivrSpecialHe, setIvrSpecialHe] = useState("");
+  const [outboundMsgEn, setOutboundMsgEn] = useState("");
+  const [outboundMsgHe, setOutboundMsgHe] = useState("");
 
   const [voicemailEmail, setVoicemailEmail] = useState("");
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("");
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
+  const [twilioAccountSid, setTwilioAccountSid] = useState("");
+  const [twilioAuthToken, setTwilioAuthToken] = useState("");
+  const [twilioPhoneNumber, setTwilioPhoneNumber] = useState("");
+  const [twilioApiKey, setTwilioApiKey] = useState("");
+  const [twilioApiSecret, setTwilioApiSecret] = useState("");
+  const [twilioTwimlAppSid, setTwilioTwimlAppSid] = useState("");
 
   const [audioFiles, setAudioFiles] = useState<AudioFileInfo[]>([]);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioName, setAudioName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isReplacingName, setIsReplacingName] = useState<string | null>(null);
 
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
   const [showBlueprintModal, setShowBlueprintModal] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [manualCallPhone, setManualCallPhone] = useState("");
+  const [manualCallOrderId, setManualCallOrderId] = useState("");
+  const [callPromptData, setCallPromptData] = useState<{orderId: string, phone: string} | null>(null);
   const [activeBlueprintTab, setActiveBlueprintTab] = useState("flow");
   const [isCardFlipped, setIsCardFlipped] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const [adminNotes, setAdminNotes] = useState("");
-
+  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics">("orders");
+  
+  const activeInboundCall = calls.find(c => c.status === "active" && Date.now() - c.timestamp < 90000 && c.direction !== "outbound");
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "success" | "error" | "info" }[]>([]);
+
+  const getCallAnalytics = () => {
+    let totalInbound = 0;
+    let totalOutbound = 0;
+    let totalSms = 0;
+    let totalVoice = 0;
+    let totalDurationSec = 0;
+    let callsWithDuration = 0;
+    
+    const keypressCount: Record<string, number> = {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "9": 0,
+      "0": 0
+    };
+
+    calls.forEach(c => {
+      const isOutbound = c.direction === "outbound" || c.actions.some(act => act.toLowerCase().includes("outbound"));
+      const isSms = c.actions.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:"));
+      
+      if (isSms) {
+        totalSms++;
+      } else {
+        totalVoice++;
+        if (isOutbound) {
+          totalOutbound++;
+        } else {
+          totalInbound++;
+        }
+        
+        if (c.duration) {
+          const sec = parseInt(c.duration.replace("s", ""), 10);
+          if (!isNaN(sec)) {
+            totalDurationSec += sec;
+            callsWithDuration++;
+          }
+        }
+      }
+
+      c.actions.forEach(act => {
+        if (act.includes("Pressed Option 1") || act.includes("הקיש אופציה 1")) keypressCount["1"]++;
+        if (act.includes("Pressed Option 2") || act.includes("הקיש אופציה 2") || act.includes("Auto Caller Lookup") || act.includes("Typed status check")) keypressCount["2"]++;
+        if (act.includes("Pressed Option 3") || act.includes("הקיש אופציה 3")) keypressCount["3"]++;
+        if (act.includes("Pressed Option 9") || act.includes("הקיש אופציה 9") || act.includes("Admin Logged In") || act.includes("Admin PIN Failed")) keypressCount["9"]++;
+        if (act.includes("Requested Representative") || act.includes("ביקש נציג") || act.includes("Forwarded to Representative")) keypressCount["0"]++;
+      });
+    });
+
+    const avgDuration = callsWithDuration > 0 ? Math.round(totalDurationSec / callsWithDuration) : 0;
+
+    return {
+      totalInbound,
+      totalOutbound,
+      totalSms,
+      totalVoice,
+      avgDuration,
+      keypressCount
+    };
+  };
+
+  const handleMarkCallCompleted = async (callId: string, phone: string) => {
+    try {
+      await logCallEvent(callId, phone, isRtl ? "סומן כהושלם ידנית" : "Manually completed", "completed");
+      showToast(isRtl ? "השיחה סומנה כהושלמה" : "Call marked as completed", "success");
+    } catch (err) {
+      console.error("Failed to mark call completed:", err);
+      showToast(isRtl ? "שגיאה בסימון השיחה" : "Failed to mark call completed", "error");
+    }
+  };
 
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -100,7 +348,7 @@ export default function AdminPage() {
   <text x="525" y="415" font-family="'Inter', 'Arial', sans-serif" font-weight="700" font-size="18" fill="#ffffff" fill-opacity="0.8" text-anchor="middle" letter-spacing="3">בדיקת שעטנז מקצועית ומוסמכת</text>
   
   <!-- Footer Contact -->
-  <text x="525" y="500" font-family="'Courier New', monospace" font-weight="bold" font-size="28" fill="#d4af37" text-anchor="middle" letter-spacing="1">📞 845-709-2022</text>
+  <text x="525" y="500" font-family="'Courier New', monospace" font-weight="bold" font-size="28" fill="#d4af37" text-anchor="middle" letter-spacing="1">📞 845-552-4744</text>
 </svg>`;
     } else {
       svgContent = `<?xml version="1.0" encoding="utf-8"?>
@@ -117,7 +365,7 @@ export default function AdminPage() {
     <text x="0" y="75" font-family="'Inter', 'Arial', sans-serif" font-weight="700" font-size="20" fill="#d4af37">Spring Valley, NY</text>
     
     <!-- Info Items -->
-    <text x="0" y="150" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="28" fill="#0d1b2a">📞 Phone: 845-709-2022</text>
+    <text x="0" y="150" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="28" fill="#0d1b2a">📞 Phone: 845-552-4744</text>
     <text x="0" y="210" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="24" fill="#4a5568">📍 Drop-off: 14 Buchanan Rd</text>
     <text x="0" y="270" font-family="'Inter', 'Arial', sans-serif" font-weight="bold" font-size="24" fill="#4a5568">🕒 Hours: 24/7 Automated System</text>
     
@@ -192,19 +440,38 @@ export default function AdminPage() {
     
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
+      setAdminUser(s.adminUser || "Gershy");
+      setAdminEmail(s.adminEmail || "gershybraun@gmail.com");
       setForwardingNumber(s.forwardingNumber);
+      setForwardingHoursStart(s.forwardingHoursStart || "09:00");
+      setForwardingHoursEnd(s.forwardingHoursEnd || "21:00");
+      setCallerIdType(s.callerIdType || "caller");
+      setHolidayModeActive(!!s.holidayModeActive);
+      setDndActive(!!s.dndActive);
+      setIvrHolidayMsgEn(s.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.");
+      setIvrHolidayMsgHe(s.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.");
       setNewPin(s.pin);
+      setNewAdminUser(s.adminUser || "Gershy");
+      setNewAdminEmail(s.adminEmail || "gershybraun@gmail.com");
       setNewForwardingNumber(s.forwardingNumber);
       setIvrGeneralEn(s.ivrGeneralEn || "");
       setIvrGeneralHe(s.ivrGeneralHe || "");
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
+      setOutboundMsgEn(s.outboundMsgEn || "");
+      setOutboundMsgHe(s.outboundMsgHe || "");
       setAdminNotes(s.adminNotes || "");
       setVoicemailEmail(s.voicemailEmail || "");
       setSmtpHost(s.smtpHost || "");
       setSmtpPort(s.smtpPort || "");
       setSmtpUser(s.smtpUser || "");
       setSmtpPass(s.smtpPass || "");
+      setTwilioAccountSid(s.twilioAccountSid || "");
+      setTwilioAuthToken(s.twilioAuthToken || "");
+      setTwilioPhoneNumber(s.twilioPhoneNumber || "");
+      setTwilioApiKey(s.twilioApiKey || "");
+      setTwilioApiSecret(s.twilioApiSecret || "");
+      setTwilioTwimlAppSid(s.twilioTwimlAppSid || "");
     });
 
     loadAudioFiles();
@@ -213,25 +480,67 @@ export default function AdminPage() {
       setOrders(data);
       setLoading(false);
     });
-    return () => unsub();
+    
+    const unsubVm = subscribeToVoicemails((data) => {
+      setVoicemails(data);
+    });
+
+    const unsubCalls = subscribeToCalls((data) => {
+      setCalls(data);
+      if (data.length > 0) {
+        setSelectedCallId(prev => prev || data[0].id);
+        // Auto-complete extremely old active calls in background
+        data.forEach(call => {
+          if (call.status === "active" && Date.now() - call.timestamp > 15 * 60 * 1000) {
+            logCallEvent(call.id, call.phone, "Call ended (auto-completed)", "completed", "0s");
+          }
+        });
+      }
+    });
+
+    const unsubSms = subscribeToSmsMessages(setSmsMessages);
+
+    return () => {
+      unsub();
+      unsubVm();
+      unsubCalls();
+      unsubSms();
+    };
   }, [isAuthenticated]);
 
   useEffect(() => {
     getAdminSettings().then(s => {
       setAdminPin(s.pin);
+      setAdminUser(s.adminUser || "Gershy");
+      setAdminEmail(s.adminEmail || "gershybraun@gmail.com");
       setForwardingNumber(s.forwardingNumber);
+      setCallerIdType(s.callerIdType || "caller");
+      setHolidayModeActive(!!s.holidayModeActive);
+      setDndActive(!!s.dndActive);
+      setIvrHolidayMsgEn(s.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.");
+      setIvrHolidayMsgHe(s.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.");
       setNewPin(s.pin);
+      setNewAdminUser(s.adminUser || "Gershy");
+      setNewAdminEmail(s.adminEmail || "gershybraun@gmail.com");
       setNewForwardingNumber(s.forwardingNumber);
       setIvrGeneralEn(s.ivrGeneralEn || "");
       setIvrGeneralHe(s.ivrGeneralHe || "");
       setIvrSpecialEn(s.ivrSpecialEn || "");
       setIvrSpecialHe(s.ivrSpecialHe || "");
+      setOutboundMsgEn(s.outboundMsgEn || "");
+      setOutboundMsgHe(s.outboundMsgHe || "");
       setAdminNotes(s.adminNotes || "");
       setVoicemailEmail(s.voicemailEmail || "");
       setSmtpHost(s.smtpHost || "");
       setSmtpPort(s.smtpPort || "");
       setSmtpUser(s.smtpUser || "");
       setSmtpPass(s.smtpPass || "");
+      setTwilioAccountSid(s.twilioAccountSid || "");
+      setTwilioAuthToken(s.twilioAuthToken || "");
+      setTwilioPhoneNumber(s.twilioPhoneNumber || "");
+      setTwilioApiKey(s.twilioApiKey || "");
+      setTwilioApiSecret(s.twilioApiSecret || "");
+      setTwilioTwimlAppSid(s.twilioTwimlAppSid || "");
     });
     if (isAuthenticated) {
       loadAudioFiles();
@@ -302,6 +611,40 @@ export default function AdminPage() {
     }
   };
 
+  const handleReplaceAudio = async (name: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+
+    if (file.size > 1024 * 1024) {
+      showToast(isRtl ? "גודל הקובץ עולה על 1MB. אנא בחר קובץ קטן יותר." : "File size exceeds 1MB. Please choose a smaller file.", "error");
+      return;
+    }
+
+    setIsReplacingName(name);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          await uploadAudioFile(name, base64);
+          
+          showToast(isRtl ? `קובץ השמע ${name} הוחלף בהצלחה!` : `Audio file ${name} replaced successfully!`, "success");
+          loadAudioFiles();
+        } catch (err) {
+          console.error(err);
+          showToast(isRtl ? "שגיאה בהחלפת הקובץ." : "Error replacing file.", "error");
+        } finally {
+          setIsReplacingName(null);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      showToast(isRtl ? "שגיאה בקריאת הקובץ." : "Error reading file.", "error");
+      setIsReplacingName(null);
+    }
+  };
+
   const handleCopyAudioUrl = (name: string) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}`;
@@ -311,7 +654,7 @@ export default function AdminPage() {
 
   const handleTogglePlay = (name: string) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}`;
+    const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}&t=${Date.now()}`;
 
     if (playingName === name && currentAudio) {
       currentAudio.pause();
@@ -342,11 +685,31 @@ export default function AdminPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === adminPin) {
+    if (pin === adminPin && username.toLowerCase() === adminUser.toLowerCase()) {
       setIsAuthenticated(true);
       setPinError(false);
     } else {
       setPinError(true);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      if (!auth) {
+        showToast("Firebase Auth not initialized.", "error");
+        return;
+      }
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user.email?.toLowerCase() === adminEmail.toLowerCase()) {
+        setIsAuthenticated(true);
+        setPinError(false);
+      } else {
+        await auth.signOut();
+        showToast(isRtl ? "אימייל זה אינו מורשה להתחבר." : "This email is not authorized.", "error");
+      }
+    } catch (error) {
+      console.error(error);
+      showToast(isRtl ? "שגיאה בהתחברות עם גוגל." : "Error signing in with Google.", "error");
     }
   };
 
@@ -357,22 +720,43 @@ export default function AdminPage() {
       
       await saveAdminSettings({ 
         pin: updatedPin,
+        adminUser: newAdminUser || adminUser,
+        adminEmail: newAdminEmail || adminEmail,
         forwardingNumber: updatedForwarding,
+        forwardingHoursStart,
+        forwardingHoursEnd,
         ivrGeneralEn,
         ivrGeneralHe,
         ivrSpecialEn,
         ivrSpecialHe,
+        outboundMsgEn,
+        outboundMsgHe,
         adminNotes,
         voicemailEmail,
         smtpHost,
         smtpPort,
         smtpUser,
-        smtpPass
+        smtpPass,
+        twilioAccountSid,
+        twilioAuthToken,
+        twilioPhoneNumber,
+        twilioApiKey,
+        twilioApiSecret,
+        twilioTwimlAppSid,
+        callerIdType,
+        holidayModeActive,
+        ivrHolidayMsgEn,
+        ivrHolidayMsgHe,
+        dndActive
       });
       
       setAdminPin(updatedPin);
+      setAdminUser(newAdminUser || adminUser);
+      setAdminEmail(newAdminEmail || adminEmail);
       setForwardingNumber(updatedForwarding);
       setNewPin(updatedPin);
+      setNewAdminUser(newAdminUser || adminUser);
+      setNewAdminEmail(newAdminEmail || adminEmail);
       setNewForwardingNumber(updatedForwarding);
       setSaveSuccess(true);
       
@@ -396,19 +780,39 @@ export default function AdminPage() {
 
   const handleAddOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newOrder.customerName) return;
+    if (!newOrder.customerName || !newOrder.phone) {
+      showToast(isRtl ? "אנא הזן שם לקוח ומספר טלפון!" : "Please enter customer name and phone number!", "error");
+      return;
+    }
 
-    const nextId = generateNextId();
+    const cleanPhone = newOrder.phone.replace(/\D/g, "");
+    if (!cleanPhone) {
+      showToast(isRtl ? "מספר טלפון לא תקין!" : "Invalid phone number!", "error");
+      return;
+    }
+
+    const existingOrder = orders.find((o) => o.id === cleanPhone);
+    if (existingOrder) {
+      showToast(
+        isRtl 
+          ? `הזמנה עם מספר טלפון זה כבר קיימת (לקוח: ${existingOrder.customerName})!` 
+          : `An order with this phone number already exists (customer: ${existingOrder.customerName})!`, 
+        "error"
+      );
+      return;
+    }
 
     const order: Order = {
-      id: nextId,
+      id: cleanPhone,
       customerName: newOrder.customerName,
-      phone: newOrder.phone || "",
+      phone: newOrder.phone,
       status: (newOrder.status as OrderStatus) || "received",
       dateReceived: newOrder.dateReceived || new Date().toISOString().split("T")[0],
       estimatedCompletion: newOrder.estimatedCompletion || "",
       notes: newOrder.notes || "",
       result: newOrder.result || "",
+      createdAt: Date.now(),
+      location: newOrder.location || "14 Buchanan Rd"
     };
 
     await saveOrder(order);
@@ -420,13 +824,38 @@ export default function AdminPage() {
       notes: "",
       result: "",
       phone: "",
+      location: "14 Buchanan Rd",
     });
   };
 
   const updateStatus = async (orderId: string, status: OrderStatus) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return;
+    
+    const oldStatus = order.status;
     await saveOrder({ ...order, status });
+    
+    // If status changed to ready, ask to call
+    if (status === "ready" && oldStatus !== "ready" && order.phone) {
+      setCallPromptData({ orderId: order.id, phone: order.phone });
+    }
+  };
+
+  const handleCallPromptConfirm = async () => {
+    if (!callPromptData) return;
+    try {
+      await fetch("/api/twilio/trigger-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: callPromptData.orderId, phone: callPromptData.phone })
+      });
+      showToast(isRtl ? "שיחה נשלחה בהצלחה" : "Call sent successfully");
+    } catch (e) {
+      console.error(e);
+      showToast(isRtl ? "שגיאה בשליחת השיחה" : "Error sending call", "error");
+    } finally {
+      setCallPromptData(null);
+    }
   };
 
   const updateResult = async (orderId: string, result: string) => {
@@ -435,18 +864,149 @@ export default function AdminPage() {
     await saveOrder({ ...order, result });
   };
 
-  const handleDelete = async (orderId: string) => {
-    if (confirm(isRtl ? "האם אתה בטוח שברצונך למחוק הזמנה זו?" : "Are you sure you want to delete this order?")) {
-      await deleteOrder(orderId);
+  const updateLocation = async (orderId: string, location: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    await saveOrder({ ...order, location });
+  };
+
+  const handleArchive = async (order: Order) => {
+    if (confirm(isRtl ? `האם אתה בטוח שברצונך להעביר את הזמנה ${order.id} לארכיון?` : `Are you sure you want to archive order ${order.id}?`)) {
+      await saveOrder({ ...order, archived: true });
+      showToast(isRtl ? "ההזמנה הועברה לארכיון בהצלחה!" : "Order archived successfully!", "success");
     }
   };
 
-  const filteredOrders = orders.filter(
+  const handleUnarchive = async (order: Order) => {
+    if (confirm(isRtl ? `האם אתה בטוח שברצונך להחזיר את הזמנה ${order.id} מהארכיון?` : `Are you sure you want to restore order ${order.id} from archive?`)) {
+      await saveOrder({ ...order, archived: false });
+      showToast(isRtl ? "ההזמנה הוחזרה מהארכיון בהצלחה!" : "Order restored from archive successfully!", "success");
+    }
+  };
+
+  const handleDeletePermanent = async (orderId: string) => {
+    if (confirm(isRtl ? "האם אתה בטוח שברצונך למחוק הזמנה זו לצמיתות? לא ניתן יהיה לשחזר אותה." : "Are you sure you want to permanently delete this order? This action cannot be undone.")) {
+      await deleteOrder(orderId);
+      showToast(isRtl ? "ההזמנה נמחקה לצמיתות!" : "Order permanently deleted!", "success");
+    }
+  };
+
+  const triggerOutboundCallFromAdmin = async (orderId: string, phone: string) => {
+    if (!phone) {
+      showToast(isRtl ? "שגיאה: אין מספר טלפון להזמנה זו" : "Error: No phone number associated with this order", "error");
+      return;
+    }
+    
+    if (!forwardingNumber) {
+      showToast(isRtl ? "שגיאה: אנא הגדר תחילה מספר להעברת שיחות (Forwarding Number) בלשונית הגדרות" : "Error: Please configure a forwarding phone number first in Settings", "error");
+      return;
+    }
+
+    const order = orders.find(o => o.id === orderId);
+    const customerName = order ? order.customerName : "";
+
+    if (confirm(isRtl 
+      ? `האם להתקשר ללקוח בטלפון ${phone}? המערכת תתקשר לטלפון שלך (${forwardingNumber}) תחילה ותחבר אותך.` 
+      : `Call customer at ${phone}? The system will ring your phone (${forwardingNumber}) first to connect you.`
+    )) {
+      try {
+        showToast(isRtl ? "מתקשר לטלפון שלך כעת..." : "Calling your phone now...", "info");
+        const res = await fetch("/api/twilio/bridge-call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            phone, 
+            adminPhone: forwardingNumber,
+            customerName,
+            orderId
+          })
+        });
+        if (res.ok) {
+          showToast(isRtl ? "השיחה הופעלה! המתן לצלצול בטלפון שלך." : "Call triggered! Answer your phone to connect.", "success");
+        } else {
+          const errData = await res.json();
+          showToast(isRtl ? `שגיאה בהפעלת השיחה: ${errData.error || ""}` : `Error triggering call: ${errData.error || ""}`, "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast(isRtl ? "שגיאה בהפעלת השיחה" : "Error triggering call", "error");
+      }
+    }
+  };
+
+  const handleSendSms = async () => {
+    const selectedCall = calls.find(c => c.id === selectedCallId) || calls[0];
+    if (!smsInput.trim() || !selectedCall) return;
+    setSendingSms(true);
+    try {
+      const res = await fetch("/api/twilio/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: selectedCall.phone, message: smsInput })
+      });
+      if (res.ok) {
+        setSmsInput("");
+      } else {
+        const errData = await res.json();
+        showToast(isRtl ? `שגיאה בשליחת ה-SMS: ${errData.error || ""}` : `Error sending SMS: ${errData.error || ""}`, "error");
+      }
+    } catch (error) {
+      console.error("Failed to send SMS:", error);
+      showToast(isRtl ? "שגיאה בחיבור לשרת" : "Network error sending SMS", "error");
+    } finally {
+      setSendingSms(false);
+    }
+  };
+
+  const sendSmsFromVirtualPhone = async (phone: string, message: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/twilio/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, message })
+      });
+      if (res.ok) {
+        showToast(isRtl ? "הודעה נשלחה בהצלחה" : "Message sent successfully", "success");
+        return true;
+      } else {
+        const errData = await res.json();
+        showToast(isRtl ? `שגיאה בשליחת ה-SMS: ${errData.error || ""}` : `Error sending SMS: ${errData.error || ""}`, "error");
+        return false;
+      }
+    } catch (error) {
+      console.error("Failed to send SMS:", error);
+      showToast(isRtl ? "שגיאה בחיבור לשרת" : "Network error sending SMS", "error");
+      return false;
+    }
+  };
+
+  const filteredOrders = [...orders].filter(
     (o) =>
-      o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (o.phone && o.phone.includes(searchQuery))
-  );
+      !o.archived &&
+      (o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       (o.phone && o.phone.includes(searchQuery)))
+  ).sort((a, b) => {
+    if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+    if (a.createdAt) return -1;
+    if (b.createdAt) return 1;
+    return new Date(b.dateReceived).getTime() - new Date(a.dateReceived).getTime();
+  });
+
+  const archivedOrders = [...orders].filter(
+    (o) =>
+      !!o.archived &&
+      (o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       (o.phone && o.phone.includes(searchQuery)))
+  ).sort((a, b) => {
+    if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+    if (a.createdAt) return -1;
+    if (b.createdAt) return 1;
+    return new Date(b.dateReceived).getTime() - new Date(a.dateReceived).getTime();
+  });
+
+
 
   if (!isAuthenticated) {
     return (
@@ -462,10 +1022,23 @@ export default function AdminPage() {
                 <Lock className="w-8 h-8 text-navy-600" />
               </div>
               <h1 className="text-2xl font-bold text-navy-900">{t("admin_panel")}</h1>
-              <p className="text-sm text-primary-500 mt-1">{t("enter_pin")}</p>
+              <p className="text-sm text-primary-500 mt-1">{isRtl ? "הזן שם משתמש וקוד מנהל" : "Enter User ID and PIN"}</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setPinError(false);
+                }}
+                placeholder={isRtl ? "שם משתמש" : "User ID"}
+                className={`w-full px-4 py-3 rounded-xl border text-center text-lg font-semibold
+                         bg-primary-50 focus:outline-none focus:ring-2 focus:border-transparent
+                         transition-all duration-200
+                         ${pinError ? "border-red-300 focus:ring-red-300" : "border-primary-200 focus:ring-gold-400"}`}
+              />
               <input
                 type="password"
                 inputMode="numeric"
@@ -494,6 +1067,26 @@ export default function AdminPage() {
                 {t("login")}
               </button>
             </form>
+
+            <div className="mt-6 flex items-center justify-between">
+              <span className="border-b border-primary-200 w-1/5 lg:w-1/4"></span>
+              <span className="text-xs text-center text-primary-400 uppercase">{isRtl ? "או" : "or"}</span>
+              <span className="border-b border-primary-200 w-1/5 lg:w-1/4"></span>
+            </div>
+
+            <button
+              onClick={handleGoogleLogin}
+              type="button"
+              className="mt-4 w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-primary-200 rounded-xl hover:bg-primary-50 transition-colors font-medium text-navy-800"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+              {isRtl ? "התחבר עם חשבון Google" : "Sign in with Google"}
+            </button>
           </div>
         </motion.div>
       </div>
@@ -502,27 +1095,18 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-[calc(100vh-300px)] bg-primary-50">
+      <Script
+        src="/twilio.js"
+        strategy="afterInteractive"
+        onLoad={() => console.log("Twilio Voice SDK loaded globally on admin page")}
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
           <div className={isRtl ? "text-right" : ""}>
             <h1 className="text-2xl sm:text-3xl font-bold text-navy-900">{t("orders_management")}</h1>
-            <p className="text-primary-600 mt-1">{isRtl ? "נהל ועקוב אחר כל הזמנות הלקוחות" : "Manage and track all customer orders"}</p>
+            <p className="text-primary-600 mt-1">{isRtl ? "לוח בקרה וניהול הזמנות מערכת" : "System Dashboard and Order Management"}</p>
           </div>
           <div className={`flex flex-col sm:flex-row items-center gap-3 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-navy-600 hover:bg-navy-50 transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              {t("phone_settings")}
-            </button>
-            <button
-              onClick={() => setShowBlueprintModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gold-600 hover:bg-gold-50 transition-colors"
-            >
-              <FileAudio className="w-4 h-4" />
-              {isRtl ? "מפת מערכת IVR" : "IVR System Blueprint"}
-            </button>
             <button
               onClick={() => {
                 setIsAuthenticated(false);
@@ -536,25 +1120,128 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <AnimatePresence>
-          {showSettings && (
+        {/* ADMIN TABS NAVIGATION */}
+        <div className={`flex flex-wrap items-center gap-2 mb-6 border-b border-primary-200 pb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+          <button
+            onClick={() => setActiveAdminTab("orders")}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeAdminTab === "orders" ? "bg-navy-900 text-white shadow-md" : "bg-white text-navy-600 hover:bg-navy-50 border border-primary-200"
+            }`}
+          >
+            {isRtl ? "ניהול הזמנות" : "Orders Management"}
+          </button>
+          <button
+            onClick={() => setActiveAdminTab("voicemails")}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+              activeAdminTab === "voicemails" ? "bg-navy-900 text-white shadow-md" : "bg-white text-navy-600 hover:bg-navy-50 border border-primary-200"
+            }`}
+          >
+            <Volume2 className="w-4 h-4" />
+            {isRtl ? "הודעות ותא קולי" : "Voicemails & Messages"}
+            {voicemails.filter(v => !v.read).length > 0 && (
+              <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">
+                {voicemails.filter(v => !v.read).length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveAdminTab("audio")}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+              activeAdminTab === "audio" ? "bg-navy-900 text-white shadow-md" : "bg-white text-navy-600 hover:bg-navy-50 border border-primary-200"
+            }`}
+          >
+            <FileAudio className="w-4 h-4 text-gold-500" />
+            {isRtl ? "מנהל שמע IVR" : "IVR Audio Manager"}
+          </button>
+
+          <button
+            onClick={() => setActiveAdminTab("settings")}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+              activeAdminTab === "settings" ? "bg-navy-900 text-white shadow-md" : "bg-white text-navy-600 hover:bg-navy-50 border border-primary-200"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            {isRtl ? "הגדרות מערכת" : "System Settings"}
+          </button>
+          
+          <button
+            onClick={() => setShowPhoneModal(true)}
+            className="px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+          >
+            <Phone className="w-4 h-4 text-emerald-500" />
+            {isRtl ? "טלפון משרדי / חייגן" : "Office Phone & Dialer"}
+          </button>
+
+          <button
+            onClick={() => setActiveAdminTab("analytics")}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+              activeAdminTab === "analytics" ? "bg-navy-900 text-white shadow-md" : "bg-white text-navy-600 hover:bg-navy-50 border border-primary-200"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-sky-500" />
+            {isRtl ? "אנליטיקה" : "Analytics"}
+          </button>
+
+          <button
+            onClick={() => setActiveAdminTab("archive")}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+              activeAdminTab === "archive" ? "bg-navy-900 text-white shadow-md" : "bg-white text-navy-600 hover:bg-navy-50 border border-primary-200"
+            }`}
+          >
+            <Archive className="w-4 h-4 text-amber-600" />
+            {isRtl ? "ארכיון" : "Archive"}
+          </button>
+
+          <div className="flex-1"></div>
+          <button
+            onClick={() => setShowBlueprintModal(true)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 bg-gold-50 text-gold-700 hover:bg-gold-100 border border-gold-200 ${isRtl ? "flex-row-reverse" : ""}`}
+          >
+            <Network className="w-4 h-4" />
+            {isRtl ? "מפת מערכת IVR" : "IVR System Blueprint"}
+          </button>
+        </div>
+        <AnimatePresence mode="wait">
+
+          {activeAdminTab === "settings" && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden mb-8"
+              key="settings"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-8"
             >
               <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isRtl ? "direction-rtl" : ""}`}>
-                {/* Admin PIN Change */}
+                {/* Admin Access & Security */}
                 <div className={`card p-6 bg-white shadow-sm border border-navy-100 ${isRtl ? "text-right" : ""}`}>
                   <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
                     <Lock className="w-5 h-5 text-navy-600" />
-                    <h2 className="text-lg font-bold text-navy-900">{isRtl ? "שינוי קוד מנהל" : "Change Admin PIN"}</h2>
+                    <h2 className="text-lg font-bold text-navy-900">{isRtl ? "גישת מנהל ואבטחה" : "Admin Access & Security"}</h2>
                   </div>
                   <p className="text-sm text-primary-600 mb-4">
-                    {isRtl ? "הקוד משמש לכניסה לאתר ולתפריט הניהול הטלפוני." : "This PIN is used for both website access and phone admin menu."}
+                    {isRtl ? "ניהול פרטי ההתחברות לאתר ולמערכת הטלפונית." : "Manage your login credentials for the website and phone system."}
                   </p>
                   <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "שם משתמש למנהל" : "Admin User ID"}</label>
+                      <input
+                        type="text"
+                        value={newAdminUser}
+                        onChange={(e) => setNewAdminUser(e.target.value)}
+                        placeholder={isRtl ? "שם משתמש" : "User ID"}
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "אימייל מורשה ל-Google Login" : "Authorized Google Email"}</label>
+                      <input
+                        type="email"
+                        value={newAdminEmail}
+                        onChange={(e) => setNewAdminEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
                     <div>
                       <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "קוד מנהל" : "Admin PIN"}</label>
                       <input
@@ -572,9 +1259,136 @@ export default function AdminPage() {
                         type="tel"
                         value={newForwardingNumber}
                         onChange={(e) => setNewForwardingNumber(e.target.value)}
-                        placeholder="e.g. 8457092022"
+                        placeholder="e.g. 8455524744"
                         className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
                       />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "שעת התחלה" : "Start Time"}</label>
+                        <input
+                          type="time"
+                          value={forwardingHoursStart}
+                          onChange={(e) => setForwardingHoursStart(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "שעת סיום" : "End Time"}</label>
+                        <input
+                          type="time"
+                          value={forwardingHoursEnd}
+                          onChange={(e) => setForwardingHoursEnd(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-navy-800 mb-1">{isRtl ? "מספר טלפון ב-Twilio (עם +)" : "Twilio Phone Number (with +)"}</label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 rounded-md p-2 focus:border-navy-500 focus:ring-1 focus:ring-navy-500 font-mono text-left"
+                        dir="ltr"
+                        placeholder="+18451234567"
+                        value={twilioPhoneNumber}
+                        onChange={(e) => setTwilioPhoneNumber(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "מזהה מתקשר בשיחה מועברת" : "Caller ID for Forwarded Calls"}
+                      </label>
+                      <select
+                        value={callerIdType}
+                        onChange={(e) => setCallerIdType(e.target.value as "caller" | "twilio")}
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      >
+                        <option value="caller">
+                          {isRtl ? "הצג מספר לקוח מתקשר" : "Show Customer Number (Caller ID)"}
+                        </option>
+                        <option value="twilio">
+                          {isRtl ? "הצג מספר טלפון של המעבדה" : "Show Twilio Number (Shatnez Lab)"}
+                        </option>
+                      </select>
+                    </div>
+                    
+                    <div className="border-t border-primary-200 pt-4 mt-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-navy-900">
+                          {isRtl ? "נא לא להפריע (DND)" : "Do Not Disturb (DND)"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDndActive(!dndActive)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            dndActive ? "bg-gold-500" : "bg-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              dndActive ? (isRtl ? "-translate-x-5" : "translate-x-5") : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <p className="text-xs text-primary-500 mb-4">
+                        {isRtl
+                          ? "כאשר פעיל, שיחות נציג יועברו ישירות לתא הקולי."
+                          : "When active, representative calls route straight to voicemail."}
+                      </p>
+                      
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-navy-900">
+                          {isRtl ? "מצב חופשה / חגים" : "Holiday / Vacation Mode"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setHolidayModeActive(!holidayModeActive)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            holidayModeActive ? "bg-gold-500" : "bg-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              holidayModeActive ? (isRtl ? "-translate-x-5" : "translate-x-5") : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                      <p className="text-xs text-primary-500 mb-3">
+                        {isRtl
+                          ? "כאשר מצב חופשה פעיל, כל השיחות יועברו ישירות לתא הקולי ותושמע הודעת החג המוגדר מטה."
+                          : "When holiday mode is active, all calls are routed straight to voicemail playing the holiday messages below."}
+                      </p>
+                      
+                      {holidayModeActive && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                              {isRtl ? "הודעת חג באנגלית" : "Holiday Message (English)"}
+                            </label>
+                            <textarea
+                              value={ivrHolidayMsgEn}
+                              onChange={(e) => setIvrHolidayMsgEn(e.target.value)}
+                              rows={2}
+                              className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-xs ${isRtl ? "text-right" : ""}`}
+                              placeholder="Our office is closed for the holidays..."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                              {isRtl ? "הודעת חג בעברית" : "Holiday Message (Hebrew)"}
+                            </label>
+                            <textarea
+                              value={ivrHolidayMsgHe}
+                              onChange={(e) => setIvrHolidayMsgHe(e.target.value)}
+                              rows={2}
+                              className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-xs ${isRtl ? "text-right" : ""}`}
+                              placeholder="המשרד סגור כעת לרגל החג..."
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <button 
                       onClick={handleUpdateSettings}
@@ -654,6 +1468,75 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* Twilio API Credentials */}
+                <div className={`card p-6 bg-white shadow-sm border border-navy-100 ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                    <Sliders className="w-5 h-5 text-navy-600" />
+                    <h2 className="text-lg font-bold text-navy-900">{isRtl ? "הגדרות Twilio API" : "Twilio API Credentials"}</h2>
+                  </div>
+                  <p className="text-sm text-primary-600 mb-4">
+                    {isRtl ? "הזן את פרטי ה-API של Twilio כדי לאפשר שיחות WebRTC ישירות מהדפדפן וניגון הקלטות." : "Enter your Twilio API details to allow WebRTC calls directly from the browser and voicemail playback."}
+                  </p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "חשבון SID" : "Account SID"}</label>
+                      <input
+                        type="text"
+                        value={twilioAccountSid}
+                        onChange={(e) => setTwilioAccountSid(e.target.value)}
+                        placeholder="AC..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "מפתח Auth Token" : "Auth Token"}</label>
+                      <input
+                        type="password"
+                        value={twilioAuthToken}
+                        onChange={(e) => setTwilioAuthToken(e.target.value)}
+                        placeholder="••••••••"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "מפתח API Key SID (WebRTC)" : "API Key SID (WebRTC)"}</label>
+                      <input
+                        type="text"
+                        value={twilioApiKey}
+                        onChange={(e) => setTwilioApiKey(e.target.value)}
+                        placeholder="SK..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "מפתח API Key Secret" : "API Key Secret"}</label>
+                      <input
+                        type="password"
+                        value={twilioApiSecret}
+                        onChange={(e) => setTwilioApiSecret(e.target.value)}
+                        placeholder="••••••••"
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">{isRtl ? "מזהה TwiML App SID" : "TwiML App SID"}</label>
+                      <input
+                        type="text"
+                        value={twilioTwimlAppSid}
+                        onChange={(e) => setTwilioTwimlAppSid(e.target.value)}
+                        placeholder="AP..."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <button 
+                      onClick={handleUpdateSettings}
+                      className="btn-primary w-full py-2"
+                    >
+                      {isRtl ? "שמור הגדרות Twilio" : "Save Twilio Settings"}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Custom IVR Voice Prompts */}
                 <div className={`card p-6 bg-white shadow-sm border border-navy-100 lg:col-span-2 ${isRtl ? "text-right" : ""}`}>
                   <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
@@ -712,6 +1595,30 @@ export default function AdminPage() {
                         className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "הודעת מוכן לאיסוף - שיחה קולית (אנגלית)" : "Order Ready Robocall Message (English)"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={outboundMsgEn}
+                        onChange={(e) => setOutboundMsgEn(e.target.value)}
+                        placeholder="Hello. This is The Shatnez Lab. We are calling to inform you that your order is now ready for pickup. Pick up at 14 Buchanan Rd. Thank you."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-primary-500 mb-1 uppercase">
+                        {isRtl ? "הודעת מוכן לאיסוף - שיחה קולית (עברית)" : "Order Ready Robocall Message (Hebrew)"}
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={outboundMsgHe}
+                        onChange={(e) => setOutboundMsgHe(e.target.value)}
+                        placeholder="שלום. מדברים ממעבדת שעטנז. ההזמנה שלך מוכנה לאיסוף. נא לאסוף מ-14 Buchanan Rd. תודה רבה."
+                        className={`w-full px-3 py-2 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                      />
+                    </div>
                   </div>
                   <button 
                     onClick={handleUpdateSettings}
@@ -756,108 +1663,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* IVR Audio Files Manager */}
-                <div className={`card p-6 bg-white shadow-sm border border-navy-100 lg:col-span-1 flex flex-col justify-between ${isRtl ? "text-right" : ""}`}>
-                  <div>
-                    <div className={`flex items-center gap-2 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
-                      <Volume2 className="w-5 h-5 text-navy-600" />
-                      <h2 className="text-lg font-bold text-navy-900">{isRtl ? "ניהול קבצי שמע ל-IVR" : "IVR Audio Manager"}</h2>
-                    </div>
-                    <p className="text-xs text-primary-600 mb-4">
-                      {isRtl 
-                        ? "העלה קבצי MP3 (עד 1MB) כדי לקבל קישורים שתוכל להדביק בווידג'טים של Twilio Studio (למשל welcome, info, vip)." 
-                        : "Upload custom MP3 audio files (max 1MB) to generate links you can paste directly into Twilio Studio."}
-                    </p>
 
-                    {/* Upload Form */}
-                    <form onSubmit={handleUploadAudio} className="space-y-3 mb-4 pb-4 border-b border-primary-100">
-                      <div>
-                        <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">{isRtl ? "שם הקובץ (באנגלית בלבד)" : "Audio File Name (English)"}</label>
-                        <input
-                          type="text"
-                          required
-                          value={audioName}
-                          onChange={(e) => setAudioName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
-                          placeholder="e.g. welcome, info, vip"
-                          className={`w-full px-3 py-1.5 rounded-lg border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-xs ${isRtl ? "text-right" : ""}`}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">{isRtl ? "קובץ MP3" : "Select MP3 File"}</label>
-                        <input
-                          id="audio-file-input"
-                          type="file"
-                          required
-                          accept="audio/mpeg, audio/mp3"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              setAudioFile(e.target.files[0]);
-                            }
-                          }}
-                          className={`w-full text-xs text-primary-600 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-navy-50 file:text-navy-700 hover:file:bg-navy-100 cursor-pointer`}
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={isUploading}
-                        className="btn-primary w-full py-1.5 text-xs inline-flex items-center justify-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        {isUploading ? (isRtl ? "מעלה..." : "Uploading...") : (isRtl ? "העלה קובץ" : "Upload File")}
-                      </button>
-                    </form>
-
-                    {/* Audio Files List */}
-                    <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                      <h3 className="text-xs font-bold text-navy-900 uppercase tracking-wider mb-2">{isRtl ? "קבצים שהועלו:" : "Uploaded Files:"}</h3>
-                      {audioFiles.length === 0 ? (
-                        <p className="text-xs text-primary-400 italic text-center py-2">{isRtl ? "אין קבצים" : "No custom audio files"}</p>
-                      ) : (
-                        audioFiles.map((file) => (
-                          <div key={file.name} className={`flex items-center justify-between p-2 bg-primary-50 rounded-lg border border-primary-100 text-xs ${isRtl ? "flex-row-reverse" : ""}`}>
-                            <div className="flex items-center gap-1.5 truncate">
-                              <Music className="w-3.5 h-3.5 text-navy-500 shrink-0" />
-                              <span className="font-medium text-navy-800 truncate" title={file.name}>
-                                {file.name}.mp3
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={() => handleTogglePlay(file.name)}
-                                className={`p-1 rounded transition-colors ${
-                                  playingName === file.name 
-                                    ? "text-gold-600 bg-gold-50 hover:bg-gold-100" 
-                                    : "text-navy-500 hover:text-navy-700 hover:bg-navy-100"
-                                }`}
-                                title={playingName === file.name ? (isRtl ? "עצור שמיעה" : "Pause preview") : (isRtl ? "שמע קובץ" : "Play preview")}
-                              >
-                                {playingName === file.name ? (
-                                  <Pause className="w-3.5 h-3.5 animate-pulse" />
-                                ) : (
-                                  <Play className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => handleCopyAudioUrl(file.name)}
-                                className="p-1 rounded text-navy-500 hover:text-navy-700 hover:bg-navy-100 transition-colors"
-                                title={isRtl ? "העתק קישור" : "Copy URL"}
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteAudio(file.name)}
-                                className="p-1 rounded text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors"
-                                title={isRtl ? "מחק קובץ" : "Delete file"}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
 
                 {/* Admin Personal Notes & Scratchpad */}
                 <div className={`card p-6 bg-white shadow-sm border border-navy-100 lg:col-span-2 flex flex-col justify-between ${isRtl ? "text-right" : ""}`}>
@@ -884,7 +1690,15 @@ export default function AdminPage() {
           )}
         </AnimatePresence>
 
-        {/* Search & Add */}
+        {/* Orders Management Tab */}
+        {activeAdminTab === "orders" && (
+          <motion.div
+            key="orders"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            {/* Search & Add */}
         <div className={`flex flex-col sm:flex-row gap-4 mb-6 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
           <div className="flex-1 relative">
             <Search className={`absolute ${isRtl ? "right-4" : "left-4"} top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400`} />
@@ -904,6 +1718,13 @@ export default function AdminPage() {
           >
             {showAddForm ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
             {showAddForm ? (isRtl ? "ביטול" : "Cancel") : t("add_new_order")}
+          </button>
+          <button
+            onClick={() => setShowCallModal(true)}
+            className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+          >
+            <Phone className="w-5 h-5 text-emerald-600" />
+            {isRtl ? "התקשר ללקוח" : "Call Customer"}
           </button>
         </div>
 
@@ -935,9 +1756,10 @@ export default function AdminPage() {
                     <label className="block text-sm font-medium text-navy-800 mb-1">{t("phone")}</label>
                     <input
                       type="tel"
+                      required
                       value={newOrder.phone || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, phone: e.target.value })}
-                      placeholder="845-709-2022"
+                      placeholder="845-552-4744"
                       className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
                                focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
@@ -976,7 +1798,7 @@ export default function AdminPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-navy-800 mb-1">{isRtl ? "תוצאה" : "Test Result"}</label>
+                      <label className="block text-sm font-medium text-navy-800 mb-1">{isRtl ? "תוצאה" : "Test Result"}</label>
                     <select
                       value={newOrder.result || ""}
                       onChange={(e) => setNewOrder({ ...newOrder, result: e.target.value })}
@@ -986,6 +1808,18 @@ export default function AdminPage() {
                       {resultOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">{isRtl ? "מיקום" : "Location"}</label>
+                    <select
+                      value={newOrder.location || "14 Buchanan Rd"}
+                      onChange={(e) => setNewOrder({ ...newOrder, location: e.target.value })}
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent cursor-pointer ${isRtl ? "text-right" : ""}`}
+                    >
+                      <option value="14 Buchanan Rd">14 Buchanan Rd</option>
+                      <option value="166 Clinton Lane">166 Clinton Lane</option>
                     </select>
                   </div>
                   <div className="sm:col-span-2 lg:col-span-2">
@@ -1011,26 +1845,24 @@ export default function AdminPage() {
           )}
         </AnimatePresence>
 
-        {/* Orders Table */}
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[1100px]">
               <thead>
                 <tr className={`bg-primary-50 border-b border-primary-100 ${isRtl ? "text-right" : "text-left"}`}>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 hidden md:table-cell ${isRtl ? "text-right" : "text-left"}`}>{t("phone")}</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("status")}</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "התקבל" : "Received"}</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 hidden lg:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "סיום משוער" : "Est. Completion"}</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תוצאה" : "Result"}</th>
-                  <th className={`px-6 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("status")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תאריכים" : "Dates"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תוצאה" : "Result"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "מיקום" : "Location"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
                 </tr>
               </thead>
               <tbody className={isRtl ? "text-right" : "text-left"}>
                 {filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-primary-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-primary-500">
                       <Package className="w-12 h-12 mx-auto mb-3 text-primary-300" />
                       <p>{isRtl ? "לא נמצאו הזמנות" : "No orders found"}</p>
                       {searchQuery && <p className="text-sm mt-1">{isRtl ? "נסה לשנות את החיפוש" : "Try adjusting your search"}</p>}
@@ -1039,18 +1871,18 @@ export default function AdminPage() {
                 ) : (
                   filteredOrders.map((order) => (
                     <tr key={order.id} className="border-b border-primary-50 hover:bg-primary-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-navy-900">{order.id}</td>
-                      <td className="px-6 py-4 text-primary-700">{order.customerName}</td>
-                      <td className="px-6 py-4 text-primary-600 hidden md:table-cell">
-                        {order.phone ? (
-                          <a href={`tel:${order.phone}`} className="hover:text-navy-600 hover:underline">
-                            {order.phone}
-                          </a>
-                        ) : (
-                          "—"
-                        )}
+                      <td className="px-4 py-4 font-bold text-navy-900">{order.id}</td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-navy-800">{order.customerName}</div>
+                        <div className="text-sm text-primary-500 mt-1" dir="ltr">
+                          {order.phone ? (
+                            <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
+                              {order.phone}
+                            </a>
+                          ) : "—"}
+                        </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-4">
                         <select
                           value={order.status}
                           onChange={(e) => updateStatus(order.id, e.target.value as OrderStatus)}
@@ -1063,14 +1895,34 @@ export default function AdminPage() {
                           ))}
                         </select>
                       </td>
-                      <td className="px-6 py-4 text-primary-600 hidden sm:table-cell">{order.dateReceived}</td>
-                      <td className="px-6 py-4 text-primary-600 hidden lg:table-cell">{order.estimatedCompletion || "—"}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-4 text-sm hidden sm:table-cell">
+                        <div className="text-navy-700">
+                          <span className="text-primary-400 text-xs uppercase tracking-wider">{isRtl ? "קבל:" : "In:"}</span> {order.dateReceived}
+                        </div>
+                        {order.estimatedCompletion && (
+                          <div className="text-primary-600 mt-1">
+                            <span className="text-primary-400 text-xs uppercase tracking-wider">{isRtl ? "צפי:" : "Est:"}</span> {order.estimatedCompletion}
+                          </div>
+                        )}
+                        {order.callLogs && order.callLogs.length > 0 && (
+                          <div className="mt-2 text-xs">
+                            <span className="font-bold text-navy-800">{isRtl ? "שיחת מערכת:" : "Call Status:"}</span>
+                            <span className={`inline-block mr-1 px-1.5 py-0.5 rounded border ${
+                              order.callLogs[order.callLogs.length - 1].status === 'completed' ? 'bg-green-50 border-green-200 text-green-700' : 
+                              order.callLogs[order.callLogs.length - 1].status === 'failed' ? 'bg-red-50 border-red-200 text-red-700' : 
+                              'bg-orange-50 border-orange-200 text-orange-700'
+                            }`}>
+                              {order.callLogs[order.callLogs.length - 1].status}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
                         <select
                           value={order.result || ""}
                           onChange={(e) => updateResult(order.id, e.target.value)}
-                          className={`w-full px-2 py-1 text-sm rounded border border-primary-200 bg-white
-                                   focus:outline-none focus:ring-1 focus:ring-gold-400 focus:border-transparent
+                          className={`w-full px-3 py-1.5 rounded-lg border border-primary-200 bg-white text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
                                    cursor-pointer ${isRtl ? "text-right" : ""}`}
                         >
                           {resultOptions.map((opt) => (
@@ -1078,21 +1930,44 @@ export default function AdminPage() {
                           ))}
                         </select>
                       </td>
-                      <td className={`px-6 py-4 ${isRtl ? "text-left" : "text-right"}`}>
-                        <button
-                          onClick={() => setPrintOrder(order)}
-                          className="p-2 rounded-lg text-navy-400 hover:text-navy-600 hover:bg-navy-50 transition-colors mr-1"
-                          title={isRtl ? "הדפס כרטיס" : "Print card"}
+                      <td className="px-4 py-4">
+                        <select
+                          value={order.location || "14 Buchanan Rd"}
+                          onChange={(e) => updateLocation(order.id, e.target.value)}
+                          className={`w-full px-3 py-1.5 rounded-lg border border-primary-200 bg-white text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                                   cursor-pointer ${isRtl ? "text-right" : ""}`}
                         >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(order.id)}
-                          className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title={isRtl ? "מחק הזמנה" : "Delete order"}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <option value="14 Buchanan Rd">14 Buchanan Rd</option>
+                          <option value="166 Clinton Lane">166 Clinton Lane</option>
+                        </select>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className={`flex items-center gap-1.5 whitespace-nowrap ${isRtl ? "justify-start" : "justify-end"}`}>
+                          <button
+                            onClick={() => setPrintOrder(order)}
+                            className="p-2 rounded-lg text-navy-400 hover:text-navy-600 hover:bg-navy-50 transition-colors"
+                            title={isRtl ? "הדפס כרטיס" : "Print card"}
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          {order.phone && (
+                            <button
+                              onClick={() => triggerOutboundCallFromAdmin(order.id, order.phone!)}
+                              className="p-2 rounded-lg text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                              title={isRtl ? "הוצא שיחה ללקוח" : "Trigger outbound call"}
+                            >
+                              <Phone className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleArchive(order)}
+                            className="p-2 rounded-lg text-amber-500 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                            title={isRtl ? "העבר לארכיון" : "Archive order"}
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1101,11 +1976,855 @@ export default function AdminPage() {
             </table>
           </div>
         </div>
+      </motion.div>
+    )}
+
+        {/* Analytics Tab */}
+    {activeAdminTab === "analytics" && (
+      <motion.div
+        key="analytics"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className="space-y-6 animate-fade-in"
+      >
+        {(() => {
+          const stats = getCallAnalytics();
+          return (
+            <>
+              <div className="card p-6 bg-white border border-primary-200 shadow-sm">
+                <div className={`flex items-center gap-3 mb-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                  <BarChart3 className="w-8 h-8 text-sky-500 shrink-0" />
+                  <h2 className="text-2xl font-bold text-navy-900">{isRtl ? "נתוני אנליטיקה ושימוש במערכת" : "System Usage & Call Analytics"}</h2>
+                </div>
+                <p className="text-sm text-primary-600 leading-relaxed max-w-3xl">
+                  {isRtl 
+                    ? "ניתוח בזמן אמת של פניות לקוחות, אחוזי שימוש במקשי ה-IVR, משך שיחות ממוצע וחלוקה בין שיחות קוליות להודעות טקסט (SMS)."
+                    : "Real-time analysis of customer calls, IVR keypad menu popularity, average talk time, and the split between voice communications and text messages (SMS)."}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Card 1 */}
+                <div className="card p-5 bg-white border border-primary-150 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-sky-50 border border-sky-100 rounded-xl flex items-center justify-center text-sky-600 shrink-0">
+                    <Phone className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-primary-400 font-bold uppercase tracking-wider">{isRtl ? "שיחות קוליות" : "Voice Calls"}</div>
+                    <div className="text-2xl font-black text-navy-900 mt-0.5">{stats.totalVoice}</div>
+                    <div className="text-[10px] text-primary-400 mt-0.5">
+                      {isRtl 
+                        ? `${stats.totalInbound} נכנסות • ${stats.totalOutbound} יוצאות` 
+                        : `${stats.totalInbound} Inbound • ${stats.totalOutbound} Outbound`}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 2 */}
+                <div className="card p-5 bg-white border border-primary-150 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-gold-50 border border-gold-100 rounded-xl flex items-center justify-center text-gold-600 shrink-0">
+                    <MessageSquare className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-primary-400 font-bold uppercase tracking-wider">{isRtl ? "שיחות SMS" : "SMS Chats"}</div>
+                    <div className="text-2xl font-black text-navy-900 mt-0.5">{stats.totalSms}</div>
+                    <div className="text-[10px] text-primary-400 mt-0.5">{isRtl ? "צ'אטים פעילים מול לקוחות" : "Active customer SMS logs"}</div>
+                  </div>
+                </div>
+
+                {/* Card 3 */}
+                <div className="card p-5 bg-white border border-primary-150 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 shrink-0">
+                    <Volume2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-primary-400 font-bold uppercase tracking-wider">{isRtl ? "ממוצע משך שיחה" : "Avg Call Duration"}</div>
+                    <div className="text-2xl font-black text-navy-900 mt-0.5">{stats.avgDuration}s</div>
+                    <div className="text-[10px] text-primary-400 mt-0.5">{isRtl ? "בשיחות קוליות שהושלמו" : "For completed voice calls"}</div>
+                  </div>
+                </div>
+
+                {/* Card 4 */}
+                <div className="card p-5 bg-white border border-primary-150 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 shrink-0">
+                    <Sliders className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-primary-400 font-bold uppercase tracking-wider">{isRtl ? "סך הקשות ב-IVR" : "Total IVR Keypresses"}</div>
+                    <div className="text-2xl font-black text-navy-900 mt-0.5 font-mono">
+                      {Object.values(stats.keypressCount).reduce((a, b) => a + b, 0)}
+                    </div>
+                    <div className="text-[10px] text-primary-400 mt-0.5">{isRtl ? "אינטראקציות בתפריט הראשי" : "Welcome menu keypad actions"}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Keypad popularity */}
+                <div className="lg:col-span-7 card p-6 bg-white border border-primary-200 shadow-sm">
+                  <h3 className={`text-lg font-bold text-navy-900 mb-4 border-b border-primary-100 pb-2 ${isRtl ? "text-right" : ""}`}>
+                    {isRtl ? "פופולריות מקשים בתפריט הראשי" : "IVR Keypad Popularity"}
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    {[
+                      { key: "1", labelHe: "מקש 1 - הנחיות מסירה ומחירים", labelEn: "Key 1 - Drop-off & Pricing Info", count: stats.keypressCount["1"], color: "bg-sky-500" },
+                      { key: "2", labelHe: "מקש 2 - בדיקת סטטוס הזמנה קולית", labelEn: "Key 2 - Check Order Status", count: stats.keypressCount["2"], color: "bg-gold-500" },
+                      { key: "3", labelHe: "מקש 3 - שירותים מיוחדים ו-VIP", labelEn: "Key 3 - VIP & Special Services", count: stats.keypressCount["3"], color: "bg-indigo-500" },
+                      { key: "0", labelHe: "מקש 0 - מעבר לנציג / שיחה ישירה", labelEn: "Key 0 - Speak to Representative", count: stats.keypressCount["0"], color: "bg-emerald-500" },
+                      { key: "9", labelHe: "מקש 9 - בקשת כניסה לממשק מנהל", labelEn: "Key 9 - Admin Menu Access", count: stats.keypressCount["9"], color: "bg-purple-500" },
+                    ].map((item) => {
+                      const total = Object.values(stats.keypressCount).reduce((a, b) => a + b, 0) || 1;
+                      const percent = Math.round((item.count / total) * 100);
+                      return (
+                        <div key={item.key} className="space-y-1.5">
+                          <div className={`flex justify-between text-xs font-bold text-navy-800 ${isRtl ? "flex-row-reverse" : ""}`}>
+                            <span>{isRtl ? item.labelHe : item.labelEn}</span>
+                            <span className="font-mono">{item.count} {isRtl ? "לחיצות" : "clicks"} ({percent}%)</span>
+                          </div>
+                          <div className="h-3 w-full bg-primary-100 rounded-full overflow-hidden">
+                            <motion.div 
+                              className={`h-full ${item.color}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${percent}%` }}
+                              transition={{ duration: 0.8, ease: "easeOut" }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Keypad Heatmap Visual */}
+                <div className="lg:col-span-5 card p-6 bg-white border border-primary-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className={`text-base font-bold text-navy-900 mb-4 border-b border-primary-100 pb-2 ${isRtl ? "text-right" : ""}`}>
+                      {isRtl ? "סימולטור מקשי טלפון IVR" : "Keypad Call Volume Visualizer"}
+                    </h3>
+                    <p className={`text-xs text-primary-500 mb-6 ${isRtl ? "text-right" : ""}`}>
+                      {isRtl 
+                        ? "הדמיית מפת חום (Heatmap) של מקשי הטלפון בהם המשתמשים מקישים הכי הרבה בקו הטלפון של המעבדה."
+                        : "A heat map visualizer of the buttons callers press most when dialling the lab's line."}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 max-w-[240px] mx-auto w-full mb-4">
+                    {[
+                      { digit: "1", count: stats.keypressCount["1"] },
+                      { digit: "2", count: stats.keypressCount["2"] },
+                      { digit: "3", count: stats.keypressCount["3"] },
+                      { digit: "4", count: 0 },
+                      { digit: "5", count: 0 },
+                      { digit: "6", count: 0 },
+                      { digit: "7", count: 0 },
+                      { digit: "8", count: 0 },
+                      { digit: "9", count: stats.keypressCount["9"] },
+                      { digit: "*", count: 0 },
+                      { digit: "0", count: stats.keypressCount["0"] },
+                      { digit: "#", count: 0 }
+                    ].map((btn) => {
+                      const maxClicks = Math.max(...Object.values(stats.keypressCount)) || 1;
+                      const intensity = btn.count > 0 ? Math.max(0.1, btn.count / maxClicks) : 0;
+                      const bgStyle = btn.count > 0 
+                        ? { backgroundColor: `rgba(234, 179, 8, ${intensity * 0.9})`, border: '2px solid rgba(234, 179, 8, 1)' }
+                        : {};
+                      return (
+                        <div 
+                          key={btn.digit} 
+                          style={bgStyle}
+                          className={`aspect-square rounded-xl border border-primary-200 flex flex-col items-center justify-center transition-all bg-primary-50`}
+                        >
+                          <span className="text-lg font-black text-navy-950 font-mono">{btn.digit}</span>
+                          {btn.count > 0 && (
+                            <span className="text-[9px] font-bold text-navy-800 font-mono">{btn.count}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </motion.div>
+    )}
+
+{/* Archived Orders Tab */}
+    {activeAdminTab === "archive" && (
+      <motion.div
+        key="archive"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+      >
+        {/* Search Bar */}
+        <div className={`flex flex-col sm:flex-row gap-4 mb-6 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
+          <div className="flex-1 relative">
+            <Search className={`absolute ${isRtl ? "right-4" : "left-4"} top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400`} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={isRtl ? "חיפוש בארכיון..." : "Search archive..."}
+              className={`w-full ${isRtl ? "pr-12 pl-4 text-right" : "pl-12 pr-4 text-left"} py-3 rounded-xl border border-primary-200 bg-white
+                       focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                       transition-all duration-200 shadow-sm`}
+            />
+          </div>
+        </div>
+
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[950px]">
+              <thead>
+                <tr className={`bg-primary-50 border-b border-primary-100 ${isRtl ? "text-right" : "text-left"}`}>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("status")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תאריכים" : "Dates"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תוצאה" : "Result"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody className={isRtl ? "text-right" : "text-left"}>
+                {archivedOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-primary-500">
+                      <Archive className="w-12 h-12 mx-auto mb-3 text-primary-300" />
+                      <p>{isRtl ? "אין הזמנות בארכיון" : "No archived orders found"}</p>
+                      {searchQuery && <p className="text-sm mt-1">{isRtl ? "נסה לשנות את החיפוש" : "Try adjusting your search"}</p>}
+                    </td>
+                  </tr>
+                ) : (
+                  archivedOrders.map((order) => (
+                    <tr key={order.id} className="border-b border-primary-50 hover:bg-primary-50/50 transition-colors">
+                      <td className="px-4 py-4 font-bold text-navy-900">{order.id}</td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-navy-800">{order.customerName}</div>
+                        <div className="text-sm text-primary-500 mt-1" dir="ltr">
+                          {order.phone ? (
+                            <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
+                              {order.phone}
+                            </a>
+                          ) : "—"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <select
+                          value={order.status}
+                          onChange={(e) => updateStatus(order.id, e.target.value as OrderStatus)}
+                          className={`px-3 py-1.5 rounded-lg border border-primary-200 bg-white text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                                   cursor-pointer ${isRtl ? "text-right" : ""}`}
+                        >
+                          {statusOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-4 text-sm hidden sm:table-cell">
+                        <div className="text-navy-700">
+                          <span className="text-primary-400 text-xs uppercase tracking-wider">{isRtl ? "קבל:" : "In:"}</span> {order.dateReceived}
+                        </div>
+                        {order.estimatedCompletion && (
+                          <div className="text-primary-600 mt-1">
+                            <span className="text-primary-400 text-xs uppercase tracking-wider">{isRtl ? "צפי:" : "Est:"}</span> {order.estimatedCompletion}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        <select
+                          value={order.result || ""}
+                          onChange={(e) => updateResult(order.id, e.target.value)}
+                          className={`w-full px-3 py-1.5 rounded-lg border border-primary-200 bg-white text-sm
+                                   focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                                   cursor-pointer ${isRtl ? "text-right" : ""}`}
+                        >
+                          {resultOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className={`flex items-center gap-1.5 whitespace-nowrap ${isRtl ? "justify-start" : "justify-end"}`}>
+                          <button
+                            onClick={() => handleUnarchive(order)}
+                            className="p-2 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors"
+                            title={isRtl ? "שחזר מארכיון" : "Restore from archive"}
+                          >
+                            <ArchiveRestore className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePermanent(order.id)}
+                            className="p-2 rounded-lg text-red-600 hover:text-red-800 hover:bg-red-50 transition-colors"
+                            title={isRtl ? "מחק לצמיתות" : "Delete permanently"}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </motion.div>
+    )}
+
+    {/* Voicemails Tab */}
+        {activeAdminTab === "voicemails" && (
+          <motion.div
+            key="voicemails"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="card bg-white p-6"
+          >
+            <div className={`flex items-center gap-2 mb-6 ${isRtl ? "flex-row-reverse" : ""}`}>
+              <Volume2 className="w-6 h-6 text-navy-600" />
+              <h2 className="text-xl font-bold text-navy-900">{isRtl ? "תיבת הודעות ותא קולי" : "Voicemail Inbox"}</h2>
+            </div>
+            {voicemails.length === 0 ? (
+              <div className="text-center py-12 text-primary-400">
+                <Volume2 className="w-12 h-12 mx-auto mb-4 text-primary-200" />
+                <p className="text-lg font-medium">{isRtl ? "אין הודעות תא קולי עדיין" : "No voicemails yet"}</p>
+                <p className="text-sm mt-1">{isRtl ? "הודעות מלקוחות יופיעו כאן" : "Customer messages will appear here"}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {voicemails.map((vm) => (
+                  <div key={vm.id} className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-primary-50 rounded-xl border ${vm.read ? "border-primary-100" : "border-gold-300 bg-gold-50/30"} transition-colors ${isRtl ? "sm:flex-row-reverse" : ""}`}>
+                    <div className={`flex flex-col gap-1 ${isRtl ? "text-right" : ""}`}>
+                      <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <Phone className="w-4 h-4 text-navy-500" />
+                        <span className="font-bold text-navy-900">{vm.phone}</span>
+                        {!vm.read && (
+                          <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">
+                            {isRtl ? "חדש" : "New"}
+                          </span>
+                        )}
+                      </div>
+                      <div className={`flex items-center gap-3 text-xs text-primary-600 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <span>{formatDateTime(vm.timestamp)}</span>
+                        <span>•</span>
+                        <span>{isRtl ? "אורך:" : "Duration:"} {vm.duration}s</span>
+                      </div>
+                    </div>
+                    <div className={`flex items-center gap-3 mt-4 sm:mt-0 w-full sm:w-auto ${isRtl ? "flex-row-reverse" : ""}`}>
+                      <audio controls className="h-10 w-full sm:w-[250px]" onPlay={() => { if (!vm.read) markVoicemailRead(vm.id); }}>
+                        <source src={`/api/audio?url=${encodeURIComponent(vm.url)}`} type="audio/mpeg" />
+                        <source src={`/api/audio?url=${encodeURIComponent(vm.url)}`} type="audio/wav" />
+                        Your browser does not support the audio element.
+                      </audio>
+                      <button
+                        onClick={() => { if(confirm(isRtl ? "למחוק הודעה זו?" : "Delete this voicemail?")) dbDeleteVoicemail(vm.id); }}
+                        className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                        title={isRtl ? "מחק הודעה" : "Delete voicemail"}
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* IVR Audio Manager Tab */}
+        {activeAdminTab === "audio" && (
+          <motion.div
+            key="audio"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            {/* Header */}
+            <div className={`card p-6 bg-white border border-primary-200 shadow-sm ${isRtl ? "text-right" : ""}`}>
+              <div className={`flex items-center gap-3 mb-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                <FileAudio className="w-8 h-8 text-gold-500 shrink-0" />
+                <h2 className="text-2xl font-bold text-navy-900">{isRtl ? "מנהל שמע והקלטות IVR" : "IVR Audio Manager & Production"}</h2>
+              </div>
+              <p className="text-sm text-primary-600 leading-relaxed max-w-3xl">
+                {isRtl 
+                  ? "כאן תוכל להעלות, להאזין, ולנהל את קבצי השמע של מערכת ה-IVR הטלפונית. מומלץ להשתמש בקבצים מוקלטים באיכות גבוהה או קולות מיוצרים על ידי ElevenLabs לקבלת חווית שירות מקצועית."
+                  : "Upload, listen to, and manage the pre-recorded voice files used by your automated IVR system. We recommend high-quality MP3s or ElevenLabs voice synthesis for a professional studio feel."}
+              </p>
+            </div>
+
+            {/* Main Layout Grid */}
+            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isRtl ? "direction-rtl" : ""}`}>
+              
+              {/* Left column: Upload form & Quick presets */}
+              <div className="space-y-6 lg:col-span-1">
+                
+                {/* Upload Card */}
+                <div className={`card p-6 bg-white border border-primary-200 shadow-sm ${isRtl ? "text-right" : ""}`}>
+                  <h3 className="text-lg font-bold text-navy-900 mb-4 border-b border-primary-100 pb-2">
+                    {isRtl ? "העלאת קובץ שמע חדש" : "Upload New Audio"}
+                  </h3>
+                  
+                  <form onSubmit={handleUploadAudio} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">
+                        {isRtl ? "שם הקובץ (באנגלית, ללא רווחים)" : "Audio File Name (English, no spaces)"}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={audioName}
+                        onChange={(e) => setAudioName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                        placeholder="e.g. welcome, info, vip"
+                        className={`w-full px-3 py-2 rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm bg-primary-50/50 ${isRtl ? "text-right" : ""}`}
+                      />
+                      <p className="text-[10px] text-primary-400 mt-1">
+                        {isRtl ? "אותיות באנגלית, מספרים וקו תחתון בלבד." : "Only alphanumeric characters and underscores/dashes."}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">
+                        {isRtl ? "קובץ MP3 שמע" : "MP3 Audio File"}
+                      </label>
+                      <div className="border-2 border-dashed border-primary-200 rounded-xl p-4 bg-primary-50/30 text-center hover:bg-primary-50/50 transition-colors cursor-pointer relative">
+                        <input
+                          id="audio-file-input-modal"
+                          type="file"
+                          required
+                          accept="audio/mpeg, audio/mp3"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAudioFile(e.target.files[0]);
+                            }
+                          }}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                        <Music className="w-8 h-8 text-primary-400 mx-auto mb-2" />
+                        <span className="text-xs text-primary-600 block truncate font-medium">
+                          {audioFile ? audioFile.name : (isRtl ? "לחץ או גרור קובץ MP3 כאן" : "Click or drag MP3 file here")}
+                        </span>
+                        <span className="text-[10px] text-primary-400 block mt-1">
+                          {isRtl ? "גודל מקסימלי: 1MB" : "Maximum size: 1MB"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isUploading}
+                      className="btn-primary w-full py-2.5 inline-flex items-center justify-center gap-2 text-sm font-bold shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {isUploading ? (isRtl ? "מעלה קובץ..." : "Uploading file...") : (isRtl ? "העלה קובץ למערכת" : "Upload to System")}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Quick Presets / Templates */}
+                <div className={`card p-6 bg-white border border-primary-200 shadow-sm ${isRtl ? "text-right" : ""}`}>
+                  <h3 className="text-xs font-bold text-navy-900 mb-3 uppercase tracking-wider">
+                    {isRtl ? "שמות קבצים נפוצים ל-IVR" : "Common IVR File Names"}
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {["welcome", "general_info", "vip_info", "order_not_found", "voicemail_greeting"].map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => setAudioName(preset)}
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-primary-50 text-navy-700 hover:bg-gold-50 border border-primary-100 hover:border-gold-300 transition-all font-semibold font-mono"
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right column: Uploaded audio files list */}
+              <div className="lg:col-span-2 space-y-6">
+                
+                {/* Audio library */}
+                <div className="card p-6 bg-white border border-primary-200 shadow-sm">
+                  <h3 className={`text-lg font-bold text-navy-900 mb-4 border-b border-primary-100 pb-2 ${isRtl ? "text-right" : ""}`}>
+                    {isRtl ? "ספריית הקבצים המוקלטים" : "Audio Recordings Library"}
+                  </h3>
+                  
+                  {audioFiles.length === 0 ? (
+                    <div className="text-center py-12 text-primary-400">
+                      <Music className="w-16 h-16 mx-auto mb-4 text-primary-200 animate-pulse" />
+                      <p className="text-base font-semibold">{isRtl ? "אין קבצי שמע מותאמים אישית" : "No custom audio files uploaded"}</p>
+                      <p className="text-xs mt-1">{isRtl ? "העלה קובץ MP3 כדי להתחיל" : "Upload an MP3 file to populate the list"}</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {audioFiles.map((file) => {
+                        const origin = typeof window !== "undefined" ? window.location.origin : "";
+                        const fileUrl = `${origin}/api/audio?name=${file.name.toLowerCase().trim()}`;
+                        return (
+                          <div 
+                            key={file.name} 
+                            className={`p-4 bg-primary-50/50 hover:bg-primary-50 rounded-xl border border-primary-150 transition-all duration-200 flex flex-col justify-between ${isRtl ? "text-right" : ""}`}
+                          >
+                            <div className={`flex items-start justify-between gap-2 mb-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                              <div className="truncate">
+                                <div className={`flex items-center gap-1.5 font-bold text-navy-900 ${isRtl ? "flex-row-reverse" : ""}`}>
+                                  {isReplacingName === file.name ? (
+                                    <RefreshCw className="w-4 h-4 text-gold-500 animate-spin shrink-0" />
+                                  ) : (
+                                    <FileAudio className="w-4 h-4 text-navy-600 shrink-0" />
+                                  )}
+                                  <span className="truncate" title={file.name}>{file.name}.mp3</span>
+                                </div>
+                                <span className="text-[10px] text-primary-500 block mt-0.5">
+                                  {isRtl ? "פורמט: MP3" : "Format: MP3 Audio"}
+                                </span>
+                              </div>
+                              <div className={`flex items-center gap-1 ${isRtl ? "flex-row-reverse" : ""}`}>
+                                <label
+                                  className={`p-1.5 rounded-lg text-gold-500 hover:text-gold-600 hover:bg-gold-50 transition-all shrink-0 cursor-pointer block ${
+                                    isReplacingName === file.name ? "opacity-50 cursor-not-allowed" : ""
+                                  }`}
+                                  title={isRtl ? "החלף קובץ" : "Replace file"}
+                                >
+                                  <Upload className="w-4 h-4" />
+                                  <input
+                                    type="file"
+                                    accept="audio/mpeg, audio/mp3"
+                                    className="hidden"
+                                    disabled={isReplacingName === file.name}
+                                    onChange={(e) => handleReplaceAudio(file.name, e)}
+                                  />
+                                </label>
+                                <button
+                                  onClick={() => handleDeleteAudio(file.name)}
+                                  className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-all shrink-0"
+                                  title={isRtl ? "מחק קובץ" : "Delete file"}
+                                  disabled={isReplacingName === file.name}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Audio Player and Links */}
+                            <div className="space-y-3">
+                              {/* Custom Mini Player UI */}
+                              <div className={`flex items-center gap-3 bg-white p-2 rounded-lg border border-primary-100 ${isRtl ? "flex-row-reverse" : ""}`}>
+                                <button
+                                  onClick={() => handleTogglePlay(file.name)}
+                                  className={`p-2 rounded-full transition-all shrink-0 ${
+                                    playingName === file.name
+                                      ? "bg-gold-500 text-white shadow-md animate-pulse"
+                                      : "bg-navy-900 text-white hover:bg-navy-800 shadow"
+                                  }`}
+                                >
+                                  {playingName === file.name ? (
+                                    <Pause className="w-4 h-4" />
+                                  ) : (
+                                    <Play className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <div className="h-1.5 w-full bg-primary-100 rounded-full overflow-hidden relative">
+                                    {playingName === file.name && (
+                                      <motion.div 
+                                        className="h-full bg-gold-400"
+                                        initial={{ width: "0%" }}
+                                        animate={{ width: "100%" }}
+                                        transition={{ duration: 15, ease: "linear" }}
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Copy Url Box */}
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  readOnly
+                                  value={fileUrl}
+                                  className="w-full text-[10px] font-mono px-3 py-2 rounded-lg border border-primary-200 bg-white pr-10 text-primary-600 truncate focus:outline-none"
+                                />
+                                <button
+                                  onClick={() => handleCopyAudioUrl(file.name)}
+                                  className={`absolute ${isRtl ? "left-2" : "right-2"} top-1/2 -translate-y-1/2 p-1 text-primary-500 hover:text-navy-900 hover:bg-primary-50 rounded transition-all`}
+                                  title={isRtl ? "העתק קישור ללוח" : "Copy link"}
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* How to Connect with Twilio */}
+                <div className={`card p-6 bg-navy-900 text-white ${isRtl ? "text-right" : ""}`}>
+                  <h3 className="text-sm font-bold text-gold-400 mb-3 flex items-center gap-2 justify-start">
+                    <Sliders className="w-4 h-4 shrink-0" />
+                    <span>{isRtl ? "הוראות חיבור מהירות ל-Twilio Studio" : "Twilio Studio Connection Guide"}</span>
+                  </h3>
+                  <ol className={`space-y-2 text-[10px] text-navy-100 list-decimal ${isRtl ? "pr-4" : "pl-4"}`}>
+                    <li>
+                      {isRtl 
+                        ? "העלה את קובץ ה-MP3 במנהל השמע (למשל welcome)." 
+                        : "Upload your custom MP3 file in the manager above (e.g. welcome)."}
+                    </li>
+                    <li>
+                      {isRtl 
+                        ? "לחץ על כפתור ההעתקה (Copy URL) כדי לקבל את הקישור הישיר שלו." 
+                        : "Click the copy icon (Copy URL) to copy the public URL to your clipboard."}
+                    </li>
+                    <li>
+                      {isRtl 
+                        ? "בווידג'ט Play או Gather בתוך Twilio Studio, שנה את סוג השמע ל- Play Audio File." 
+                        : "In Twilio Studio, add or edit a 'Play' or 'Gather' widget."}
+                    </li>
+                    <li>
+                      {isRtl 
+                        ? "הדבק את הקישור שהעתקת לתוך תיבת ה-URL ב-Twilio ושמור." 
+                        : "Paste the copied URL into the URL box, set the loop count, and click save."}
+                    </li>
+                  </ol>
+                </div>
+
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+
       </div>
 
       <AnimatePresence>
+        {showPhoneModal && (
+          <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center p-4">
+            <motion.div
+              drag
+              dragControls={dragControls}
+              dragListener={false}
+              dragMomentum={false}
+              dragElastic={0.05}
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-6xl overflow-hidden rounded-3xl shadow-2xl border border-slate-800 pointer-events-auto"
+            >
+              <VirtualPhone
+                orders={orders}
+                calls={calls}
+                voicemails={voicemails}
+                smsMessages={smsMessages}
+                forwardingNumber={forwardingNumber}
+                twilioPhoneNumber={twilioPhoneNumber}
+                isRtl={isRtl}
+                t={t}
+                triggerOutboundCall={triggerOutboundCallFromAdmin}
+                sendSms={sendSmsFromVirtualPhone}
+                markVoicemailRead={markVoicemailRead}
+                deleteVoicemail={dbDeleteVoicemail}
+                onClose={() => setShowPhoneModal(false)}
+                dragControls={dragControls}
+              />
+            </motion.div>
+          </div>
+        )}
+
         {printOrder && (
           <PrintCard order={printOrder} onClose={() => setPrintOrder(null)} />
+        )}
+
+        {callPromptData && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className={`bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-primary-100 ${isRtl ? "text-right" : ""}`}
+            >
+              <div className={`flex items-center gap-3 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
+                <div className="w-12 h-12 bg-gold-100 rounded-full flex items-center justify-center shrink-0">
+                  <Phone className="w-6 h-6 text-gold-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-navy-900">{isRtl ? "עדכון לקוח טלפוני" : "Call Customer"}</h3>
+                  <p className="text-sm text-primary-500 font-medium">{callPromptData.phone}</p>
+                </div>
+              </div>
+              <p className="text-navy-700 mb-6 font-medium">
+                {isRtl 
+                  ? "ההזמנה סומנה כמוכנה לאיסוף. האם תרצה שהמערכת תתקשר אוטומטית ללקוח ותודיע לו לבוא לאסוף?"
+                  : "Order marked as Ready. Do you want the system to automatically call the customer and notify them?"}
+              </p>
+              <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                <button
+                  onClick={() => setCallPromptData(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-primary-200 text-navy-600 font-bold hover:bg-primary-50 transition-colors"
+                >
+                  {isRtl ? "לא כעת" : "No, skip"}
+                </button>
+                <button
+                  onClick={handleCallPromptConfirm}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gold-500 hover:bg-gold-600 text-white font-bold shadow-lg shadow-gold-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-4 h-4" />
+                  {isRtl ? "כן, התקשר" : "Yes, Call"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showCallModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-navy-50"
+            >
+              <div className={`p-6 border-b border-primary-100 flex items-center justify-between bg-navy-900 text-white ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+                <div>
+                  <h2 className="text-xl font-bold text-gold-400 flex items-center gap-2">
+                    <Phone className="w-5 h-5" />
+                    {isRtl ? "שיחת טלפון ללקוח" : "Voice Call Customer"}
+                  </h2>
+                  <p className="text-xs text-navy-300 mt-1">
+                    {isRtl ? "התקשר ללקוח דרך המערכת. המערכת תתקשר לטלפון שלך תחילה ואז תחבר אותך ללקוח." : "Call customer via Twilio. The system will ring your phone first, then connect you."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowCallModal(false);
+                    setManualCallPhone("");
+                    setManualCallOrderId("");
+                  }}
+                  className="p-2 rounded-full hover:bg-navy-800 text-navy-300 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className={`p-6 space-y-4 ${isRtl ? "text-right" : ""}`}>
+                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100 text-xs text-emerald-800">
+                  <strong>{isRtl ? "הטלפון שלך שיצלצל:" : "Your Phone (To ring first):"} </strong>
+                  {forwardingNumber || (isRtl ? "לא מוגדר! הגדר בלשונית הגדרות" : "Not set! Please configure in Settings tab")}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-navy-800 mb-1">
+                    {isRtl ? "בחר הזמנה (אופציונלי):" : "Select Order (Optional):"}
+                  </label>
+                  <select
+                    value={manualCallOrderId}
+                    onChange={(e) => {
+                      const oId = e.target.value;
+                      setManualCallOrderId(oId);
+                      const selectedOrder = orders.find(o => o.id === oId);
+                      if (selectedOrder && selectedOrder.phone) {
+                        setManualCallPhone(selectedOrder.phone);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl border border-primary-200 bg-primary-50/50 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                  >
+                    <option value="">{isRtl ? "-- בחר הזמנה --" : "-- Select Order --"}</option>
+                    {orders.filter(o => !o.archived && o.phone).map(o => (
+                      <option key={o.id} value={o.id}>
+                        {o.id} - {o.customerName} ({o.phone})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-navy-800 mb-1">
+                    {isRtl ? "מספר טלפון להתקשרות:" : "Customer Phone Number:"}
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={manualCallPhone}
+                    onChange={(e) => setManualCallPhone(e.target.value)}
+                    placeholder="8455524744"
+                    className={`w-full px-3 py-2 rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm bg-primary-50/50 ${isRtl ? "text-right" : ""}`}
+                  />
+                  <p className="text-[10px] text-primary-400 mt-1">
+                    {isRtl ? "מספר טלפון של הלקוח כולל קידומת (למשל 845...)." : "The customer's 10-digit phone number (e.g. 845...)." }
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-primary-100 bg-primary-50/50 flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCallModal(false);
+                    setManualCallPhone("");
+                    setManualCallOrderId("");
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-primary-200 text-navy-600 font-bold hover:bg-primary-50 transition-colors"
+                >
+                  {isRtl ? "ביטול" : "Cancel"}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!manualCallPhone.trim()) {
+                      showToast(isRtl ? "אנא הזן מספר טלפון!" : "Please enter a phone number!", "error");
+                      return;
+                    }
+                    if (!forwardingNumber) {
+                      showToast(isRtl ? "שגיאה: אנא הגדר מספר העברה בהגדרות!" : "Error: Please set your forwarding phone number in Settings first!", "error");
+                      return;
+                    }
+                    
+                    const selectedOrder = orders.find(o => o.id === manualCallOrderId);
+                    const customerName = selectedOrder ? selectedOrder.customerName : "";
+                    const orderId = selectedOrder ? selectedOrder.id : "";
+
+                    try {
+                      showToast(isRtl ? "מתקשר לטלפון שלך כעת..." : "Calling your phone now...", "info");
+                      const res = await fetch("/api/twilio/bridge-call", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ 
+                          phone: manualCallPhone, 
+                          adminPhone: forwardingNumber,
+                          customerName,
+                          orderId
+                        })
+                      });
+                      if (res.ok) {
+                        showToast(isRtl ? "השיחה הופעלה! המתן לצלצול בטלפון שלך." : "Call triggered! Answer your phone to connect.", "success");
+                        setShowCallModal(false);
+                        setManualCallPhone("");
+                        setManualCallOrderId("");
+                      } else {
+                        const errData = await res.json();
+                        showToast(isRtl ? `שגיאה בהפעלת השיחה: ${errData.error || ""}` : `Error triggering call: ${errData.error || ""}`, "error");
+                      }
+                    } catch (e) {
+                      console.error(e);
+                      showToast(isRtl ? "שגיאה בהפעלת השיחה" : "Error triggering call", "error");
+                    }
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gold-500 hover:bg-gold-600 text-white font-bold shadow-lg shadow-gold-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-4 h-4" />
+                  {isRtl ? "התקשר ללקוח" : "Call Customer"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
 
         {showBlueprintModal && (
@@ -1149,17 +2868,7 @@ export default function AdminPage() {
                   <Network className="w-4 h-4 shrink-0" />
                   <span>{isRtl ? "מפת זרימת השיחה" : "Call Flowchart"}</span>
                 </button>
-                <button
-                  onClick={() => setActiveBlueprintTab("audio")}
-                  className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
-                  style={{
-                    backgroundColor: activeBlueprintTab === "audio" ? "#0f172a" : "transparent",
-                    color: activeBlueprintTab === "audio" ? "#ffffff" : "#0369a1"
-                  }}
-                >
-                  <Volume2 className="w-4 h-4 shrink-0" />
-                  <span>{isRtl ? "ניהול קבצי קול (IVR)" : "IVR Audio Manager"}</span>
-                </button>
+
                 <button
                   onClick={() => setActiveBlueprintTab("api")}
                   className={`px-4 py-2 rounded-lg transition-colors shrink-0 focus:outline-none flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}
@@ -1305,141 +3014,21 @@ export default function AdminPage() {
                             <span className="font-bold text-gold-400">4: Add New Order</span>
                             <p className="text-navy-200 mt-1">{isRtl ? "יוצר הזמנה חדשה עם מספר טלפון של לקוח. יוצר מזהה חדש אוטומטית ומקריא אותו ספרה-אחר-ספרה בהצלחה." : "Creates a new order for a customer. Auto-generates order ID and speaks it back as single digits."}</p>
                           </div>
+                          <div className="md:col-span-2 border-t border-navy-800 pt-3">
+                            <span className="font-bold text-gold-400">5: Call Customer (Keypad/Digits Bridge)</span>
+                            <p className="text-navy-200 mt-1">{isRtl ? "הקש 5 והקלד מספר הזמנה או מספר טלפון כדי לחבר את שיחת הטלפון הנוכחית שלך ישירות ללקוח." : "Press 5 and enter order ID or phone number to bridge your current call directly to the customer."}</p>
+                          </div>
+                          <div className="md:col-span-2 border-t border-navy-800 pt-3">
+                            <span className="font-bold text-gold-400 flex items-center gap-1">🗣️ Voice Command: Call Customer</span>
+                            <p className="text-navy-200 mt-1">{isRtl ? "אמור 'Call order 102' או 'Call phone 845...' בתפריט הניהול כדי לחבר את שיחת הטלפון הנוכחית שלך ישירות ללקוח." : "Say 'Call order 102' or 'Call phone 845...' in the voice admin menu to bridge your current call directly to the customer."}</p>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* 4. IVR AUDIO MANAGER TAB */}
-                {activeBlueprintTab === "audio" && (
-                  <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${isRtl ? "text-right" : ""}`}>
-                    {/* Upload Card */}
-                    <div className="bg-white border border-primary-100 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-                      <div>
-                        <div className={`flex items-center gap-2 mb-3 ${isRtl ? "flex-row-reverse" : ""}`}>
-                          <Volume2 className="w-5 h-5 text-gold-600" />
-                          <h3 className="text-lg font-bold text-navy-900">{isRtl ? "העלה קובץ שמע חדש (MP3)" : "Upload Custom MP3"}</h3>
-                        </div>
-                        <p className="text-xs text-primary-600 mb-4 leading-relaxed">
-                          {isRtl 
-                            ? "הורד קובץ שמע מ-ElevenLabs, תן לו שם קצר באנגלית (למשל: welcome) והעלה אותו לכאן כדי לקבל קישור ישיר ל-Twilio Studio." 
-                            : "Download an MP3 from ElevenLabs, name it (e.g. welcome) and upload it here to get an instant Twilio link."}
-                        </p>
-                        
-                        <form onSubmit={handleUploadAudio} className="space-y-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">
-                              {isRtl ? "שם הקובץ (באנגלית בלבד, ללא רווחים)" : "Audio File Name (English only)"}
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={audioName}
-                              onChange={(e) => setAudioName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
-                              placeholder="e.g. welcome, info, vip"
-                              className={`w-full px-3 py-2 rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-primary-500 mb-1 uppercase">
-                              {isRtl ? "בחר קובץ MP3" : "Select MP3 File"}
-                            </label>
-                            <input
-                              id="audio-file-input-modal"
-                              type="file"
-                              required
-                              accept="audio/mpeg, audio/mp3"
-                              onChange={(e) => {
-                                if (e.target.files && e.target.files[0]) {
-                                  setAudioFile(e.target.files[0]);
-                                }
-                              }}
-                              className={`w-full text-sm text-primary-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-navy-50 file:text-navy-700 hover:file:bg-navy-100 cursor-pointer`}
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={isUploading}
-                            className="btn-primary w-full py-2.5 text-sm inline-flex items-center justify-center gap-2"
-                          >
-                            <Plus className="w-4 h-4" />
-                            {isUploading ? (isRtl ? "מעלה קובץ..." : "Uploading...") : (isRtl ? "העלה קובץ שמע" : "Upload Audio")}
-                          </button>
-                        </form>
-                      </div>
-                    </div>
 
-                    {/* Library Card */}
-                    <div className="bg-white border border-primary-100 rounded-2xl p-6 shadow-sm flex flex-col">
-                      <div className={`flex items-center justify-between border-b border-primary-100 pb-3 mb-4 ${isRtl ? "flex-row-reverse" : ""}`}>
-                        <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
-                          <Music className="w-5 h-5 text-navy-600" />
-                          <h3 className="text-lg font-bold text-navy-900">{isRtl ? "ספריית קבצי הקול שלך" : "Your Audio Library"}</h3>
-                        </div>
-                        <span className="text-xs bg-navy-50 text-navy-700 px-2 py-0.5 rounded-full font-bold">
-                          {audioFiles.length} {isRtl ? "קבצים" : "Files"}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 flex-1 max-h-[300px] overflow-y-auto pr-1">
-                        {audioFiles.length === 0 ? (
-                          <div className="text-center py-12 text-primary-400">
-                            <Music className="w-12 h-12 mx-auto mb-2 text-primary-200" />
-                            <p className="text-xs italic">{isRtl ? "אין קבצי קול מועלים עדיין" : "No uploaded audio files yet"}</p>
-                          </div>
-                        ) : (
-                          audioFiles.map((file) => (
-                            <div key={file.name} className={`flex items-center justify-between p-3 bg-primary-50 hover:bg-primary-100/50 rounded-xl border border-primary-100 text-sm transition-colors ${isRtl ? "flex-row-reverse" : ""}`}>
-                              <div className="flex items-center gap-2.5 truncate">
-                                <FileAudio className="w-5 h-5 text-navy-500 shrink-0" />
-                                <div className="truncate text-left font-sans">
-                                  <span className="font-bold text-navy-800 truncate block text-xs md:text-sm" title={file.name}>
-                                    {file.name}.mp3
-                                  </span>
-                                  <span className="text-[10px] text-primary-400 block">
-                                    {new Date(file.uploadedAt).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => handleTogglePlay(file.name)}
-                                  className={`p-1.5 rounded-lg transition-colors ${
-                                    playingName === file.name 
-                                      ? "text-gold-600 bg-gold-50 hover:bg-gold-100" 
-                                      : "text-navy-500 hover:text-navy-700 hover:bg-navy-100"
-                                  }`}
-                                  title={playingName === file.name ? (isRtl ? "עצור" : "Pause") : (isRtl ? "שמע קובץ" : "Play")}
-                                >
-                                  {playingName === file.name ? (
-                                    <Pause className="w-4 h-4 animate-pulse" />
-                                  ) : (
-                                    <Play className="w-4 h-4" />
-                                  )}
-                                </button>
-                                <button
-                                  onClick={() => handleCopyAudioUrl(file.name)}
-                                  className="p-1.5 rounded-lg text-navy-500 hover:text-navy-700 hover:bg-navy-100 border border-primary-100 bg-white transition-colors"
-                                  title={isRtl ? "העתק קישור ל-Twilio" : "Copy Twilio URL"}
-                                >
-                                  <Copy className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteAudio(file.name)}
-                                  className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 border border-primary-100 bg-white transition-colors"
-                                  title={isRtl ? "מחק קובץ" : "Delete file"}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* 2. API WEBHOOKS TAB */}
                 {activeBlueprintTab === "api" && (
@@ -1463,7 +3052,7 @@ export default function AdminPage() {
                         </div>
                         <p className="text-xs text-primary-600">{isRtl ? "בודק אם מספר הטלפון המזהה קיים." : "Checks if the caller's incoming phone number exists in Firestore."}</p>
                         <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
-                          Body: {"{ \"From\": \"+18457092022\" }"}
+                          Body: {"{ \"From\": \"+18455524744\" }"}
                         </div>
                       </div>
 
@@ -1499,7 +3088,7 @@ export default function AdminPage() {
                         </div>
                         <p className="text-xs text-primary-600">{isRtl ? "מנהל יוצר הזמנה חדשה בשיחה." : "Enables admin to create new orders on the fly."}</p>
                         <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
-                          Body: {"{ \"phone\": \"8457092022\" }"}
+                          Body: {"{ \"phone\": \"8455524744\" }"}
                         </div>
                       </div>
 
@@ -1511,7 +3100,7 @@ export default function AdminPage() {
                         </div>
                         <p className="text-xs text-primary-600">{isRtl ? "שולח הודעת הקלטה קולית ופרטי מתקשר לתיבת האימייל שלך." : "Sends recorded voicemail link and caller details to configured email address."}</p>
                         <div className="text-[11px] bg-primary-50 p-2 rounded font-mono text-primary-700">
-                          Body: {"{ \"recordingUrl\": \"https://api.twilio.com/...\", \"recordingDuration\": \"15\", \"phone\": \"+18457092022\" }"}
+                          Body: {"{ \"recordingUrl\": \"https://api.twilio.com/...\", \"recordingDuration\": \"15\", \"phone\": \"+18455524744\" }"}
                         </div>
                       </div>
                     </div>
@@ -1645,7 +3234,7 @@ export default function AdminPage() {
                               </div>
 
                               <div className="flex justify-between items-center text-[8.5px] text-primary-200 font-mono tracking-wide z-10">
-                                <span>📞 845-709-2022</span>
+                                <span>📞 845-552-4744</span>
                                 <span>shatnez-lab.vercel.app</span>
                               </div>
                             </div>
@@ -1677,7 +3266,7 @@ export default function AdminPage() {
                                 <div className="space-y-1 py-1">
                                   <div className={`flex items-center gap-1.5 text-[8.5px] text-primary-800 ${isRtl ? "flex-row-reverse" : ""}`}>
                                     <Phone className="w-2.5 h-2.5 text-gold-500 shrink-0" />
-                                    <span className="font-bold">845-709-2022</span>
+                                    <span className="font-bold">845-552-4744</span>
                                   </div>
                                   <div className={`flex items-center gap-1.5 text-[8.5px] text-primary-800 ${isRtl ? "flex-row-reverse" : ""}`}>
                                     <MapPin className="w-2.5 h-2.5 text-gold-500 shrink-0" />
@@ -1765,7 +3354,7 @@ export default function AdminPage() {
                                       ${isRtl ? "בדיקת שעטנז מקצועית ומוסמכת" : "Professional Shatnez Verification"}
                                     </p>
                                     <div style="margin-top: 15px; font-size: 10px; color: #d4af37; letter-spacing: 1px; font-weight: 600;">
-                                      📞 845-709-2022
+                                      📞 845-552-4744
                                     </div>
                                   </div>
                                   <div class="page-break"></div>
@@ -1776,7 +3365,7 @@ export default function AdminPage() {
                                         <span>🔬</span>
                                         <span>\${isRtl ? "מעבדת השעטנז" : "The Shatnez Lab"}</span>
                                       </div>
-                                      <div class="info-item \${isRtl ? "rtl" : ""}"><strong>📞:</strong> <span>845-709-2022</span></div>
+                                      <div class="info-item \${isRtl ? "rtl" : ""}"><strong>📞:</strong> <span>845-552-4744</span></div>
                                       <div class="info-item \${isRtl ? "rtl" : ""}"><strong>📍:</strong> <span>14 Buchanan Rd, Spring Valley NY</span></div>
                                       <div class="info-item \${isRtl ? "rtl" : ""}"><strong>🕒:</strong> <span>24/7 Drop-Off & Phone Check</span></div>
                                       <div class="prices-row" style="\${isRtl ? "justify-content: flex-end;" : ""}">
@@ -1840,6 +3429,33 @@ export default function AdminPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating Dialer Button */}
+      <motion.button
+        onClick={() => setShowPhoneModal(true)}
+        className={`fixed bottom-6 ${isRtl ? "left-6" : "right-6"} z-40 p-4 ${
+          activeInboundCall ? "bg-rose-600 hover:bg-rose-700 animate-bounce" : "bg-emerald-600 hover:bg-emerald-700"
+        } text-white rounded-full shadow-2xl transition-all duration-200 flex items-center justify-center group border ${
+          activeInboundCall ? "border-rose-500" : "border-emerald-500"
+        }`}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        title={isRtl ? "טלפון משרדי וחייגן" : "Office Phone & Dialer"}
+      >
+        {activeInboundCall ? (
+          <PhoneCall className="w-6 h-6 shrink-0 animate-pulse text-white" />
+        ) : (
+          <Phone className="w-6 h-6 shrink-0" />
+        )}
+        <span className={`max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out font-bold text-xs whitespace-nowrap ${isRtl ? "mr-0 group-hover:mr-2" : "ml-0 group-hover:ml-2"}`}>
+          {isRtl ? "טלפון משרדי" : "Office Phone"}
+        </span>
+        {voicemails.filter(v => !v.read).length > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border border-white">
+            {voicemails.filter(v => !v.read).length}
+          </span>
+        )}
+      </motion.button>
 
       {/* Floating Toast Notification Container */}
       <div className={`fixed bottom-4 z-50 flex flex-col gap-2 w-full max-w-sm pointer-events-none ${isRtl ? "left-4 right-auto text-right" : "right-4 left-auto text-left"}`}>

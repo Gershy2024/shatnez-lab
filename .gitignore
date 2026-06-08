@@ -29,3 +29,12 @@ Thumbs.db
 
 # Local Netlify folder
 .netlify
+
+.vercel
+
+# Scratch and temporary files
+scratch/
+scratch_*
+check_*.py
+tsconfig.tsbuildinfo
+

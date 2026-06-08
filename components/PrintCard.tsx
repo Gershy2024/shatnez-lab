@@ -15,6 +15,7 @@ interface Order {
   estimatedCompletion: string;
   notes: string;
   result: string;
+  location?: string;
 }
 
 interface PrintCardProps {
@@ -177,6 +178,13 @@ export default function PrintCard({ order, onClose }: PrintCardProps) {
                 </div>
               )}
 
+              {order.location && (
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Location</span>
+                  <span className="text-sm font-semibold text-navy-700">{order.location}</span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center pt-1">
                 <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Status</span>
                 <span className={`status-badge status-${order.status}`}>
@@ -196,7 +204,7 @@ export default function PrintCard({ order, onClose }: PrintCardProps) {
 
             {/* Footer */}
             <div className="print-card-footer">
-              <span className="text-[9px] text-gray-500 font-medium">📞 845-709-2022</span>
+              <span className="text-[9px] text-gray-500 font-medium">📞 845-552-4744</span>
               <span className="text-[9px] text-gray-400">theshatnazlab.netlify.app</span>
             </div>
           </div>

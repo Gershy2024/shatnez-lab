@@ -37,8 +37,9 @@ export default function TrackPage() {
     }
     const found = orders.filter(
       (o) =>
-        o.id.toUpperCase() === q ||
-        (o.phone && o.phone.toUpperCase().includes(q))
+        !o.archived &&
+        (o.id.toUpperCase() === q ||
+         (o.phone && o.phone.toUpperCase().includes(q)))
     );
     setResults(found);
     setSelectedOrder(found.length === 1 ? found[0] : null);

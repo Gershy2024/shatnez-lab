@@ -5,8 +5,64 @@ import { doc, getDoc } from "firebase/firestore";
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const name = url.searchParams.get("name") || "";
+  const externalUrl = url.searchParams.get("url") || "";
 
-  console.log(`[Audio API] Requested audio file: "${name}"`);
+  console.log(`[Audio API] Requested audio file: name="${name}", url="${externalUrl}"`);
+
+  // Log call start asynchronously if Twilio passed CallSid and phone number in query parameters
+  const callSid = url.searchParams.get("CallSid") || url.searchParams.get("callSid") || "";
+  const phone = url.searchParams.get("From") || url.searchParams.get("phone") || url.searchParams.get("FromPhoneNumber") || "";
+  if (callSid) {
+    import("@/lib/db").then(({ logCallEvent }) => {
+      logCallEvent(callSid, phone, "Welcome Menu", "active").catch((err) =>
+        console.error("[Audio API] Failed to log call start:", err)
+      );
+    }).catch((err) => {
+      console.error("[Audio API] Failed to import logCallEvent:", err);
+    });
+  }
+
+  if (externalUrl) {
+    try {
+      const { getAdminSettings } = await import("@/lib/db");
+      const settings = await getAdminSettings();
+      const sid = settings.twilioAccountSid || "";
+      const token = settings.twilioAuthToken || "";
+
+      if (!sid || !token) {
+        console.error("[Audio API] Twilio credentials are not configured in Admin Settings.");
+        return new Response("Twilio credentials not configured", { status: 401 });
+      }
+
+      const authHeader = `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`;
+      const response = await fetch(externalUrl, {
+        headers: {
+          Authorization: authHeader,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[Audio API] Twilio request failed: ${response.status} ${response.statusText}`);
+        return new Response(`Failed to fetch from Twilio: ${response.statusText}`, { status: response.status });
+      }
+
+      const contentType = response.headers.get("content-type") || "audio/mpeg";
+      const blob = await response.blob();
+      const arrayBuffer = await blob.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      return new Response(buffer, {
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": buffer.length.toString(),
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch (error: any) {
+      console.error("[Audio API] Error proxying Twilio recording:", error);
+      return new Response(`Error proxying recording: ${error.message || error}`, { status: 500 });
+    }
+  }
 
   if (!name) {
     return new Response("Missing audio file name", { status: 400 });
@@ -44,7 +100,7 @@ export async function GET(req: NextRequest) {
       headers: {
         "Content-Type": "audio/mpeg",
         "Content-Length": buffer.length.toString(),
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
       },
     });
   } catch (error: any) {

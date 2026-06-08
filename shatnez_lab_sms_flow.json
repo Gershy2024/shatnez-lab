@@ -1,0 +1,87 @@
+{
+  "description": "Shatnez Laboratory SMS Auto-responder",
+  "states": [
+    {
+      "name": "Trigger",
+      "type": "trigger",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "handle_incoming_sms"
+        },
+        {
+          "event": "incomingCall"
+        },
+        {
+          "event": "incomingConversation"
+        },
+        {
+          "event": "request"
+        }
+      ]
+    },
+    {
+      "name": "handle_incoming_sms",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 250
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=incoming_sms",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{trigger.message.From}}"
+          },
+          {
+            "key": "msg",
+            "value": "{{trigger.message.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "reply_sms"
+        },
+        {
+          "event": "failed"
+        }
+      ]
+    },
+    {
+      "name": "reply_sms",
+      "type": "send-message",
+      "properties": {
+        "offset": {
+          "x": 0,
+          "y": 500
+        },
+        "from": "{{flow.channel.address}}",
+        "to": "{{contact.channel.address}}",
+        "body": "{{widgets.handle_incoming_sms.parsed.replyMessage}}"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ]
+    }
+  ],
+  "initial_state": "Trigger",
+  "flags": {
+    "allow_bypassing_constraints": false
+  }
+}

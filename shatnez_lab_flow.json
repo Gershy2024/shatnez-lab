@@ -48,7 +48,7 @@
         },
         {
           "event": "timeout",
-          "next": "connect_call_1"
+          "next": "check_hours"
         }
       ]
     },
@@ -74,7 +74,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "play_info"
+          "next": "log_keypress_1"
         },
         {
           "event": "match",
@@ -100,7 +100,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "play_vip"
+          "next": "log_keypress_3"
         },
         {
           "event": "match",
@@ -113,7 +113,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "connect_call_1"
+          "next": "check_hours"
         },
         {
           "event": "match",
@@ -126,7 +126,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "ask_admin_pin"
+          "next": "split_admin_caller_id"
         },
         {
           "event": "noMatch",
@@ -180,9 +180,9 @@
           "x": 0,
           "y": 600
         },
-        "caller_id": "{{contact.channel.address}}",
+        "caller_id": "{{widgets.check_hours.parsed.callerId}}",
         "noun": "number",
-        "to": "+18457092022"
+        "to": "{{widgets.check_hours.parsed.forwardingNumber}}"
       },
       "transitions": [
         {
@@ -568,7 +568,7 @@
               "type": "equal_to"
             }
           ],
-          "next": "admin_ask_add_id"
+          "next": "admin_ask_add_phone"
         },
         {
           "event": "match",
@@ -710,7 +710,7 @@
         "parameters": [
           {
             "key": "orderId",
-            "value": "{{widgets.admin_ask_add_id.Digits}}"
+            "value": "{{widgets.admin_ask_add_phone.Digits}}"
           },
           {
             "key": "customerPhone",
@@ -837,11 +837,11 @@
       "transitions": [
         {
           "event": "keypress",
-          "next": "admin_update_order_http"
+          "next": "admin_split_status_for_notify"
         },
         {
           "event": "timeout",
-          "next": "admin"
+          "next": "admin_split_status_for_notify"
         }
       ]
     },
@@ -868,6 +868,10 @@
           {
             "key": "resultSelection",
             "value": "{{widgets.admin_ask_update_result.Digits}}"
+          },
+          {
+            "key": "notifyDigit",
+            "value": "{{widgets.admin_ask_notify_customer.Digits}}"
           }
         ]
       },
@@ -917,6 +921,331 @@
         {
           "event": "audioComplete",
           "next": "admin"
+        }
+      ]
+    },
+    {
+      "name": "admin_ask_notify_customer",
+      "type": "gather-input-on-call",
+      "properties": {
+        "offset": {
+          "x": 1300,
+          "y": 2100
+        },
+        "number_of_digits": 1,
+        "finish_on_key": "#",
+        "timeout": 10,
+        "say": "Press 1 to notify the customer automatically, or press 2 to skip notification.",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "admin_update_order_http"
+        },
+        {
+          "event": "timeout",
+          "next": "admin_update_order_http"
+        }
+      ]
+    },
+    {
+      "name": "admin_split_status_for_notify",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 1300,
+          "y": 2050
+        },
+        "input": "{{widgets.admin_ask_update_status.Digits}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If value equal_to 4",
+              "arguments": [
+                "{{widgets.admin_ask_update_status.Digits}}"
+              ],
+              "type": "equal_to",
+              "value": "4"
+            }
+          ],
+          "next": "admin_ask_notify_customer"
+        },
+        {
+          "event": "noMatch",
+          "next": "admin_update_order_http"
+        }
+      ]
+    },
+    {
+      "name": "split_admin_caller_id",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": 800,
+          "y": 700
+        },
+        "input": "{{trigger.call.From}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If Admin 1",
+              "arguments": [
+                "{{trigger.call.From}}"
+              ],
+              "type": "equal_to",
+              "value": "+18455524744"
+            }
+          ],
+          "next": "admin"
+        },
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "If Admin 2",
+              "arguments": [
+                "{{trigger.call.From}}"
+              ],
+              "type": "equal_to",
+              "value": "+18457092022"
+            }
+          ],
+          "next": "admin"
+        },
+        {
+          "event": "noMatch",
+          "next": "ask_admin_pin"
+        }
+      ]
+    },
+    {
+      "name": "check_hours",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 450
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=check_hours",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "split_is_within_hours"
+        },
+        {
+          "event": "failed",
+          "next": "connect_call_fallback"
+        }
+      ]
+    },
+    {
+      "name": "connect_call_fallback",
+      "type": "connect-call-to",
+      "properties": {
+        "offset": {
+          "x": -450,
+          "y": 650
+        },
+        "caller_id": "{{contact.channel.address}}",
+        "noun": "number",
+        "to": "+18457092022"
+      },
+      "transitions": [
+        {
+          "event": "connectedCallEnded"
+        },
+        {
+          "event": "callerHungUp"
+        }
+      ]
+    },
+    {
+      "name": "split_is_within_hours",
+      "type": "split-based-on",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 650
+        },
+        "variable_to_test": "{{widgets.check_hours.parsed.isWithinHours}}"
+      },
+      "transitions": [
+        {
+          "event": "match",
+          "conditions": [
+            {
+              "friendly_name": "Within Business Hours",
+              "arguments": [
+                "true"
+              ],
+              "type": "equal_to"
+            }
+          ],
+          "next": "connect_call_1"
+        },
+        {
+          "event": "noMatch",
+          "next": "play_closed_en"
+        }
+      ]
+    },
+    {
+      "name": "play_closed_en",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 850
+        },
+        "say": "{{widgets.check_hours.parsed.messageEn}}",
+        "voice": "Polly.Joey",
+        "language": "en-US"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "play_closed_he"
+        }
+      ]
+    },
+    {
+      "name": "play_closed_he",
+      "type": "say-play",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 1050
+        },
+        "say": "{{widgets.check_hours.parsed.messageHe}}",
+        "voice": "Polly.Madi",
+        "language": "he-IL"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "record_voicemail_1"
+        }
+      ]
+    },
+    {
+      "name": "record_voicemail_1",
+      "type": "record-voicemail",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 1250
+        },
+        "play_beep": true,
+        "trim": "trim-silence"
+      },
+      "transitions": [
+        {
+          "event": "recordingComplete",
+          "next": "send_voicemail_to_server"
+        },
+        {
+          "event": "hangup",
+          "next": "send_voicemail_to_server"
+        }
+      ]
+    },
+    {
+      "name": "send_voicemail_to_server",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 1450
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=voicemail",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "recordingUrl",
+            "value": "{{widgets.record_voicemail_1.RecordingUrl}}"
+          },
+          {
+            "key": "recordingDuration",
+            "value": "{{widgets.record_voicemail_1.RecordingDuration}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "success"
+        },
+        {
+          "event": "failed"
+        }
+      ]
+    },
+    {
+      "name": "log_keypress_1",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": -250,
+          "y": 600
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=log_keypress&digit=1",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": []
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "play_info"
+        },
+        {
+          "event": "failed",
+          "next": "play_info"
+        }
+      ]
+    },
+    {
+      "name": "log_keypress_3",
+      "type": "make-http-request",
+      "properties": {
+        "offset": {
+          "x": 250,
+          "y": 600
+        },
+        "method": "POST",
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=log_keypress&digit=3",
+        "content_type": "application/x-www-form-urlencoded",
+        "parameters": []
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "play_vip"
+        },
+        {
+          "event": "failed",
+          "next": "play_vip"
         }
       ]
     }

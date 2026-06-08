@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logCallEvent } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
+  let callSid = "";
+  let fromPhoneNumber = "";
+  
+  try {
+    const form = await req.formData();
+    callSid = (form.get("CallSid") as string) || "";
+    fromPhoneNumber = (form.get("From") as string) || "";
+  } catch (e) {
+    const url = new URL(req.url);
+    callSid = url.searchParams.get("CallSid") || "";
+    fromPhoneNumber = url.searchParams.get("From") || "";
+  }
+
+  if (callSid) {
+    await logCallEvent(callSid, fromPhoneNumber, "Welcome Menu", "active");
+  }
+
   const origin = `https://${req.headers.get("host")}`;
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -9,7 +27,7 @@ export async function POST(req: NextRequest) {
     method="POST"
     timeout="3"
   >
-    <Say voice="Polly.Joey" language="en-US">
+    <Say voice="Polly.Matthew" language="en-US">
       Welcome to The Shatnez Lab.
       Press 1 for drop-off information, pricing, and instructions.
       Press 2 to check your order status and test results.
@@ -17,7 +35,7 @@ export async function POST(req: NextRequest) {
       Press 0 to speak with a representative.
       Or, enter your order number followed by pound.
     </Say>
-    <Say voice="Polly.Madi" language="he-IL">
+    <Say voice="Google.he-IL-Wavenet-C" language="he-IL">
       ברוכים הבאים למעבדת השעטנז.
       להקשת אחת לקבלת מידע על מסירת בגדים, מחירים והנחיות.
       להקשת שתיים לבדיקת סטטוס הזמנה ותוצאות הבדיקה.
@@ -26,8 +44,8 @@ export async function POST(req: NextRequest) {
       או הקישו את מספר ההזמנה שלכם ולאחריו סולמית.
     </Say>
   </Gather>
-  <Say voice="Polly.Joey" language="en-US">We did not receive a response. Returning to main menu.</Say>
-  <Say voice="Polly.Madi" language="he-IL">לא התקבל קלט. חוזר לתפריט הראשי.</Say>
+  <Say voice="Polly.Matthew" language="en-US">We did not receive a response. Returning to main menu.</Say>
+  <Say voice="Google.he-IL-Wavenet-C" language="he-IL">לא התקבל קלט. חוזר לתפריט הראשי.</Say>
   <Redirect method="POST">${origin}/api/twilio/voice</Redirect>
 </Response>`;
 
