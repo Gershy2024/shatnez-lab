@@ -9,6 +9,7 @@ import {
   query,
   orderBy,
   onSnapshot,
+  limit,
 } from "firebase/firestore";
 
 export type OrderStatus = "received" | "testing" | "review" | "ready" | "delivered" | "issue";
@@ -32,6 +33,16 @@ export interface Order {
   createdAt?: number;
   archived?: boolean;
   location?: string;
+}
+
+export interface DeliveryRequest {
+  id: string;
+  phone: string;
+  customerName: string;
+  timestamp: number;
+  status: "pending" | "called" | "completed" | "cancelled";
+  createdAt: string;
+  notes?: string;
 }
 
 export interface AdminSettings {
@@ -64,15 +75,18 @@ export interface AdminSettings {
   twilioApiKey?: string;
   twilioApiSecret?: string;
   twilioTwimlAppSid?: string;
+  geminiApiKey?: string;
 }
 
 const ORDERS_COLLECTION = "orders";
 const SETTINGS_COLLECTION = "settings";
 const VOICEMAILS_COLLECTION = "voicemails";
 const CALLS_COLLECTION = "calls";
+const DELIVERIES_COLLECTION = "deliveries";
 const LS_KEY = "shatnez_orders";
 const LS_VM_KEY = "shatnez_voicemails";
 const CALLS_LS_KEY = "shatnez_calls";
+const DELIVERIES_LS_KEY = "shatnez_deliveries";
 
 export interface Voicemail {
   id: string;
@@ -106,7 +120,9 @@ export async function getAllOrders(): Promise<Order[]> {
       const snapshot = await getDocs(
         query(collection(db, ORDERS_COLLECTION), orderBy("id", "asc"))
       );
-      return snapshot.docs.map((d) => d.data() as Order);
+      return snapshot.docs
+        .map((d) => d.data() as Order)
+        .filter((o) => !(o as any).isDelivery && !o.id.startsWith("DELIVERY_"));
     } catch (e) {
       console.error("Firestore getAllOrders failed:", e);
     }
@@ -150,28 +166,41 @@ export async function getOrdersByPhone(phone: string): Promise<Order[]> {
       return orderPhoneNormalized.includes(normalized) || orderIdNormalized.includes(normalized);
     });
 
-    if (matches.length === 0) return [];
-
-    // Sort descending by date
-    matches.sort((a, b) => new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime());
-
-    const newestDateStr = matches[0].dateReceived;
-    if (!newestDateStr) return matches;
-
-    const newestTime = new Date(newestDateStr).getTime();
-    const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
-
-    // Only return orders that are within 14 days of the newest order
-    return matches.filter(o => {
-      if (!o.dateReceived) return true;
-      const oTime = new Date(o.dateReceived).getTime();
-      return (newestTime - oTime) <= TWO_WEEKS_MS;
+    // Sort descending by creation date/timestamp
+    matches.sort((a, b) => {
+      if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+      if (a.createdAt) return -1;
+      if (b.createdAt) return 1;
+      return new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime();
     });
+
+    return matches;
   } catch (e) {
     console.error("getOrdersByPhone failed:", e);
     return [];
   }
 }
+
+export async function getNextOrderId(): Promise<string> {
+  try {
+    const all = await getAllOrders();
+    const existing = all.map((o) => {
+      const match = o.id.match(/^(\d+)$/);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        return val < 1000000 ? val : 0;
+      }
+      return 0;
+    });
+    const max = existing.length > 0 ? Math.max(...existing) : 0;
+    const next = max < 1000 ? 1000 : max + 1;
+    return String(next);
+  } catch (e) {
+    console.error("getNextOrderId failed:", e);
+    return String(Date.now());
+  }
+}
+
 
 export async function saveOrder(order: Order): Promise<void> {
   if (isConfigured && db) {
@@ -210,7 +239,11 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
     return onSnapshot(
       query(collection(db, ORDERS_COLLECTION), orderBy("id", "asc")),
       (snapshot) => {
-        callback(snapshot.docs.map((d) => d.data() as Order));
+        callback(
+          snapshot.docs
+            .map((d) => d.data() as Order)
+            .filter((o) => !(o as any).isDelivery && !o.id.startsWith("DELIVERY_"))
+        );
       }
     );
   }
@@ -376,6 +409,8 @@ export interface CallRecord {
   duration?: string;
   direction?: "inbound" | "outbound";
   orderId?: string;
+  price?: string;
+  priceUnit?: string;
 }
 
 function lsGetCalls(): CallRecord[] {
@@ -400,7 +435,9 @@ export async function logCallEvent(
   status?: "active" | "completed" | "voicemail",
   duration?: string,
   direction?: "inbound" | "outbound",
-  orderId?: string
+  orderId?: string,
+  price?: string,
+  priceUnit?: string
 ): Promise<void> {
   const cleanPhone = phone ? phone.trim() : "Unknown";
   let targetSid = callSid || "";
@@ -455,6 +492,8 @@ export async function logCallEvent(
         }
         if (status) record.status = status;
         if (orderId) record.orderId = orderId;
+        if (price) record.price = price;
+        if (priceUnit) record.priceUnit = priceUnit;
         if (duration) {
           record.duration = duration;
         } else if (status === "completed" && !record.duration && record.timestamp) {
@@ -510,7 +549,9 @@ export async function logCallEvent(
           status: status || "active",
           duration: duration || "",
           direction: mergedDirection,
-          orderId: mergedOrderId
+          orderId: mergedOrderId,
+          price: price || "",
+          priceUnit: priceUnit || ""
         };
 
         if (oldTempIdToDelete) {
@@ -541,6 +582,8 @@ export async function logCallEvent(
     }
     if (status) record.status = status;
     if (orderId) record.orderId = orderId;
+    if (price) record.price = price;
+    if (priceUnit) record.priceUnit = priceUnit;
     if (duration) {
       record.duration = duration;
     } else if (status === "completed" && !record.duration && record.timestamp) {
@@ -592,7 +635,9 @@ export async function logCallEvent(
       status: status || "active",
       duration: duration || "",
       direction: mergedDirection,
-      orderId: mergedOrderId
+      orderId: mergedOrderId,
+      price: price || "",
+      priceUnit: priceUnit || ""
     });
   }
   lsSetCalls(calls);
@@ -610,6 +655,20 @@ export async function getAllCalls(): Promise<CallRecord[]> {
     }
   }
   return lsGetCalls().sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export async function getRecentCalls(limitNum: number): Promise<CallRecord[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(
+        query(collection(db, CALLS_COLLECTION), orderBy("timestamp", "desc"), limit(limitNum))
+      );
+      return snapshot.docs.map((d) => d.data() as CallRecord);
+    } catch (e) {
+      console.error("Firestore getRecentCalls failed:", e);
+    }
+  }
+  return lsGetCalls().sort((a, b) => b.timestamp - a.timestamp).slice(0, limitNum);
 }
 
 export function subscribeToCalls(callback: (calls: CallRecord[]) => void) {
@@ -771,12 +830,13 @@ export interface SmsMessage {
   body: string;
   direction: "inbound" | "outbound";
   orderId?: string;
+  read?: boolean;
 }
 
 const SMS_COLLECTION = "sms_messages";
 const SMS_LS_KEY = "shatnez_sms";
 
-export function subscribeToSmsMessages(callback: (messages: SmsMessage[]) => void) {
+export function subscribeToSmsMessages(callback: (messages: SmsMessage[]) => void): () => void {
   if (isConfigured && db) {
     return onSnapshot(
       query(collection(db, SMS_COLLECTION), orderBy("timestamp", "asc")),
@@ -811,6 +871,26 @@ export function subscribeToSmsMessages(callback: (messages: SmsMessage[]) => voi
   return () => clearInterval(interval);
 }
 
+export async function getRecentSmsMessages(limitNum: number): Promise<SmsMessage[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(
+        query(collection(db, SMS_COLLECTION), orderBy("timestamp", "desc"), limit(limitNum))
+      );
+      return snapshot.docs.map((d) => d.data() as SmsMessage);
+    } catch (e) {
+      console.error("Firestore getRecentSmsMessages failed:", e);
+    }
+  }
+  try {
+    const data = typeof window !== "undefined" ? localStorage.getItem(SMS_LS_KEY) : null;
+    const list = data ? JSON.parse(data) as SmsMessage[] : [];
+    return list.sort((a, b) => b.timestamp - a.timestamp).slice(0, limitNum);
+  } catch {
+    return [];
+  }
+}
+
 export async function logSmsMessage(
   phone: string,
   body: string,
@@ -827,7 +907,8 @@ export async function logSmsMessage(
     timestamp: Date.now(),
     body,
     direction,
-    orderId: orderId || ""
+    orderId: orderId || "",
+    read: direction === "outbound"
   };
 
   if (isConfigured && db) {
@@ -903,5 +984,232 @@ export async function associateSmsWithOrder(smsId: string, orderId: string): Pro
     }
   }
 }
+
+export async function markSmsThreadRead(phone: string): Promise<void> {
+  const cleanPhone = phone.replace(/\D/g, "");
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(
+        query(collection(db!, SMS_COLLECTION))
+      );
+      const batchPromises = snapshot.docs
+        .filter(d => {
+          const data = d.data() as SmsMessage;
+          return data.phone.replace(/\D/g, "") === cleanPhone && data.direction === "inbound" && !data.read;
+        })
+        .map(d => {
+          const ref = doc(db!, SMS_COLLECTION, d.id);
+          return setDoc(ref, { read: true }, { merge: true });
+        });
+      await Promise.all(batchPromises);
+    } catch (e) {
+      console.error("Firestore markSmsThreadRead failed:", e);
+    }
+  } else {
+    // LocalStorage fallback
+    try {
+      const data = localStorage.getItem(SMS_LS_KEY) || "[]";
+      const messages = JSON.parse(data) as SmsMessage[];
+      let updated = false;
+      for (const m of messages) {
+        if (m.phone.replace(/\D/g, "") === cleanPhone && m.direction === "inbound" && !m.read) {
+          m.read = true;
+          updated = true;
+        }
+      }
+      if (updated) {
+        localStorage.setItem(SMS_LS_KEY, JSON.stringify(messages));
+      }
+    } catch (e) {
+      console.error("LocalStorage markSmsThreadRead failed:", e);
+    }
+  }
+}
+
+export async function updateCallPrice(
+  callSid: string,
+  price: string,
+  priceUnit: string,
+  duration?: string
+): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, CALLS_COLLECTION, callSid);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const record = snap.data() as CallRecord;
+        record.price = price;
+        record.priceUnit = priceUnit;
+        if (duration) record.duration = duration;
+        await setDoc(docRef, record);
+      }
+    } catch (e) {
+      console.error("Firestore updateCallPrice failed:", e);
+    }
+  } else {
+    // LocalStorage fallback
+    try {
+      const data = localStorage.getItem(CALLS_LS_KEY) || "[]";
+      const calls = JSON.parse(data) as CallRecord[];
+      const idx = calls.findIndex((c) => c.id === callSid);
+      if (idx >= 0) {
+        calls[idx].price = price;
+        calls[idx].priceUnit = priceUnit;
+        if (duration) calls[idx].duration = duration;
+        localStorage.setItem(CALLS_LS_KEY, JSON.stringify(calls));
+      }
+    } catch (e) {
+      console.error("LocalStorage updateCallPrice failed:", e);
+    }
+  }
+}
+
+export async function getTwilioBalance(): Promise<{ balance: string; currency: string } | null> {
+  try {
+    const settings = await getAdminSettings();
+    if (!settings.twilioAccountSid || !settings.twilioAuthToken) {
+      return null;
+    }
+    const auth = Buffer.from(`${settings.twilioAccountSid}:${settings.twilioAuthToken}`).toString('base64');
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${settings.twilioAccountSid}/Balance.json`;
+    const res = await fetch(url, {
+      headers: {
+        "Authorization": `Basic ${auth}`
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        balance: data.balance,
+        currency: data.currency
+      };
+    }
+  } catch (e) {
+    console.error("Twilio getTwilioBalance failed:", e);
+  }
+  return null;
+}
+
+/* ── Pickup & Delivery Requests ── */
+function lsGetDeliveries(): DeliveryRequest[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const data = localStorage.getItem(DELIVERIES_LS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function lsSetDeliveries(deliveries: DeliveryRequest[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(DELIVERIES_LS_KEY, JSON.stringify(deliveries));
+}
+
+export async function saveDeliveryRequest(request: DeliveryRequest): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docId = request.id.startsWith("DELIVERY_") ? request.id : `DELIVERY_${request.id}`;
+      const dataToSave = {
+        ...request,
+        id: docId,
+        isDelivery: true
+      };
+      await setDoc(doc(db, ORDERS_COLLECTION, docId), dataToSave);
+      return;
+    } catch (e) {
+      console.error("Firestore saveDeliveryRequest failed:", e);
+    }
+  }
+  const list = lsGetDeliveries();
+  const idx = list.findIndex((d) => d.id === request.id);
+  if (idx >= 0) {
+    list[idx] = request;
+  } else {
+    list.push(request);
+  }
+  lsSetDeliveries(list);
+}
+
+export async function deleteDeliveryRequest(id: string): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docId = id.startsWith("DELIVERY_") ? id : `DELIVERY_${id}`;
+      await deleteDoc(doc(db, ORDERS_COLLECTION, docId));
+      return;
+    } catch (e) {
+      console.error("Firestore deleteDeliveryRequest failed:", e);
+    }
+  }
+  const list = lsGetDeliveries().filter((d) => d.id !== id);
+  lsSetDeliveries(list);
+}
+
+export async function getAllDeliveryRequests(): Promise<DeliveryRequest[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(
+        query(collection(db, ORDERS_COLLECTION))
+      );
+      return snapshot.docs
+        .map((d) => d.data())
+        .filter((data) => data.isDelivery === true || String(data.id).startsWith("DELIVERY_"))
+        .map((data) => ({
+          id: data.id,
+          phone: data.phone || "",
+          customerName: data.customerName || "",
+          timestamp: data.timestamp || data.createdAt || Date.now(),
+          status: data.status || "pending",
+          createdAt: data.createdAt || new Date().toISOString(),
+          notes: data.notes || ""
+        } as DeliveryRequest))
+        .sort((a, b) => b.timestamp - a.timestamp);
+    } catch (e) {
+      console.error("Firestore getAllDeliveryRequests failed:", e);
+    }
+  }
+  return lsGetDeliveries().sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function subscribeToDeliveryRequests(callback: (requests: DeliveryRequest[]) => void) {
+  if (isConfigured && db) {
+    return onSnapshot(
+      query(collection(db, ORDERS_COLLECTION)),
+      (snapshot) => {
+        const list = snapshot.docs
+          .map((d) => d.data())
+          .filter((data) => data.isDelivery === true || String(data.id).startsWith("DELIVERY_"))
+          .map((data) => ({
+            id: data.id,
+            phone: data.phone || "",
+            customerName: data.customerName || "",
+            timestamp: data.timestamp || data.createdAt || Date.now(),
+            status: data.status || "pending",
+            createdAt: data.createdAt || new Date().toISOString(),
+            notes: data.notes || ""
+          } as DeliveryRequest))
+          .sort((a, b) => b.timestamp - a.timestamp);
+        callback(list);
+      },
+      (error) => {
+        console.error("Firestore deliveries subscription error:", error);
+      }
+    );
+  }
+  // Fallback: poll localStorage every 2 seconds
+  let last = JSON.stringify(lsGetDeliveries());
+  const interval = setInterval(() => {
+    const current = JSON.stringify(lsGetDeliveries());
+    if (current !== last) {
+      last = current;
+      callback(lsGetDeliveries().sort((a, b) => b.timestamp - a.timestamp));
+    }
+  }, 2000);
+  callback(lsGetDeliveries().sort((a, b) => b.timestamp - a.timestamp));
+  return () => clearInterval(interval);
+}
+
+
+
 
 

@@ -1,45 +1,54 @@
 {
-  "description": "Shatnez Laboratory Multilingual IVR with Admin Menu",
+  "description": "A New Flow",
+  "flags": {
+    "allow_concurrent_calls": true
+  },
+  "initial_state": "Trigger",
   "states": [
     {
       "name": "Trigger",
-      "type": "trigger",
       "properties": {
         "offset": {
-          "x": 0,
-          "y": -150
+          "x": -1118,
+          "y": -2821
         }
       },
       "transitions": [
         {
-          "event": "incomingCall",
-          "next": "welcome_menu"
-        },
-        {
           "event": "incomingMessage"
         },
         {
-          "event": "incomingConversation"
+          "event": "incomingCall",
+          "next": "Silence"
         },
         {
-          "event": "request"
+          "event": "incomingConversationMessage"
+        },
+        {
+          "event": "incomingRequest"
+        },
+        {
+          "event": "incomingParent"
         }
-      ]
+      ],
+      "type": "trigger"
     },
     {
       "name": "welcome_menu",
-      "type": "gather-input-on-call",
       "properties": {
-        "offset": {
-          "x": 0,
-          "y": 100
-        },
-        "number_of_digits": 1,
         "finish_on_key": "#",
-        "timeout": 5,
-        "say": "Welcome to The Shatnez Lab. Press 1 for drop-off information. Press 2 to check your order status. Press 3 to hear about VIP services. Press 0 to speak with a representative. Press 9 for admin menu.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "gather_language": "en",
+        "loop": 1,
+        "offset": {
+          "x": -1283,
+          "y": -2085
+        },
+        "play": "https://www.theshatnezlab.com/api/audio?name=welcome2",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 1,
+        "voice": "man"
       },
       "transitions": [
         {
@@ -47,376 +56,274 @@
           "next": "split_menu_keys"
         },
         {
-          "event": "timeout",
-          "next": "check_hours"
+          "event": "speech"
+        },
+        {
+          "event": "timeout"
         }
-      ]
-    },
-    {
-      "name": "split_menu_keys",
-      "type": "split-based-on",
-      "properties": {
-        "offset": {
-          "x": 0,
-          "y": 350
-        },
-        "variable_to_test": "{{widgets.welcome_menu.Digits}}"
-      },
-      "transitions": [
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 1",
-              "arguments": [
-                "1"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "log_keypress_1"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 2",
-              "arguments": [
-                "2"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "ask_lookup_choice"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 3",
-              "arguments": [
-                "3"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "log_keypress_3"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 0",
-              "arguments": [
-                "0"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "check_hours"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 9",
-              "arguments": [
-                "9"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "split_admin_caller_id"
-        },
-        {
-          "event": "noMatch",
-          "next": "welcome_menu"
-        }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
       "name": "play_info",
-      "type": "say-play",
       "properties": {
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": -400,
-          "y": 600
+          "x": -2460,
+          "y": -448
         },
-        "say": "Drop-off Information: You can drop off your garments at our main lab at any time. Testing usually takes 2 to 3 business days. The base price is 15 dollars per item.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "play": "https://www.theshatnezlab.com/api/audio?name=ez_staps",
+        "voice": "Polly.Joey-Neural"
       },
       "transitions": [
         {
           "event": "audioComplete",
           "next": "welcome_menu"
         }
-      ]
+      ],
+      "type": "say-play"
     },
     {
-      "name": "play_vip",
-      "type": "say-play",
+      "name": "VIP",
       "properties": {
+        "language": "en-US",
+        "loop": 2,
         "offset": {
-          "x": -200,
-          "y": 600
+          "x": -2124,
+          "y": -446
         },
-        "say": "Exclusive VIP Services: We offer express same-day testing, and at-home pick-up and delivery services in selected locations.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "play": "https://shatnez-lab.vercel.app/api/audio?name=vip",
+        "voice": "man"
       },
       "transitions": [
         {
           "event": "audioComplete",
           "next": "welcome_menu"
         }
-      ]
-    },
-    {
-      "name": "connect_call_1",
-      "type": "connect-call-to",
-      "properties": {
-        "offset": {
-          "x": 0,
-          "y": 600
-        },
-        "caller_id": "{{widgets.check_hours.parsed.callerId}}",
-        "noun": "number",
-        "to": "{{widgets.check_hours.parsed.forwardingNumber}}"
-      },
-      "transitions": [
-        {
-          "event": "connectedCallEnded"
-        },
-        {
-          "event": "callerHungUp"
-        }
-      ]
-    },
-    {
-      "name": "ask_lookup_choice",
-      "type": "gather-input-on-call",
-      "properties": {
-        "offset": {
-          "x": 300,
-          "y": 600
-        },
-        "number_of_digits": 1,
-        "finish_on_key": "#",
-        "timeout": 5,
-        "say": "<speak>I see you are calling from <say-as interpret-as=\"digits\">{{contact.channel.address}}</say-as>. To search for orders using this phone number, press 1. To search using a different phone number or order number, press 2.</speak>",
-        "voice": "Polly.Joey",
-        "language": "en-US"
-      },
-      "transitions": [
-        {
-          "event": "keypress",
-          "next": "split_lookup_choice"
-        },
-        {
-          "event": "timeout",
-          "next": "welcome_menu"
-        }
-      ]
-    },
-    {
-      "name": "split_lookup_choice",
-      "type": "split-based-on",
-      "properties": {
-        "offset": {
-          "x": 300,
-          "y": 800
-        },
-        "variable_to_test": "{{widgets.ask_lookup_choice.Digits}}"
-      },
-      "transitions": [
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 1",
-              "arguments": [
-                "1"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "caller_lookup"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 2",
-              "arguments": [
-                "2"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "ask_manual_query"
-        },
-        {
-          "event": "noMatch",
-          "next": "ask_lookup_choice"
-        }
-      ]
+      ],
+      "type": "say-play"
     },
     {
       "name": "caller_lookup",
-      "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": 150,
-          "y": 1000
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=caller_lookup",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": -1877,
+          "y": -70
+        },
         "parameters": [
+          {
+            "key": "action",
+            "value": "caller_lookup"
+          },
           {
             "key": "phone",
             "value": "{{contact.channel.address}}"
           }
-        ]
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=caller_lookup"
       },
       "transitions": [
         {
           "event": "success",
-          "next": "read_caller_orders"
+          "next": "say_play_orders"
         },
         {
           "event": "failed",
-          "next": "ask_manual_query"
+          "next": "ask_order_id"
         }
-      ]
+      ],
+      "type": "make-http-request"
     },
     {
-      "name": "read_caller_orders",
-      "type": "say-play",
+      "name": "say_play_orders",
       "properties": {
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": 150,
-          "y": 1200
+          "x": -1983,
+          "y": 250
         },
         "say": "{{widgets.caller_lookup.parsed.messageEn}}",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "voice": "Polly.Matthew"
       },
       "transitions": [
         {
           "event": "audioComplete",
           "next": "welcome_menu"
         }
-      ]
-    },
-    {
-      "name": "ask_manual_query",
-      "type": "gather-input-on-call",
-      "properties": {
-        "offset": {
-          "x": 450,
-          "y": 1000
-        },
-        "number_of_digits": 10,
-        "finish_on_key": "#",
-        "timeout": 10,
-        "say": "Please enter the phone number or order ID followed by the pound key.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
-      },
-      "transitions": [
-        {
-          "event": "keypress",
-          "next": "manual_lookup"
-        },
-        {
-          "event": "timeout",
-          "next": "welcome_menu"
-        }
-      ]
+      ],
+      "type": "say-play"
     },
     {
       "name": "manual_lookup",
-      "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": 450,
-          "y": 1200
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=manual_lookup",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": -1135,
+          "y": 162
+        },
         "parameters": [
           {
+            "key": "action",
+            "value": "manual_lookup"
+          },
+          {
             "key": "query",
-            "value": "{{widgets.ask_manual_query.Digits}}"
+            "value": "{{widgets.ask_order_id.Digits}}"
           }
-        ]
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=manual_lookup"
       },
       "transitions": [
         {
           "event": "success",
-          "next": "read_manual_orders"
+          "next": "say_manual_orders"
         },
         {
           "event": "failed",
           "next": "say_play_not_found"
         }
-      ]
+      ],
+      "type": "make-http-request"
     },
     {
-      "name": "read_manual_orders",
-      "type": "say-play",
+      "name": "split_menu_keys",
       "properties": {
+        "input": "{{widgets.welcome_menu.Digits}}",
         "offset": {
-          "x": 450,
-          "y": 1400
-        },
-        "say": "{{widgets.manual_lookup.parsed.messageEn}}",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+          "x": -1666,
+          "y": -1880
+        }
       },
       "transitions": [
         {
-          "event": "audioComplete",
-          "next": "welcome_menu"
-        }
-      ]
-    },
-    {
-      "name": "say_play_not_found",
-      "type": "say-play",
-      "properties": {
-        "offset": {
-          "x": 650,
-          "y": 1400
+          "event": "noMatch"
         },
-        "say": "We could not find any order with that number. Returning to the main menu.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
-      },
-      "transitions": [
         {
-          "event": "audioComplete",
-          "next": "welcome_menu"
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to ",
+              "type": "equal_to",
+              "value": "1"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_1"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 2",
+              "type": "equal_to",
+              "value": "2"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_2"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 3",
+              "type": "equal_to",
+              "value": "3"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_3"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 9",
+              "type": "equal_to",
+              "value": "9"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_9"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 4",
+              "type": "equal_to",
+              "value": "4"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_4"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 0",
+              "type": "equal_to",
+              "value": "0"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_0"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 5",
+              "type": "equal_to",
+              "value": "5"
+            }
+          ],
+          "event": "match",
+          "next": "log_keypress_5"
         }
-      ]
+      ],
+      "type": "split-based-on"
     },
     {
       "name": "ask_admin_pin",
-      "type": "gather-input-on-call",
       "properties": {
-        "offset": {
-          "x": 800,
-          "y": 600
-        },
-        "number_of_digits": 4,
         "finish_on_key": "#",
-        "timeout": 10,
-        "say": "Please enter your 4 digit admin PIN followed by the pound key.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "number_of_digits": 4,
+        "offset": {
+          "x": 516,
+          "y": -309
+        },
+        "say": "Please enter your 4 digit admin PIN.",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 5,
+        "voice": "Polly.Matthew"
       },
       "transitions": [
         {
@@ -424,103 +331,66 @@
           "next": "verify_pin"
         },
         {
+          "event": "speech"
+        },
+        {
           "event": "timeout",
           "next": "welcome_menu"
         }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
       "name": "verify_pin",
-      "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": 800,
-          "y": 800
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_login",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": 301,
+          "y": -146
+        },
         "parameters": [
           {
             "key": "pin",
             "value": "{{widgets.ask_admin_pin.Digits}}"
+          },
+          {
+            "key": "action",
+            "value": "admin_login"
           }
-        ]
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=admin_login"
       },
       "transitions": [
         {
           "event": "success",
-          "next": "check_admin_auth"
+          "next": "redirect_to_admin_voice"
         },
         {
           "event": "failed",
-          "next": "bad_pin_msg"
+          "next": "false"
         }
-      ]
-    },
-    {
-      "name": "check_admin_auth",
-      "type": "split-based-on",
-      "properties": {
-        "offset": {
-          "x": 800,
-          "y": 1000
-        },
-        "variable_to_test": "{{widgets.verify_pin.parsed.authenticated}}"
-      },
-      "transitions": [
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If Auth Success",
-              "arguments": [
-                "true"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "admin"
-        },
-        {
-          "event": "noMatch",
-          "next": "bad_pin_msg"
-        }
-      ]
-    },
-    {
-      "name": "bad_pin_msg",
-      "type": "say-play",
-      "properties": {
-        "offset": {
-          "x": 650,
-          "y": 1000
-        },
-        "say": "{{widgets.verify_pin.parsed.messageEn}} Returning to the main menu.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
-      },
-      "transitions": [
-        {
-          "event": "audioComplete",
-          "next": "welcome_menu"
-        }
-      ]
+      ],
+      "type": "make-http-request"
     },
     {
       "name": "admin",
-      "type": "gather-input-on-call",
       "properties": {
-        "offset": {
-          "x": 950,
-          "y": 1200
-        },
-        "number_of_digits": 1,
         "finish_on_key": "#",
-        "timeout": 10,
-        "say": "Admin menu. Press 1 to hear recent orders. Press 2 to add a new order. Press 3 to update an order status. Press star to return to the main menu.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": 369,
+          "y": 94
+        },
+        "say": "Admin menu. Press 1 to hear recent orders. Press 2 to add a new order. Press 3 to update an order status. Press star to return to the main menu.\n",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 5,
+        "voice": "Polly.Matthew"
       },
       "transitions": [
         {
@@ -528,285 +398,242 @@
           "next": "split_29"
         },
         {
+          "event": "speech"
+        },
+        {
           "event": "timeout",
           "next": "welcome_menu"
         }
-      ]
-    },
-    {
-      "name": "split_29",
-      "type": "split-based-on",
-      "properties": {
-        "offset": {
-          "x": 950,
-          "y": 1400
-        },
-        "variable_to_test": "{{widgets.admin.Digits}}"
-      },
-      "transitions": [
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 1",
-              "arguments": [
-                "1"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "admin_get_recent"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 2",
-              "arguments": [
-                "2"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "admin_ask_add_phone"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If 3",
-              "arguments": [
-                "3"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "admin_ask_update_id"
-        },
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If Star",
-              "arguments": [
-                "*"
-              ],
-              "type": "contains"
-            }
-          ],
-          "next": "welcome_menu"
-        },
-        {
-          "event": "noMatch",
-          "next": "admin"
-        }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
       "name": "admin_get_recent",
-      "type": "make-http-request",
       "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "GET",
         "offset": {
-          "x": 800,
-          "y": 1600
+          "x": -639,
+          "y": 531
         },
-        "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_get_recent",
-        "content_type": "application/x-www-form-urlencoded"
+        "parameters": [
+          {
+            "key": "action",
+            "value": "admin_get_recent"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=admin_get_recent"
       },
       "transitions": [
         {
           "event": "success",
-          "next": "read_recent_orders"
+          "next": "say_recent_orders"
         },
         {
           "event": "failed",
           "next": "admin"
         }
-      ]
+      ],
+      "type": "make-http-request"
     },
     {
-      "name": "read_recent_orders",
-      "type": "say-play",
+      "name": "false",
       "properties": {
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": 800,
-          "y": 1800
+          "x": -149,
+          "y": -205
         },
-        "say": "{{widgets.admin_get_recent.parsed.messageEn}}",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "say": "invalid ",
+        "voice": "man"
       },
       "transitions": [
         {
           "event": "audioComplete",
-          "next": "admin"
+          "next": "welcome_menu"
         }
-      ]
+      ],
+      "type": "say-play"
     },
     {
-      "name": "admin_ask_add_id",
-      "type": "gather-input-on-call",
+      "name": "split_29",
       "properties": {
+        "input": "{{widgets.admin.Digits}}",
         "offset": {
-          "x": 1000,
-          "y": 1600
-        },
-        "number_of_digits": 10,
-        "finish_on_key": "#",
-        "timeout": 15,
-        "say": "Please enter the new ten digit order ID followed by the pound key.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+          "x": -352,
+          "y": 270
+        }
       },
       "transitions": [
         {
-          "event": "keypress",
+          "event": "noMatch",
+          "next": "split_29"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.admin.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 1",
+              "type": "equal_to",
+              "value": "1"
+            }
+          ],
+          "event": "match",
+          "next": "admin_get_recent"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.admin.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 2",
+              "type": "equal_to",
+              "value": "2"
+            }
+          ],
+          "event": "match",
           "next": "admin_ask_add_phone"
         },
         {
-          "event": "timeout",
-          "next": "admin"
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.admin.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 3",
+              "type": "equal_to",
+              "value": "3"
+            }
+          ],
+          "event": "match",
+          "next": "admin_ask_update_id"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.admin.Digits}}"
+              ],
+              "friendly_name": "If value equal_to *",
+              "type": "equal_to",
+              "value": "*"
+            }
+          ],
+          "event": "match",
+          "next": "welcome_menu"
         }
-      ]
+      ],
+      "type": "split-based-on"
     },
     {
-      "name": "admin_ask_add_phone",
-      "type": "gather-input-on-call",
+      "name": "ask_order_id",
       "properties": {
-        "offset": {
-          "x": 1000,
-          "y": 1800
-        },
-        "number_of_digits": 10,
         "finish_on_key": "#",
-        "timeout": 15,
-        "say": "Please enter the customer's ten digit phone number followed by the pound key.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "gather_language": "en",
+        "loop": 1,
+        "number_of_digits": 10,
+        "offset": {
+          "x": -1059,
+          "y": -34
+        },
+        "play": "https://shatnez-lab.vercel.app/api/audio?name=order_id",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 10,
+        "voice": "man"
       },
       "transitions": [
         {
           "event": "keypress",
-          "next": "admin_add_order_http"
+          "next": "manual_lookup"
+        },
+        {
+          "event": "speech"
         },
         {
           "event": "timeout",
-          "next": "admin"
+          "next": "ask_order_id"
         }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
-      "name": "admin_add_order_http",
-      "type": "make-http-request",
+      "name": "say_recent_orders",
       "properties": {
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": 1000,
-          "y": 2000
+          "x": -745,
+          "y": 748
         },
-        "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_add_order",
-        "content_type": "application/x-www-form-urlencoded",
-        "parameters": [
-          {
-            "key": "orderId",
-            "value": "{{widgets.admin_ask_add_phone.Digits}}"
-          },
-          {
-            "key": "customerPhone",
-            "value": "{{widgets.admin_ask_add_phone.Digits}}"
-          }
-        ]
-      },
-      "transitions": [
-        {
-          "event": "success",
-          "next": "say_add_order_success"
-        },
-        {
-          "event": "failed",
-          "next": "say_add_order_fail"
-        }
-      ]
-    },
-    {
-      "name": "say_add_order_success",
-      "type": "say-play",
-      "properties": {
-        "offset": {
-          "x": 900,
-          "y": 2200
-        },
-        "say": "{{widgets.admin_add_order_http.parsed.messageEn}}",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "say": "{{widgets.admin_get_recent.parsed.messageEn}}",
+        "voice": "man"
       },
       "transitions": [
         {
           "event": "audioComplete",
           "next": "admin"
         }
-      ]
-    },
-    {
-      "name": "say_add_order_fail",
-      "type": "say-play",
-      "properties": {
-        "offset": {
-          "x": 1100,
-          "y": 2200
-        },
-        "say": "Failed to add order. Returning to the admin menu.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
-      },
-      "transitions": [
-        {
-          "event": "audioComplete",
-          "next": "admin"
-        }
-      ]
+      ],
+      "type": "say-play"
     },
     {
       "name": "admin_ask_update_id",
-      "type": "gather-input-on-call",
       "properties": {
-        "offset": {
-          "x": 1300,
-          "y": 1600
-        },
-        "number_of_digits": 10,
         "finish_on_key": "#",
-        "timeout": 15,
-        "say": "Please enter the ten digit order ID you would like to update, followed by the pound key.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "number_of_digits": 10,
+        "offset": {
+          "x": 905,
+          "y": 316
+        },
+        "say": "lease enter the customer's ten digit phone number you would like to update, followed by the pound key.",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 3,
+        "voice": "man"
       },
       "transitions": [
         {
           "event": "keypress",
-          "next": "admin_ask_update_status"
+          "next": "admin_check_order_http"
+        },
+        {
+          "event": "speech"
         },
         {
           "event": "timeout",
-          "next": "admin"
+          "next": "admin_ask_update_id"
         }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
       "name": "admin_ask_update_status",
-      "type": "gather-input-on-call",
       "properties": {
-        "offset": {
-          "x": 1300,
-          "y": 1800
-        },
-        "number_of_digits": 1,
         "finish_on_key": "#",
-        "timeout": 15,
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": 987,
+          "y": 786
+        },
         "say": "Enter the status digit. Press 1 for received, 2 for testing, 3 for review, 4 for ready, 5 for delivered, or 6 for attention needed.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 10,
+        "voice": "man"
       },
       "transitions": [
         {
@@ -814,25 +641,32 @@
           "next": "admin_ask_update_result"
         },
         {
+          "event": "speech"
+        },
+        {
           "event": "timeout",
-          "next": "admin"
+          "next": "admin_ask_update_status"
         }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
       "name": "admin_ask_update_result",
-      "type": "gather-input-on-call",
       "properties": {
-        "offset": {
-          "x": 1300,
-          "y": 2000
-        },
-        "number_of_digits": 1,
         "finish_on_key": "#",
-        "timeout": 15,
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": 1010,
+          "y": 976
+        },
         "say": "Enter the result selection. Press 1 for clean, 2 if shatnez was found, 3 to request a call, or star to keep the current result.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 5,
+        "voice": "man"
       },
       "transitions": [
         {
@@ -840,23 +674,30 @@
           "next": "admin_split_status_for_notify"
         },
         {
+          "event": "speech"
+        },
+        {
           "event": "timeout",
           "next": "admin_split_status_for_notify"
         }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
-      "name": "admin_update_order_http",
-      "type": "make-http-request",
+      "name": "admin_update_order",
       "properties": {
-        "offset": {
-          "x": 1300,
-          "y": 2200
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=admin_update_order",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": 345,
+          "y": 1346
+        },
         "parameters": [
+          {
+            "key": "action",
+            "value": "admin_update_order"
+          },
           {
             "key": "orderId",
             "value": "{{widgets.admin_ask_update_id.Digits}}"
@@ -867,182 +708,586 @@
           },
           {
             "key": "resultSelection",
-            "value": "{{widgets.admin_ask_update_result.Digits}}"
+            "value": "{{widgets.admin_ask_update_result.Digits}}\n"
           },
           {
             "key": "notifyDigit",
             "value": "{{widgets.admin_ask_notify_customer.Digits}}"
           }
-        ]
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=admin_update_order"
       },
       "transitions": [
         {
           "event": "success",
-          "next": "say_update_success"
+          "next": "update_order_success_admin"
         },
         {
           "event": "failed",
-          "next": "say_update_fail"
+          "next": "say_error"
         }
-      ]
+      ],
+      "type": "make-http-request"
     },
     {
-      "name": "say_update_success",
-      "type": "say-play",
+      "name": "update_order_success_admin",
       "properties": {
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": 1200,
-          "y": 2400
+          "x": 231,
+          "y": 1615
         },
-        "say": "{{widgets.admin_update_order_http.parsed.messageEn}}",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "say": "{{widgets.admin_update_order.parsed.messageEn}}",
+        "voice": "man"
       },
       "transitions": [
         {
           "event": "audioComplete",
           "next": "admin"
         }
-      ]
+      ],
+      "type": "say-play"
     },
     {
-      "name": "say_update_fail",
-      "type": "say-play",
+      "name": "admin_ask_add_phone",
       "properties": {
-        "offset": {
-          "x": 1400,
-          "y": 2400
-        },
-        "say": "Failed to update order. Returning to the admin menu.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
-      },
-      "transitions": [
-        {
-          "event": "audioComplete",
-          "next": "admin"
-        }
-      ]
-    },
-    {
-      "name": "admin_ask_notify_customer",
-      "type": "gather-input-on-call",
-      "properties": {
-        "offset": {
-          "x": 1300,
-          "y": 2100
-        },
-        "number_of_digits": 1,
         "finish_on_key": "#",
-        "timeout": 10,
-        "say": "Press 1 to notify the customer automatically, or press 2 to skip notification.",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -179,
+          "y": 518
+        },
+        "say": "Please enter the customer's ten digit phone number followed by the pound key",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 5,
+        "voice": "Polly.Matthew"
       },
       "transitions": [
         {
           "event": "keypress",
-          "next": "admin_update_order_http"
+          "next": "admin_add_order"
+        },
+        {
+          "event": "speech"
         },
         {
           "event": "timeout",
-          "next": "admin_update_order_http"
+          "next": "split_29"
         }
-      ]
+      ],
+      "type": "gather-input-on-call"
     },
     {
-      "name": "admin_split_status_for_notify",
-      "type": "split-based-on",
+      "name": "admin_add_order",
       "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
         "offset": {
-          "x": 1300,
-          "y": 2050
+          "x": -244,
+          "y": 719
         },
-        "input": "{{widgets.admin_ask_update_status.Digits}}"
+        "parameters": [
+          {
+            "key": "orderId",
+            "value": "{{widgets.admin_ask_add_phone.Digits}}"
+          },
+          {
+            "key": "customerPhone",
+            "value": "{{widgets.admin_ask_add_phone.Digits}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=admin_add_order"
       },
       "transitions": [
         {
-          "event": "match",
+          "event": "success",
+          "next": "success_add_order"
+        },
+        {
+          "event": "failed",
+          "next": "say_error"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "success_add_order",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -351,
+          "y": 920
+        },
+        "say": "{{widgets.admin_add_order.parsed.messageEn}}",
+        "voice": "man"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
+        }
+      ],
+      "type": "say-play"
+    },
+    {
+      "name": "say_manual_orders",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -1275,
+          "y": 361
+        },
+        "say": "{{widgets.manual_lookup.parsed.messageEn}}",
+        "voice": "man"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ],
+      "type": "say-play"
+    },
+    {
+      "name": "say_play_not_found",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -966,
+          "y": 345
+        },
+        "say": "We could not find an order with that number. Returning to the main menu",
+        "voice": "man"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ],
+      "type": "say-play"
+    },
+    {
+      "name": "say_error",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": 545,
+          "y": 1611
+        },
+        "say": "An error occurred. Returning to the admin menu.",
+        "voice": "man"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
+        }
+      ],
+      "type": "say-play"
+    },
+    {
+      "name": "ask_lookup_choice",
+      "properties": {
+        "finish_on_key": "#",
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -1402,
+          "y": -737
+        },
+        "say": "<speak>I see you are calling from <say-as interpret-as=\"digits\">{{contact.channel.address | remove: \"+\"}}</say-as>. To search for orders using this phone number, press 1. To search using a different phone number or order number, press 2.</speak>\n",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 5,
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "split_lookup_choice"
+        },
+        {
+          "event": "speech"
+        },
+        {
+          "event": "timeout",
+          "next": "ask_lookup_choice"
+        }
+      ],
+      "type": "gather-input-on-call"
+    },
+    {
+      "name": "split_lookup_choice",
+      "properties": {
+        "input": "{{widgets.ask_lookup_choice.Digits}}",
+        "offset": {
+          "x": -1610,
+          "y": -237
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "welcome_menu"
+        },
+        {
           "conditions": [
             {
-              "friendly_name": "If value equal_to 4",
+              "arguments": [
+                "{{widgets.ask_lookup_choice.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 1",
+              "type": "equal_to",
+              "value": "1"
+            }
+          ],
+          "event": "match",
+          "next": "caller_lookup"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.ask_lookup_choice.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 2",
+              "type": "equal_to",
+              "value": "2"
+            }
+          ],
+          "event": "match",
+          "next": "ask_order_id"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.ask_lookup_choice.Digits}}"
+              ],
+              "friendly_name": "If value equal_to *",
+              "type": "equal_to",
+              "value": "*"
+            }
+          ],
+          "event": "match",
+          "next": "welcome_menu"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "record_voicemail_1",
+      "properties": {
+        "max_length": 3600,
+        "offset": {
+          "x": -714,
+          "y": -301
+        },
+        "timeout": 4,
+        "transcribe": false
+      },
+      "transitions": [
+        {
+          "event": "recordingComplete",
+          "next": "Record_Voicemail"
+        },
+        {
+          "event": "noAudio"
+        },
+        {
+          "event": "hangup"
+        }
+      ],
+      "type": "record-voicemail"
+    },
+    {
+      "name": "Record_Voicemail",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": -690,
+          "y": -147
+        },
+        "parameters": [
+          {
+            "key": "recordingUrl",
+            "value": "{{widgets.record_voicemail_1.RecordingUrl}}"
+          },
+          {
+            "key": "recordingDuration",
+            "value": "{{widgets.record_voicemail_1.RecordingDuration}}"
+          },
+          {
+            "key": "recordingDuration",
+            "value": "{{widgets.record_voicemail_1.RecordingDuration}}"
+          },
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=voicemail"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "Message_success"
+        },
+        {
+          "event": "failed",
+          "next": "false"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "Message_success",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -645,
+          "y": 54
+        },
+        "say": "Thank you for your message. We've received your inquiry and will get back to you as soon as possible.",
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete"
+        }
+      ],
+      "type": "say-play"
+    },
+    {
+      "name": "Say_leave_message",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -700,
+          "y": -469
+        },
+        "say": "Please leave a message, including your phone number, after the tone. Press any key when finished.",
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "record_voicemail_1"
+        }
+      ],
+      "type": "say-play"
+    },
+    {
+      "name": "admin_split_status_for_notify",
+      "properties": {
+        "input": "{{widgets.admin_ask_update_status.Digits}}",
+        "offset": {
+          "x": 706,
+          "y": 1097
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "admin_update_order"
+        },
+        {
+          "conditions": [
+            {
               "arguments": [
                 "{{widgets.admin_ask_update_status.Digits}}"
               ],
+              "friendly_name": "If value equal_to 4",
               "type": "equal_to",
               "value": "4"
             }
           ],
+          "event": "match",
           "next": "admin_ask_notify_customer"
-        },
-        {
-          "event": "noMatch",
-          "next": "admin_update_order_http"
         }
-      ]
+      ],
+      "type": "split-based-on"
     },
     {
-      "name": "split_admin_caller_id",
-      "type": "split-based-on",
+      "name": "admin_ask_notify_customer",
       "properties": {
+        "finish_on_key": "#",
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": 800,
-          "y": 700
+          "x": 760,
+          "y": 1284
         },
-        "input": "{{trigger.call.From}}"
+        "say": "Press 1 to notify the customer automatically, or press 2 to skip notification",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 5,
+        "voice": "man"
       },
       "transitions": [
         {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "If Admin 1",
-              "arguments": [
-                "{{trigger.call.From}}"
-              ],
-              "type": "equal_to",
-              "value": "+18455524744"
-            }
-          ],
-          "next": "admin"
+          "event": "keypress",
+          "next": "admin_update_order"
         },
         {
-          "event": "match",
+          "event": "speech"
+        },
+        {
+          "event": "timeout",
+          "next": "admin_update_order"
+        }
+      ],
+      "type": "gather-input-on-call"
+    },
+    {
+      "name": "check_admin_phone",
+      "properties": {
+        "input": "{{trigger.call.From}}",
+        "offset": {
+          "x": 857,
+          "y": -472
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "ask_admin_pin"
+        },
+        {
           "conditions": [
             {
-              "friendly_name": "If Admin 2",
               "arguments": [
                 "{{trigger.call.From}}"
               ],
+              "friendly_name": "If value equal_to +18457092022",
               "type": "equal_to",
               "value": "+18457092022"
             }
           ],
-          "next": "admin"
+          "event": "match",
+          "next": "redirect_to_admin_voice"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "admin_check_order_http",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": 814,
+          "y": 513
+        },
+        "parameters": [
+          {
+            "key": "action",
+            "value": "admin_check_order"
+          },
+          {
+            "key": "orderId",
+            "value": "{{widgets.admin_ask_update_id.Digits}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=admin_check_order"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "split_1new"
         },
         {
-          "event": "noMatch",
-          "next": "ask_admin_pin"
+          "event": "failed"
         }
-      ]
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "split_1new",
+      "properties": {
+        "input": "{{widgets.admin_check_order_http.parsed.success}}",
+        "offset": {
+          "x": 655,
+          "y": 699
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "admin_order_not_fond"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.admin_check_order_http.parsed.success}}"
+              ],
+              "friendly_name": "If value equal_to true",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "admin_ask_update_status"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "admin_order_not_fond",
+      "properties": {
+        "loop": 1,
+        "offset": {
+          "x": 583,
+          "y": 862
+        },
+        "say": "We could not find the order. Returning to the admin menu."
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "admin"
+        }
+      ],
+      "type": "say-play"
     },
     {
       "name": "check_hours",
-      "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": -200,
-          "y": 450
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=check_hours",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": 268,
+          "y": -984
+        },
         "parameters": [
           {
             "key": "phone",
             "value": "{{contact.channel.address}}"
           }
-        ]
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=check_hours"
       },
       "transitions": [
         {
@@ -1051,168 +1296,182 @@
         },
         {
           "event": "failed",
-          "next": "connect_call_fallback"
+          "next": "play_closed_en"
         }
-      ]
-    },
-    {
-      "name": "connect_call_fallback",
-      "type": "connect-call-to",
-      "properties": {
-        "offset": {
-          "x": -450,
-          "y": 650
-        },
-        "caller_id": "{{contact.channel.address}}",
-        "noun": "number",
-        "to": "+18457092022"
-      },
-      "transitions": [
-        {
-          "event": "connectedCallEnded"
-        },
-        {
-          "event": "callerHungUp"
-        }
-      ]
+      ],
+      "type": "make-http-request"
     },
     {
       "name": "split_is_within_hours",
-      "type": "split-based-on",
       "properties": {
+        "input": "{{widgets.check_hours.parsed.isWithinHours}}",
         "offset": {
-          "x": -200,
-          "y": 650
-        },
-        "variable_to_test": "{{widgets.check_hours.parsed.isWithinHours}}"
+          "x": 147,
+          "y": -785
+        }
       },
       "transitions": [
-        {
-          "event": "match",
-          "conditions": [
-            {
-              "friendly_name": "Within Business Hours",
-              "arguments": [
-                "true"
-              ],
-              "type": "equal_to"
-            }
-          ],
-          "next": "connect_call_1"
-        },
         {
           "event": "noMatch",
           "next": "play_closed_en"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.check_hours.parsed.isWithinHours}}"
+              ],
+              "friendly_name": "Within Business Hours",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "connect_call_1"
         }
-      ]
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "connect_call_1",
+      "properties": {
+        "caller_id": "{{widgets.check_hours.parsed.callerId}}",
+        "noun": "number",
+        "offset": {
+          "x": 490,
+          "y": -691
+        },
+        "timeout": 30,
+        "to": "{{widgets.check_hours.parsed.forwardingNumber}}"
+      },
+      "transitions": [
+        {
+          "event": "callCompleted"
+        },
+        {
+          "event": "hangup"
+        }
+      ],
+      "type": "connect-call-to"
     },
     {
       "name": "play_closed_en",
-      "type": "say-play",
       "properties": {
+        "language": "en-US",
+        "loop": 1,
         "offset": {
-          "x": -200,
-          "y": 850
+          "x": -1,
+          "y": -624
         },
         "say": "{{widgets.check_hours.parsed.messageEn}}",
-        "voice": "Polly.Joey",
-        "language": "en-US"
+        "voice": "Polly.Joey"
       },
       "transitions": [
         {
           "event": "audioComplete",
-          "next": "play_closed_he"
+          "next": "Say_leave_message"
         }
-      ]
+      ],
+      "type": "say-play"
     },
     {
-      "name": "play_closed_he",
-      "type": "say-play",
+      "name": "log_call_start",
       "properties": {
-        "offset": {
-          "x": -200,
-          "y": 1050
-        },
-        "say": "{{widgets.check_hours.parsed.messageHe}}",
-        "voice": "Polly.Madi",
-        "language": "he-IL"
-      },
-      "transitions": [
-        {
-          "event": "audioComplete",
-          "next": "record_voicemail_1"
-        }
-      ]
-    },
-    {
-      "name": "record_voicemail_1",
-      "type": "record-voicemail",
-      "properties": {
-        "offset": {
-          "x": -200,
-          "y": 1250
-        },
-        "play_beep": true,
-        "trim": "trim-silence"
-      },
-      "transitions": [
-        {
-          "event": "recordingComplete",
-          "next": "send_voicemail_to_server"
-        },
-        {
-          "event": "hangup",
-          "next": "send_voicemail_to_server"
-        }
-      ]
-    },
-    {
-      "name": "send_voicemail_to_server",
-      "type": "make-http-request",
-      "properties": {
-        "offset": {
-          "x": -200,
-          "y": 1450
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=voicemail",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": -1173,
+          "y": -2375
+        },
         "parameters": [
           {
             "key": "phone",
             "value": "{{contact.channel.address}}"
           },
           {
-            "key": "recordingUrl",
-            "value": "{{widgets.record_voicemail_1.RecordingUrl}}"
-          },
-          {
-            "key": "recordingDuration",
-            "value": "{{widgets.record_voicemail_1.RecordingDuration}}"
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
           }
-        ]
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_call_start"
       },
       "transitions": [
         {
-          "event": "success"
+          "event": "success",
+          "next": "welcome_menu"
         },
         {
-          "event": "failed"
+          "event": "failed",
+          "next": "welcome_menu"
         }
-      ]
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "redirect_to_admin_voice",
+      "properties": {
+        "method": "POST",
+        "offset": {
+          "x": 975,
+          "y": 44
+        },
+        "timeout": "14400",
+        "url": "https://www.theshatnezlab.com/api/twilio/gather?step=admin_menu_voice_entry"
+      },
+      "transitions": [
+        {
+          "event": "return",
+          "next": "admin"
+        },
+        {
+          "event": "timeout"
+        },
+        {
+          "event": "fail"
+        }
+      ],
+      "type": "add-twiml-redirect"
+    },
+    {
+      "name": "Silence",
+      "properties": {
+        "loop": 1,
+        "offset": {
+          "x": -1079,
+          "y": -2612
+        },
+        "play": "https://www.theshatnezlab.com/api/audio?name=first_walcome"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "log_call_start"
+        }
+      ],
+      "type": "say-play"
     },
     {
       "name": "log_keypress_1",
-      "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": -250,
-          "y": 600
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=log_keypress&digit=1",
-        "content_type": "application/x-www-form-urlencoded",
-        "parameters": []
+        "offset": {
+          "x": -2460,
+          "y": -1200
+        },
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=1"
       },
       "transitions": [
         {
@@ -1223,35 +1482,462 @@
           "event": "failed",
           "next": "play_info"
         }
-      ]
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "log_keypress_2",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": -1466,
+          "y": -1619
+        },
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=2"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "ask_lookup_choice"
+        },
+        {
+          "event": "failed",
+          "next": "ask_lookup_choice"
+        }
+      ],
+      "type": "make-http-request"
     },
     {
       "name": "log_keypress_3",
-      "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": 250,
-          "y": 600
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=log_keypress&digit=3",
-        "content_type": "application/x-www-form-urlencoded",
-        "parameters": []
+        "offset": {
+          "x": -2124,
+          "y": -1200
+        },
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=3"
       },
       "transitions": [
         {
           "event": "success",
-          "next": "play_vip"
+          "next": "VIP"
         },
         {
           "event": "failed",
-          "next": "play_vip"
+          "next": "VIP"
         }
-      ]
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "log_keypress_4",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": -700,
+          "y": -1200
+        },
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=4"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "Say_leave_message"
+        },
+        {
+          "event": "failed",
+          "next": "Say_leave_message"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "log_keypress_0",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": 268,
+          "y": -1500
+        },
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=0"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_hours"
+        },
+        {
+          "event": "failed",
+          "next": "check_hours"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "log_keypress_9",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": 857,
+          "y": -1200
+        },
+        "parameters": [
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "CallSid",
+            "value": "{{trigger.call.CallSid}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=9"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_admin_phone"
+        },
+        {
+          "event": "failed",
+          "next": "check_admin_phone"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "log_keypress_5",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": -1500,
+          "y": -1400
+        },
+        "parameters": [
+          {
+            "key": "action",
+            "value": "log_keypress"
+          },
+          {
+            "key": "digit",
+            "value": "5"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=log_keypress&digit=5"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "gather_delivery_confirm"
+        },
+        {
+          "event": "failed",
+          "next": "gather_delivery_confirm"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "gather_delivery_confirm",
+      "properties": {
+        "finish_on_key": "#",
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "number_of_digits": 1,
+        "offset": {
+          "x": -1500,
+          "y": -1200
+        },
+        "say": "We offer a door-to-door pickup and delivery service for only ten dollars. We will pick up your garment today and deliver it back to you tomorrow, fully checked. To request this service, press 1. Or, press star to return to the main menu.",
+        "speech_model": "default",
+        "speech_timeout": "5",
+        "stop_gather": true,
+        "timeout": 15,
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "split_delivery_confirm"
+        },
+        {
+          "event": "speech"
+        },
+        {
+          "event": "timeout",
+          "next": "welcome_menu"
+        }
+      ],
+      "type": "gather-input-on-call"
+    },
+    {
+      "name": "split_delivery_confirm",
+      "properties": {
+        "input": "{{widgets.gather_delivery_confirm.Digits}}",
+        "offset": {
+          "x": -1500,
+          "y": -1000
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "welcome_menu"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.gather_delivery_confirm.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 1",
+              "type": "equal_to",
+              "value": "1"
+            }
+          ],
+          "event": "match",
+          "next": "gather_delivery_speech"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.gather_delivery_confirm.Digits}}"
+              ],
+              "friendly_name": "If value equal_to *",
+              "type": "equal_to",
+              "value": "*"
+            }
+          ],
+          "event": "match",
+          "next": "welcome_menu"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "gather_delivery_speech",
+      "properties": {
+        "finish_on_key": "#",
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -1500,
+          "y": -900
+        },
+        "say": "Please clearly state your pickup address now.",
+        "speech_model": "default",
+        "speech_timeout": "auto",
+        "stop_gather": true,
+        "timeout": 15,
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "gather_delivery_verify"
+        },
+        {
+          "event": "speech",
+          "next": "gather_delivery_verify"
+        },
+        {
+          "event": "timeout",
+          "next": "gather_delivery_verify"
+        }
+      ],
+      "type": "gather-input-on-call"
+    },
+    {
+      "name": "gather_delivery_verify",
+      "properties": {
+        "finish_on_key": "#",
+        "gather_language": "en",
+        "language": "en-US",
+        "loop": 1,
+        "number_of_digits": 1,
+        "offset": {
+          "x": -1500,
+          "y": -800
+        },
+        "say": "You said your address is: {{widgets.gather_delivery_speech.SpeechResult}}. If this is correct, press 1. If you would like to state your address again, press 2.",
+        "speech_model": "default",
+        "speech_timeout": "auto",
+        "stop_gather": true,
+        "timeout": 15,
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "keypress",
+          "next": "split_delivery_verify"
+        },
+        {
+          "event": "speech",
+          "next": "split_delivery_verify"
+        },
+        {
+          "event": "timeout",
+          "next": "save_delivery_request"
+        }
+      ],
+      "type": "gather-input-on-call"
+    },
+    {
+      "name": "split_delivery_verify",
+      "properties": {
+        "input": "{{widgets.gather_delivery_verify.Digits}}",
+        "offset": {
+          "x": -1500,
+          "y": -750
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "save_delivery_request"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.gather_delivery_verify.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 1",
+              "type": "equal_to",
+              "value": "1"
+            }
+          ],
+          "event": "match",
+          "next": "save_delivery_request"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.gather_delivery_verify.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 2",
+              "type": "equal_to",
+              "value": "2"
+            }
+          ],
+          "event": "match",
+          "next": "gather_delivery_speech"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "save_delivery_request",
+      "properties": {
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
+        "method": "POST",
+        "offset": {
+          "x": -1500,
+          "y": -700
+        },
+        "parameters": [
+          {
+            "key": "action",
+            "value": "save_delivery"
+          },
+          {
+            "key": "phone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "SpeechResult",
+            "value": "{{widgets.gather_delivery_speech.SpeechResult}}"
+          }
+        ],
+        "url": "https://www.theshatnezlab.com/api/twilio/studio?action=save_delivery"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "play_delivery_success"
+        },
+        {
+          "event": "failed",
+          "next": "play_delivery_success"
+        }
+      ],
+      "type": "make-http-request"
+    },
+    {
+      "name": "play_delivery_success",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -1500,
+          "y": -500
+        },
+        "say": "Thank you. Your address has been recorded and your request is received. We will contact you shortly to arrange. Goodbye.",
+        "voice": "Polly.Matthew"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete"
+        }
+      ],
+      "type": "say-play"
     }
-  ],
-  "initial_state": "Trigger",
-  "flags": {
-    "allow_bypassing_constraints": false
-  }
+  ]
 }

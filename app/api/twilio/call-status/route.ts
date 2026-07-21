@@ -14,8 +14,10 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const callStatus = formData.get("CallStatus")?.toString() || "unknown";
     const callDuration = formData.get("CallDuration")?.toString();
+    const price = formData.get("Price")?.toString();
+    const priceUnit = formData.get("PriceUnit")?.toString() || "USD";
 
-    console.log(`[Twilio Call Status] Order ${orderId}: ${callStatus} (Duration: ${callDuration}s)`);
+    console.log(`[Twilio Call Status] Order ${orderId}: ${callStatus} (Duration: ${callDuration}s, Price: ${price} ${priceUnit})`);
 
     const callSid = formData.get("CallSid")?.toString() || "";
     const toPhone = formData.get("To")?.toString() || "";
@@ -43,7 +45,9 @@ export async function POST(req: NextRequest) {
           finalStatus, 
           callDuration ? `${callDuration}s` : undefined,
           "outbound",
-          orderId
+          orderId,
+          price,
+          priceUnit
         );
       } catch (logErr) {
         console.error("[Twilio Call Status] Failed to log call event:", logErr);

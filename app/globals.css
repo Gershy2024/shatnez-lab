@@ -44,4 +44,40 @@
   .gradient-text {
     @apply bg-gradient-to-r from-gold-500 to-gold-700 bg-clip-text text-transparent;
   }
+
+  /* Admin Sidebar */
+  .admin-sidebar {
+    @apply fixed top-0 h-screen w-60 bg-navy-900 text-white z-50
+           flex flex-col transition-transform duration-300 ease-in-out;
+  }
+
+  .admin-sidebar-item {
+    @apply w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
+  }
+
+  .admin-sidebar-item--active {
+    @apply bg-navy-800 text-gold-400 shadow-sm;
+  }
+
+  .admin-sidebar-item--inactive {
+    @apply text-navy-300 hover:text-white hover:bg-navy-800/60;
+  }
+
+  /* Inline Edit Badge */
+  .inline-badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+           cursor-pointer transition-all duration-200
+           hover:ring-2 hover:ring-gold-300/50 hover:shadow-sm;
+  }
+}
+
+/* Sidebar slide-in animation for mobile */
+@keyframes sidebar-slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+[dir="rtl"] @keyframes sidebar-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }

@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       Press 1 for drop-off information, pricing, and instructions.
       Press 2 to check your order status and test results.
       Press 3 to hear about our special VIP and store services.
+      Press 5 for door-to-door pickup and delivery services.
       Press 0 to speak with a representative.
       Or, enter your order number followed by pound.
     </Say>

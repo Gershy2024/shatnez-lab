@@ -8,7 +8,7 @@ import {
   X, ChevronRight, Mic, Clock, ArrowUpRight, ArrowDownLeft, 
   Play, Pause, Trash2, Send, Info, ShieldCheck, AlertCircle, 
   CheckCircle, Keyboard, FileText, Check, Link, Bell, Ban,
-  Sun, Moon
+  Sun, Moon, Sparkles
 } from "lucide-react";
 import { 
   Order, CallRecord, Voicemail, SmsMessage, 
@@ -28,6 +28,7 @@ interface VirtualPhoneProps {
   sendSms: (phone: string, message: string) => Promise<boolean>;
   markVoicemailRead: (id: string) => Promise<void>;
   deleteVoicemail: (id: string) => Promise<void>;
+  markSmsRead: (phone: string) => Promise<void>;
   onClose?: () => void;
   dragControls?: any;
 }
@@ -65,6 +66,7 @@ export default function VirtualPhone({
   sendSms,
   markVoicemailRead,
   deleteVoicemail,
+  markSmsRead,
   onClose,
   dragControls
 }: VirtualPhoneProps) {
@@ -164,6 +166,13 @@ export default function VirtualPhone({
       }
     }
   }, []);
+
+  // Mark selected SMS thread as read
+  useEffect(() => {
+    if (selectedThreadPhone !== null) {
+      markSmsRead(selectedThreadPhone);
+    }
+  }, [selectedThreadPhone, smsMessages, markSmsRead]);
 
   // Clean up device on unmount
   useEffect(() => {
@@ -477,6 +486,46 @@ export default function VirtualPhone({
     setDialInput("");
   };
 
+  // AI smart suggestion state & call
+  const [generatingSuggestion, setGeneratingSuggestion] = useState(false);
+
+  const handleGenerateSmsSuggestion = async () => {
+    if (!selectedThreadPhone) return;
+    setGeneratingSuggestion(true);
+    try {
+      const threadMessages = smsMessages.filter(
+        msg => msg.phone.replace(/\D/g, "") === selectedThreadPhone
+      );
+      const associatedOrders = orders.filter(
+        o => o.phone && o.phone.replace(/\D/g, "") === selectedThreadPhone
+      );
+
+      const response = await fetch("/api/gemini/suggest-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: selectedThreadPhone,
+          messages: threadMessages,
+          orders: associatedOrders,
+          isRtl
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.suggestion) {
+          setSmsInput(data.suggestion);
+        }
+      } else {
+        console.error("Failed to generate AI suggestion:", await response.text());
+      }
+    } catch (e) {
+      console.error("Error generating suggestion:", e);
+    } finally {
+      setGeneratingSuggestion(false);
+    }
+  };
+
   // Sending SMS chat message
   const handleSendSmsChat = async () => {
     if (!smsInput.trim() || !selectedThreadPhone) return;
@@ -555,11 +604,20 @@ export default function VirtualPhone({
     const threads: Record<string, { lastMsg: SmsMessage; unreadCount: number }> = {};
     smsMessages.forEach(msg => {
       const cleanPhone = msg.phone.replace(/\D/g, "");
-      if (!threads[cleanPhone] || threads[cleanPhone].lastMsg.timestamp < msg.timestamp) {
+      const isUnread = msg.direction === "inbound" && !msg.read;
+      
+      if (!threads[cleanPhone]) {
         threads[cleanPhone] = {
           lastMsg: msg,
-          unreadCount: 0 // Placeholder
+          unreadCount: isUnread ? 1 : 0
         };
+      } else {
+        if (threads[cleanPhone].lastMsg.timestamp < msg.timestamp) {
+          threads[cleanPhone].lastMsg = msg;
+        }
+        if (isUnread) {
+          threads[cleanPhone].unreadCount += 1;
+        }
       }
     });
 
@@ -726,7 +784,13 @@ export default function VirtualPhone({
             {/* Menu Items */}
             {[
               { id: "calls", icon: Phone, labelHe: "שיחות", labelEn: "Calls", badge: 0 },
-              { id: "messages", icon: MessageSquare, labelHe: "הודעות", labelEn: "Messages", badge: 0 },
+              { 
+                id: "messages", 
+                icon: MessageSquare, 
+                labelHe: "הודעות", 
+                labelEn: "Messages", 
+                badge: getSmsThreads().filter(t => t.unreadCount > 0).length 
+              },
               { 
                 id: "voicemails", 
                 icon: Volume2, 
@@ -855,19 +919,19 @@ export default function VirtualPhone({
 
             {/* Quick Filters for Calls */}
             {activeTab === "calls" && (
-              <div className={`flex gap-1 p-1 rounded-lg text-xs font-bold transition-all duration-300 border ${
+              <div className={`flex gap-1 p-1 rounded-lg text-xs font-semibold transition-all duration-300 ${
                 theme === "dark" 
-                  ? "bg-slate-950/20 border-slate-800/20 text-slate-400" 
-                  : "bg-slate-200/50 border-slate-300/50 text-slate-500"
+                  ? "bg-slate-900 text-slate-400 shadow-inner" 
+                  : "bg-slate-100 text-slate-500 shadow-inner"
               }`}>
                 {(["all", "inbound", "outbound", "missed"] as const).map(filter => (
                   <button
                     key={filter}
                     onClick={() => setCallFilter(filter)}
-                    className={`flex-1 py-1 rounded transition-colors ${
+                    className={`flex-1 py-1.5 rounded-md transition-all duration-200 ${
                       callFilter === filter 
-                        ? (theme === "dark" ? "bg-slate-800 text-gold-400 shadow-inner" : "bg-white text-gold-600 shadow-sm border border-slate-200/50") 
-                        : (theme === "dark" ? "hover:text-slate-200" : "hover:text-slate-850")
+                        ? (theme === "dark" ? "bg-slate-700 text-white shadow-sm" : "bg-white text-slate-900 shadow-sm ring-1 ring-black/5") 
+                        : (theme === "dark" ? "hover:text-slate-300" : "hover:text-slate-700 hover:bg-slate-200/50")
                     }`}
                   >
                     {filter === "all" && (isRtl ? "הכל" : "All")}
@@ -881,7 +945,9 @@ export default function VirtualPhone({
           </div>
 
           {/* List Scroll Area */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className={`flex-1 overflow-y-auto p-3 space-y-2 transition-colors ${
+            theme === "dark" ? "bg-slate-950/50" : "bg-[#F5F7FA]"
+          }`}>
             
             {/* TAB: CALLS LIST */}
             {activeTab === "calls" && (
@@ -902,10 +968,10 @@ export default function VirtualPhone({
                           setSelectedCallId(c.id);
                           setShowDialpad(false);
                         }}
-                        className={`p-3 rounded-xl border cursor-pointer select-none relative transition-all duration-150 ${
+                        className={`p-3 rounded-xl cursor-pointer select-none relative transition-all duration-150 ${
                           isSelected 
-                            ? (theme === "dark" ? "bg-slate-800 border-slate-900 shadow text-white" : "bg-slate-200 border-slate-300 shadow text-slate-950") 
-                            : (theme === "dark" ? "bg-slate-900/40 border-slate-800/40 hover:bg-slate-900/80 hover:border-slate-800" : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-350 shadow-sm")
+                            ? (theme === "dark" ? "bg-slate-800 shadow-md ring-1 ring-slate-700 text-white" : "bg-white shadow-md ring-1 ring-slate-300 text-slate-950") 
+                            : (theme === "dark" ? "bg-slate-900/60 shadow-sm hover:bg-slate-800 hover:shadow-md ring-1 ring-slate-800/50" : "bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] ring-1 ring-black/5 hover:ring-black/10")
                         }`}
                       >
                         <div className="flex flex-col gap-2">
@@ -930,24 +996,31 @@ export default function VirtualPhone({
                                 )}
                               </div>
                               <div className={`overflow-hidden ${isRtl ? "text-right" : "text-left"}`}>
-                                <div className={`text-xs font-bold block truncate transition-colors duration-300 ${
-                                  theme === "dark" ? "text-slate-100" : "text-slate-800"
+                                <div className={`text-sm font-bold block truncate transition-colors duration-300 ${
+                                  theme === "dark" ? "text-slate-100" : "text-slate-900"
                                 }`}>
                                   {crmMatch ? crmMatch.customerName : (isRtl ? "מתקשר אלחוטי" : "Wireless Caller")}
                                 </div>
-                                <div className={`text-xs font-mono mt-0.5 block truncate transition-colors duration-300 ${
-                                  theme === "dark" ? "text-slate-400" : "text-slate-500"
-                                }`}>{c.phone}</div>
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <span className={`text-[11px] font-medium block truncate transition-colors duration-300 ${
+                                    theme === "dark" ? "text-slate-400" : "text-slate-500"
+                                  }`}>{c.phone}</span>
+                                  {crmMatch && (
+                                    <span className="text-[9px] font-bold uppercase text-gold-600 bg-gold-500/10 border border-gold-500/20 px-1.5 py-[1px] rounded-full whitespace-nowrap">
+                                      #{crmMatch.id} ({translateStatus(crmMatch.status)})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
                             <div className={`text-right flex flex-col items-end shrink-0 ${isRtl ? "items-start" : "items-end"}`}>
-                              <span className={`text-[11px] font-mono transition-colors duration-300 ${
-                                theme === "dark" ? "text-slate-400" : "text-slate-500"
+                              <span className={`text-[11px] font-medium transition-colors duration-300 ${
+                                theme === "dark" ? "text-slate-500" : "text-slate-400"
                               }`}>{getRelativeTime(c.timestamp)}</span>
                               {c.duration && (
-                                <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-mono mt-1 ${
-                                  theme === "dark" ? "bg-slate-950/40 text-slate-400" : "bg-slate-200 text-slate-650"
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded text-center font-medium mt-1 tracking-wide ${
+                                  theme === "dark" ? "bg-slate-900 text-slate-400" : "bg-slate-100 text-slate-500"
                                 }`}>
                                   {formatDuration(c.duration, isRtl)}
                                 </span>
@@ -955,14 +1028,7 @@ export default function VirtualPhone({
                             </div>
                           </div>
 
-                          {/* Second Row: Order Badge (Full Width, Aligns with text, wraps cleanly) */}
-                          {crmMatch && (
-                            <div className={`flex ${isRtl ? "justify-start pr-10" : "justify-end pl-10"}`}>
-                              <span className={`text-[10px] sm:text-[10.5px] font-semibold uppercase text-gold-500 bg-gold-500/10 border border-gold-500/20 px-2 py-0.5 rounded-lg whitespace-normal leading-tight shadow-sm`}>
-                                #{crmMatch.id} ({translateStatus(crmMatch.status)})
-                              </span>
-                            </div>
-                          )}
+                          {/* (Badge moved to inline with phone number) */}
                         </div>
                       </div>
                     );
@@ -993,7 +1059,7 @@ export default function VirtualPhone({
                           isSelected 
                             ? (theme === "dark" ? "bg-slate-800 border-slate-900 shadow text-white" : "bg-slate-200 border-slate-300 shadow text-slate-950") 
                             : (theme === "dark" ? "bg-slate-900/40 border-slate-800/40 hover:bg-slate-900/80 hover:border-slate-800" : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-350 shadow-sm")
-                        }`}
+                        } ${thread.unreadCount > 0 ? "border-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10" : ""}`}
                       >
                         <div className={`flex items-start justify-between gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
                           <div className={`flex items-center gap-2 overflow-hidden ${isRtl ? "flex-row-reverse" : ""}`}>
@@ -1001,10 +1067,13 @@ export default function VirtualPhone({
                               <MessageSquare className="w-4 h-4" />
                             </div>
                             <div className={`overflow-hidden ${isRtl ? "text-right" : "text-left"}`}>
-                              <span className={`text-xs font-bold block truncate transition-colors duration-300 ${
+                              <span className={`text-xs font-bold block truncate flex items-center gap-1.5 transition-colors duration-300 ${
                                 theme === "dark" ? "text-slate-100" : "text-slate-800"
                               }`}>
-                                {crmMatch ? crmMatch.customerName : thread.lastMsg.phone}
+                                {crmMatch ? crmMatch.customerName : (thread.lastMsg.phone || (isRtl ? "הודעת מערכת" : "System / Broadcast"))}
+                                {thread.unreadCount > 0 && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 inline-block animate-ping" />
+                                )}
                               </span>
                               <span className={`text-xs truncate block mt-0.5 transition-colors duration-300 ${
                                 theme === "dark" ? "text-slate-400" : "text-slate-500"
@@ -1268,15 +1337,15 @@ export default function VirtualPhone({
                       <button
                         key={btn.num}
                         onClick={() => handleDialpadClick(btn.num)}
-                        className={`aspect-square rounded-full flex flex-col items-center justify-center transition-all active:scale-95 ${
+                        className={`w-16 h-16 sm:w-[72px] sm:h-[72px] mx-auto rounded-full flex flex-col items-center justify-center transition-all active:scale-95 ${
                           theme === "dark"
-                            ? "bg-slate-800/40 hover:bg-slate-800 text-slate-100 hover:text-white"
-                            : "bg-slate-100 hover:bg-slate-200 text-slate-800 hover:text-slate-950"
+                            ? "bg-slate-800 shadow-[0_2px_10px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_15px_rgba(0,0,0,0.4)] hover:bg-slate-700 text-slate-100 hover:text-white"
+                            : "bg-white shadow-[0_2px_10px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_15px_rgba(0,0,0,0.1)] hover:bg-slate-50 text-slate-800 hover:text-slate-950"
                         }`}
                       >
-                        <span className="text-2xl sm:text-3xl font-semibold leading-none font-sans">{btn.num}</span>
+                        <span className="text-xl sm:text-2xl font-bold leading-none font-sans">{btn.num}</span>
                         {btn.sub && (
-                          <span className={`text-[9px] sm:text-[9.5px] font-medium tracking-wide mt-0.5 uppercase ${
+                          <span className={`text-[8px] sm:text-[9px] font-medium tracking-wide mt-0.5 uppercase ${
                             theme === "dark" ? "text-slate-500" : "text-slate-400"
                           }`}>{btn.sub}</span>
                         )}
@@ -1289,14 +1358,14 @@ export default function VirtualPhone({
                     <button
                       onClick={handleTriggerCall}
                       disabled={!dialInput.trim()}
-                      className={`w-28 h-12 rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 shrink-0 border ${
+                      className={`w-32 h-14 rounded-full flex items-center justify-center shadow-[0_4px_14px_rgba(16,185,129,0.4)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.6)] transition-all duration-200 hover:scale-105 active:scale-95 active:shadow-inner shrink-0 border-0 ${
                         theme === "dark"
-                          ? "bg-slate-805 hover:bg-slate-800 text-emerald-400 border-slate-700/50 disabled:bg-slate-900 disabled:text-slate-700 disabled:border-transparent"
-                          : "bg-white hover:bg-slate-50 text-emerald-600 border-slate-150 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-transparent"
+                          ? "bg-emerald-600 hover:bg-emerald-500 text-white disabled:bg-slate-800 disabled:text-slate-600 disabled:shadow-none"
+                          : "bg-emerald-500 hover:bg-emerald-400 text-white disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
                       }`}
                     >
-                      <Phone className={`w-5 h-5 fill-current shrink-0 ${
-                        dialInput.trim() ? "text-emerald-500" : "opacity-45"
+                      <Phone className={`w-6 h-6 fill-current shrink-0 ${
+                        dialInput.trim() ? "text-white" : "opacity-45 text-current"
                       }`} />
                     </button>
                   </div>
@@ -1525,7 +1594,7 @@ export default function VirtualPhone({
 
           {/* 3D: VIEW FOR SMS CONVERSATIONS */}
           {activeTab === "messages" && (() => {
-            if (!selectedThreadPhone) {
+            if (selectedThreadPhone === null) {
               return (
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-slate-500">
                   <MessageSquare className="w-12 h-12 mb-3 text-slate-600 animate-pulse" />
@@ -1556,7 +1625,7 @@ export default function VirtualPhone({
                       <h3 className={`text-xs font-bold transition-colors duration-300 ${
                         theme === "dark" ? "text-slate-100" : "text-slate-850"
                       }`}>
-                        {crmMatch ? crmMatch.customerName : selectedThreadPhone}
+                        {crmMatch ? crmMatch.customerName : (selectedThreadPhone || (isRtl ? "הודעת מערכת" : "System / Broadcast"))}
                       </h3>
                       {crmMatch && (
                         <span className="text-xs bg-gold-500/10 border border-gold-500/20 text-gold-500 px-1.5 py-0.5 rounded font-bold tracking-wider uppercase">
@@ -1567,46 +1636,48 @@ export default function VirtualPhone({
                   </div>
 
                   {/* Association logic */}
-                  <div className="flex items-center gap-3">
-                    <div className="text-xs text-slate-400">
-                      {isLinkingOrder === selectedThreadPhone ? (
-                        <select 
-                          onChange={(e) => handleLinkOrderConfirm(e.target.value)} 
-                          className={`rounded px-1.5 py-0.5 text-xs transition-colors duration-300 ${
-                            theme === "dark" ? "bg-slate-950 border border-slate-800 text-slate-200" : "bg-white border border-slate-250 text-slate-800"
-                          }`}
-                        >
-                          <option value="">{isRtl ? "-- שייך להזמנה --" : "-- Link Order --"}</option>
-                          {orders.filter(o => !o.archived).map(o => (
-                            <option key={o.id} value={o.id}>#{o.id}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <button 
-                          onClick={() => {
-                            setIsLinkingOrder(selectedThreadPhone);
-                            setLinkingType("sms");
-                          }} 
-                          className="text-xs text-gold-400 hover:text-gold-300 flex items-center gap-1 font-bold underline"
-                        >
-                          <Link className="w-3 h-3" />
-                          {threadMessages[0]?.orderId ? `#${threadMessages[0].orderId}` : (isRtl ? "שייך להזמנה" : "Link Order")}
-                        </button>
-                      )}
-                    </div>
+                  {selectedThreadPhone && (
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-slate-400">
+                        {isLinkingOrder === selectedThreadPhone ? (
+                          <select 
+                            onChange={(e) => handleLinkOrderConfirm(e.target.value)} 
+                            className={`rounded px-1.5 py-0.5 text-xs transition-colors duration-300 ${
+                              theme === "dark" ? "bg-slate-950 border border-slate-800 text-slate-200" : "bg-white border border-slate-250 text-slate-800"
+                            }`}
+                          >
+                            <option value="">{isRtl ? "-- שייך להזמנה --" : "-- Link Order --"}</option>
+                            {orders.filter(o => !o.archived).map(o => (
+                              <option key={o.id} value={o.id}>#{o.id}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <button 
+                            onClick={() => {
+                              setIsLinkingOrder(selectedThreadPhone);
+                              setLinkingType("sms");
+                            }} 
+                            className="text-xs text-gold-400 hover:text-gold-300 flex items-center gap-1 font-bold underline"
+                          >
+                            <Link className="w-3 h-3" />
+                            {threadMessages[0]?.orderId ? `#${threadMessages[0].orderId}` : (isRtl ? "שייך להזמנה" : "Link Order")}
+                          </button>
+                        )}
+                      </div>
 
-                    <button 
-                      onClick={() => {
-                        setDialInput(selectedThreadPhone);
-                        setActiveTab("calls");
-                        setShowDialpad(true);
-                      }} 
-                      className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
-                      title={isRtl ? "התקשר ללקוח" : "Call Client"}
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                      <button 
+                        onClick={() => {
+                          setDialInput(selectedThreadPhone);
+                          setActiveTab("calls");
+                          setShowDialpad(true);
+                        }} 
+                        className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
+                        title={isRtl ? "התקשר ללקוח" : "Call Client"}
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Message Bubble Threads Area */}
@@ -1672,21 +1743,39 @@ export default function VirtualPhone({
                       value={smsInput}
                       onChange={(e) => setSmsInput(e.target.value)}
                       onKeyDown={async (e) => {
-                        if (e.key === "Enter" && !sendingSms && smsInput.trim()) {
+                        if (e.key === "Enter" && !sendingSms && smsInput.trim() && selectedThreadPhone) {
                           await handleSendSmsChat();
                         }
                       }}
-                      placeholder={isRtl ? "הקלד הודעת SMS..." : "Type reply..."}
+                      placeholder={
+                        !selectedThreadPhone 
+                          ? (isRtl ? "לא ניתן להשיב לשיחה זו..." : "Cannot reply to this conversation...") 
+                          : (isRtl ? "הקלד הודעת SMS..." : "Type reply...")
+                      }
                       className={`flex-1 text-xs rounded-xl px-3 py-2 focus:outline-none transition-all duration-300 focus:border-gold-500 ${
                         theme === "dark" 
                           ? "bg-slate-950/60 border border-slate-850 text-slate-100" 
                           : "bg-white border border-slate-300 text-slate-850 shadow-sm"
                       } ${isRtl ? "text-right" : "text-left"}`}
-                      disabled={sendingSms}
+                      disabled={sendingSms || !selectedThreadPhone}
                     />
+                    {selectedThreadPhone && (
+                      <button
+                        onClick={handleGenerateSmsSuggestion}
+                        disabled={generatingSuggestion}
+                        className={`p-2 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-300 ${
+                          theme === "dark"
+                            ? "bg-slate-900 border-slate-800 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300"
+                            : "bg-white border-slate-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-500 shadow-sm"
+                        }`}
+                        title={isRtl ? "הצעת תגובת AI" : "AI Smart Reply"}
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 ${generatingSuggestion ? "animate-spin text-indigo-500" : ""}`} />
+                      </button>
+                    )}
                     <button
                       onClick={handleSendSmsChat}
-                      disabled={sendingSms || !smsInput.trim()}
+                      disabled={sendingSms || !smsInput.trim() || !selectedThreadPhone}
                       className="bg-gold-500 hover:bg-gold-600 disabled:bg-slate-800 disabled:text-slate-500 border border-gold-400 hover:scale-105 active:scale-95 text-slate-950 font-bold px-3 py-2 rounded-xl shadow-lg transition-all flex items-center justify-center shrink-0"
                     >
                       {sendingSms ? (

@@ -70,11 +70,11 @@ export default function ContactPage() {
             initial={{ opacity: 0, x: isRtl ? 20 : -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="lg:col-span-1 flex flex-col justify-between lg:space-y-0 space-y-6 h-full"
+            className="lg:col-span-1 flex flex-col gap-6"
           >
             <a 
               href="tel:845-552-4744"
-              className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
+              className="card p-6 flex items-start gap-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group block"
             >
               <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-gold-200 transition-colors">
                 <Phone className="w-6 h-6 text-gold-600" />
@@ -89,7 +89,7 @@ export default function ContactPage() {
             <a 
               href="mailto:info@theshatnezlab.com"
               onClick={handleCopyEmail}
-              className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
+              className="card p-6 flex items-start gap-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group block"
             >
               <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-gold-200 transition-colors">
                 <Mail className="w-6 h-6 text-gold-600" />
@@ -107,7 +107,7 @@ export default function ContactPage() {
               href="https://maps.google.com/?q=14+Buchanan+Rd,+Spring+Valley,+NY+10977"
               target="_blank"
               rel="noopener noreferrer"
-              className="card p-6 flex items-start gap-4 hover:shadow-lg transition-all duration-300 group block"
+              className="card p-6 flex items-start gap-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group block"
             >
               <div className="w-12 h-12 bg-navy-100 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-navy-200 transition-colors">
                 <MapPin className="w-6 h-6 text-navy-600" />
@@ -122,7 +122,7 @@ export default function ContactPage() {
               </div>
             </a>
 
-            <div className="card p-6 flex items-start gap-4">
+            <div className="card p-6 flex items-start gap-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
               <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center shrink-0">
                 <Clock className="w-6 h-6 text-gold-600" />
               </div>
@@ -172,8 +172,8 @@ export default function ContactPage() {
                         required
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50
-                                 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                        className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50/50
+                                 focus:outline-none focus:ring-2 focus:ring-gold-400/50 focus:border-gold-400
                                  transition-all duration-200 ${isRtl ? "text-right" : ""}`}
                         placeholder={t("your_name")}
                       />
@@ -185,24 +185,13 @@ export default function ContactPage() {
                         name="phone"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50
-                                 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                        className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50/50
+                                 focus:outline-none focus:ring-2 focus:ring-gold-400/50 focus:border-gold-400
                                  transition-all duration-200 ${isRtl ? "text-right" : ""}`}
                         placeholder={t("your_phone")}
                       />
                     </div>
                   </div>
-                  
-                  <p className="text-[10px] text-primary-500 mt-1 leading-relaxed">
-                    {t("sms_consent_text")}{" "}
-                    <Link href="/privacy" className="underline hover:text-gold-500 font-medium text-gold-600">
-                      {t("privacy_policy")}
-                    </Link>{" "}
-                    {t("and")}{" "}
-                    <Link href="/terms" className="underline hover:text-gold-500 font-medium text-gold-600">
-                      {t("terms_conditions")}
-                    </Link>.
-                  </p>
                   
                   <div>
                     <label className="block text-sm font-medium text-navy-800 mb-2">{t("email")}</label>
@@ -211,8 +200,8 @@ export default function ContactPage() {
                       name="email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                      className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50/50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400/50 focus:border-gold-400
                                transition-all duration-200 ${isRtl ? "text-right" : ""}`}
                       placeholder={t("your_email")}
                     />
@@ -226,12 +215,23 @@ export default function ContactPage() {
                       rows={5}
                       value={formData.message}
                       onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
+                      className={`w-full px-4 py-3 rounded-xl border border-primary-200 bg-primary-50/50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400/50 focus:border-gold-400
                                transition-all duration-200 resize-none ${isRtl ? "text-right" : ""}`}
                       placeholder={t("how_can_help")}
                     />
                   </div>
+                  
+                  <p className="text-[10px] text-primary-500 mt-1 leading-relaxed">
+                    {t("sms_consent_text")}{" "}
+                    <Link href="/privacy" className="underline hover:text-gold-500 font-medium text-gold-600">
+                      {t("privacy_policy")}
+                    </Link>{" "}
+                    {t("and")}{" "}
+                    <Link href="/terms" className="underline hover:text-gold-500 font-medium text-gold-600">
+                      {t("terms_conditions")}
+                    </Link>.
+                  </p>
                   
                   <button type="submit" className={`btn-secondary w-full flex items-center justify-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
                     <Send className="w-5 h-5" />

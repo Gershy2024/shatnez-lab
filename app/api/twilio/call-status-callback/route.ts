@@ -18,8 +18,10 @@ export async function POST(req: NextRequest) {
     const callStatus = body.CallStatus || "completed";
     const duration = body.CallDuration || "";
     const phone = body.From || "";
+    const price = body.Price || "";
+    const priceUnit = body.PriceUnit || "USD";
 
-    console.log(`[Twilio Call Status Callback] CallSid: ${callSid}, Status: ${callStatus}, Duration: ${duration}s`);
+    console.log(`[Twilio Call Status Callback] CallSid: ${callSid}, Status: ${callStatus}, Duration: ${duration}s, Price: ${price} ${priceUnit}`);
 
     if (callSid) {
       let finalStatus: "completed" | "active" | "voicemail" = "completed";
@@ -39,7 +41,11 @@ export async function POST(req: NextRequest) {
         phone, 
         `Call ended (${callStatus})`, 
         finalStatus, 
-        duration ? `${duration}s` : undefined
+        duration ? `${duration}s` : undefined,
+        undefined,
+        undefined,
+        price,
+        priceUnit
       );
     }
 

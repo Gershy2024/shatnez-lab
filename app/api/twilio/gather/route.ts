@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent } from "@/lib/db";
-import { triggerOutboundCall } from "@/lib/twilioCall";
+import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest } from "@/lib/db";
+import { triggerOutboundCall, sendSms } from "@/lib/twilioCall";
 
 function formatSpokenDate(dateStr: string): { he: string; en: string } {
   if (!dateStr) return { he: "", en: "" };
@@ -379,6 +379,15 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/voice?clear=true`)
         );
       }
+      if (cleanDigits === "5") {
+        console.log(`[Twilio IVR Log] Main Menu: Option 5 played.`);
+        await logCallEvent(callSid, fromPhoneNumber, "Pressed Option 5 (Delivery Services)");
+        const deliveryEn = "We offer a door-to-door pickup and delivery service for only ten dollars. We will pick up your garment today and deliver it back to you tomorrow, fully checked. To request this service, press 1. Or, press star to return to the main menu.";
+        return xmlResponse(
+          gather(`${origin}/api/twilio/gather?step=delivery_confirm`, 1, 15, sayEn(deliveryEn)) +
+          redirect(`${origin}/api/twilio/voice?clear=true`)
+        );
+      }
       if (cleanDigits === "0") {
         console.log(`[Twilio IVR Log] Main Menu: Option 0 - Checking holiday mode and business hours.`);
         await logCallEvent(callSid, fromPhoneNumber, "Requested Representative");
@@ -480,7 +489,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // If they type an order ID directly (exclude star symbol)
       const clean = digits.replace(/#$/, "").trim().toUpperCase();
       if (clean && clean !== "*") {
         console.log(`[Twilio IVR Log] Direct Order ID input from Main Menu: "${clean}"`);
@@ -515,24 +523,28 @@ export async function POST(req: NextRequest) {
           );
         }
         
-        let enMsg = `Found ${orders.length} order${orders.length > 1 ? "s" : ""}. `;
-        let heMsg = `נמצאו ${orders.length} הזמנות. `;
-        for (const o of orders) {
-          const safeId = String(o.id).replace(/-/g, " dash ");
-          const safeIdHe = String(o.id).replace(/-/g, " מקף ");
-          const enStatus = o.status === "received" ? "received and logged" : o.status === "testing" ? "in testing" : o.status === "review" ? "under review" : o.status === "ready" ? "ready for pickup" : o.status === "delivered" ? "delivered" : "needs attention";
-          const heStatus = translateStatus(o.status || "received");
-          
-          enMsg += `Order ${safeId} is ${enStatus}. `;
-          heMsg += `הזמנה ${safeIdHe} היא ${heStatus}. `;
-          if (o.result) {
-            const translatedResult = o.result === "Clean / No Shatnez" ? "נקי משעטנז" : o.result === "Shatnez Found" ? "נמצא שעטנז" : o.result;
-            enMsg += `Result is: ${o.result}. `;
-            heMsg += `התוצאה היא: ${translatedResult}. `;
-          } else {
-            enMsg += `Test result is: not available yet. `;
-            heMsg += `תוצאת הבדיקה היא: טרם התקבלה. `;
-          }
+        const latestOrder = orders[0];
+        const safeId = String(latestOrder.id).replace(/-/g, " dash ");
+        const safeIdHe = String(latestOrder.id).replace(/-/g, " מקף ");
+        const enStatus = latestOrder.status === "received" ? "received and logged" : latestOrder.status === "testing" ? "in testing" : latestOrder.status === "review" ? "under review" : latestOrder.status === "ready" ? "ready for pickup" : latestOrder.status === "delivered" ? "delivered" : "needs attention";
+        const heStatus = translateStatus(latestOrder.status || "received");
+        
+        let enMsg = `Your latest order ${safeId} is ${enStatus}. `;
+        let heMsg = `ההזמנה האחרונה שלך ${safeIdHe} היא ${heStatus}. `;
+        if (latestOrder.result) {
+          const translatedResult = latestOrder.result === "Clean / No Shatnez" ? "נקי משעטנז" : latestOrder.result === "Shatnez Found" ? "נמצא שעטנז" : latestOrder.result === "Call to Discuss" ? "להתקשר לבירור" : latestOrder.result;
+          enMsg += `Result is: ${latestOrder.result}. `;
+          heMsg += `התוצאה היא: ${translatedResult}. `;
+        } else {
+          enMsg += `Test result is: not available yet. `;
+          heMsg += `תוצאת הבדיקה היא: טרם התקבלה. `;
+        }
+        
+        if (latestOrder.status === "ready") {
+          const locEn = latestOrder.location || "14 Buchanan Rd";
+          const locHe = latestOrder.location === "166 Clinton Lane" ? "קלינטון 166" : "ביוקנן 14";
+          enMsg += `Please pick up at ${locEn}. `;
+          heMsg += `אנא אסוף מ${locHe}. `;
         }
         
         return xmlResponse(
@@ -541,7 +553,6 @@ export async function POST(req: NextRequest) {
         );
       }
       
-      // If they press 2 or anything else, prompt manual lookup
       await logCallEvent(callSid, fromPhoneNumber, "Selected manual order lookup");
       return xmlResponse(
         gather(
@@ -569,6 +580,99 @@ export async function POST(req: NextRequest) {
       await logCallEvent(callSid, fromPhoneNumber, `Looked up: "${clean}"`);
       return await lookupOrder(clean, origin);
     }
+
+    // ── Delivery Confirm ──
+    if (step === "delivery_confirm") {
+      console.log(`[Twilio IVR Log] Delivery Confirm Digit: "${cleanDigits}"`);
+      if (cleanDigits === "1") {
+        await logCallEvent(callSid, fromPhoneNumber, "Confirmed Delivery Request - Gathering Address");
+        
+        return xmlResponse(
+          `<Gather input="speech" language="en-US" speechTimeout="auto" action="${origin}/api/twilio/gather?step=delivery_address_speech">` +
+            sayEn("Please state your pickup address now.") +
+          `</Gather>` +
+          `<Redirect>${origin}/api/twilio/gather?step=delivery_address_speech&amp;SpeechResult=No%20address%20stated</Redirect>`
+        );
+      }
+
+      return xmlResponse(
+        sayEn("Invalid selection. Returning to main menu.") +
+        redirect(`${origin}/api/twilio/voice`)
+      );
+    }
+
+    // ── Delivery Address Speech ──
+    if (step === "delivery_address_speech") {
+      const statedAddress = speechResult.trim() || "No address stated";
+      console.log(`[Twilio IVR Log] Delivery Address Speech Result: "${statedAddress}"`);
+      
+      // Prompt for confirmation
+      return xmlResponse(
+        `<Gather input="dtmf speech" numDigits="1" timeout="10" language="en-US" action="${origin}/api/twilio/gather?step=delivery_address_confirm&amp;statedAddress=${encodeURIComponent(statedAddress)}">` +
+          sayEn(`You said: ${statedAddress}. If this is correct, press 1 or say yes. Otherwise, press 2 or say no to record it again.`) +
+        `</Gather>` +
+        `<Redirect>${origin}/api/twilio/gather?step=delivery_address_confirm&amp;statedAddress=${encodeURIComponent(statedAddress)}&amp;Digits=1</Redirect>`
+      );
+    }
+
+    // ── Delivery Address Confirm ──
+    if (step === "delivery_address_confirm") {
+      const statedAddress = url.searchParams.get("statedAddress") || "No address stated";
+      const cleanSpeech = speechResult.toLowerCase().trim();
+      const isConfirmed = /\b(yes|correct|confirm|true|yeah|yup|ok|okay|sure|1)\b/.test(cleanSpeech) || cleanDigits === "1";
+      const isCancelled = /\b(no|incorrect|cancel|false|nope|nah|2)\b/.test(cleanSpeech) || cleanDigits === "2";
+      
+      console.log(`[Twilio IVR Log] Delivery Address Confirm: isConfirmed=${isConfirmed}, isCancelled=${isCancelled}, Digits="${digits}", Speech="${speechResult}"`);
+
+      if (isCancelled) {
+        // Prompt to record address again
+        return xmlResponse(
+          `<Gather input="speech" language="en-US" speechTimeout="auto" action="${origin}/api/twilio/gather?step=delivery_address_speech">` +
+            sayEn("Please state your pickup address again.") +
+          `</Gather>` +
+          `<Redirect>${origin}/api/twilio/gather?step=delivery_address_speech&amp;SpeechResult=No%20address%20stated</Redirect>`
+        );
+      }
+
+      // Default or confirmed: save the request
+      await logCallEvent(callSid, fromPhoneNumber, `Stated address: "${statedAddress}"`);
+
+      // Try to look up customer name from existing orders with the same phone
+      let customerName = "Unknown Caller";
+      if (cleanPhone) {
+        const phoneOrders = await getOrdersByPhone(cleanPhone);
+        const found = phoneOrders.find(o => o.customerName);
+        if (found) customerName = found.customerName;
+      }
+
+      const deliveryReq = {
+        id: callSid || `del_${Date.now()}`,
+        phone: fromPhoneNumber || "",
+        customerName,
+        timestamp: Date.now(),
+        status: "pending" as const,
+        createdAt: new Date().toISOString(),
+        notes: statedAddress
+      };
+
+      await saveDeliveryRequest(deliveryReq);
+
+      // Send SMS notification to the admin
+      const adminPhone = settings.forwardingNumber || "8455524744";
+      const smsMessage = `New pickup & delivery request from: ${fromPhoneNumber}. Address stated: "${statedAddress}". Please check the admin panel to arrange.`;
+      try {
+        await sendSms(adminPhone, smsMessage);
+        console.log(`[Twilio IVR Log] Admin SMS notification sent to ${adminPhone}`);
+      } catch (smsErr) {
+        console.error("[Twilio IVR Log] Failed to send Admin SMS notification:", smsErr);
+      }
+
+      return xmlResponse(
+        sayEn("Thank you. Your address has been recorded and your request is received. We will contact you shortly to arrange. Goodbye.") +
+        `<Hangup />`
+      );
+    }
+
  
     // ── Admin PIN ──
     if (step === "admin_pin") {
@@ -582,8 +686,8 @@ export async function POST(req: NextRequest) {
             1,
             15,
             say(
-              "Admin menu. Press 1 to hear recent orders. Press 2 to update an order. Press 3 to lookup by phone. Press 4 to add a new order. Press star to return to main menu.",
-              "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש כוכבית לחזרה לתפריט הראשי."
+              "Admin menu. Press 1 to hear recent orders. Press 2 to update an order. Press 3 to lookup by phone. Press 4 to add a new order. Press 5 to call a customer. Press 6 to hear recent callers. Press star to return to main menu.",
+              "תפריט מנהל. הקש 1 לשמיעת הזמנות אחרונות. הקש 2 לעדכון הזמנה. הקש 3 לחיפוש לפי טלפון. הקש 4 להוספת הזמנה חדשה. הקש 5 להתקשרות ללקוח. הקש 6 לשמיעת שיחות אחרונות. הקש כוכבית לחזרה לתפריט הראשי."
             )
           ) +
           sayEn("No input received.") +
@@ -596,7 +700,7 @@ export async function POST(req: NextRequest) {
         redirect(`${origin}/api/twilio/voice`)
       );
     }
-
+ 
     // ── Admin Menu Voice Entry ──
     if (step === "admin_menu_voice_entry") {
       console.log(`[Twilio IVR Log] Entered voice-enabled Admin Menu.`);
@@ -607,7 +711,7 @@ export async function POST(req: NextRequest) {
           15,
           "en-US",
           sayEn(
-            "Welcome to the voice admin menu. You can press 1 to hear recent orders, 2 to update, 3 for lookup, or 4 to add. Or simply speak your command, for example: update order 102 to status ready and result clean."
+            "Welcome to the voice admin menu. You can press 1 to hear recent orders, 2 to update, 3 for lookup, 4 to add, 5 to call a customer, 6 to hear recent callers, or 9 to talk to the AI. Or simply speak your command, for example: update order 102 to status ready."
           )
         ) +
         sayEn("No input received.") +
@@ -727,6 +831,8 @@ export async function POST(req: NextRequest) {
               sayEn("Returning to the admin menu.") +
               redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
             );
+          } else if (/\b(caller|callers)\b/.test(cleanSpeech)) {
+            digits = "6";
           } else if (/\b(one|recent|list|show)\b/.test(cleanSpeech)) {
             digits = "1";
           } else if (/\b(two|update|change)\b/.test(cleanSpeech)) {
@@ -735,6 +841,10 @@ export async function POST(req: NextRequest) {
             digits = "3";
           } else if (/\b(four|add|create|new)\b/.test(cleanSpeech)) {
             digits = "4";
+          } else if (/\b(five|call)\b/.test(cleanSpeech)) {
+            digits = "5";
+          } else if (/\b(six)\b/.test(cleanSpeech)) {
+            digits = "6";
           } else {
             return xmlResponse(
               gatherSpeechAndDtmf(
@@ -840,6 +950,93 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
+      if (menuSelection === "6") {
+        await logCallEvent(callSid, fromPhoneNumber, "Admin selection: List recent callers");
+        const calls = await getAllCalls();
+        const uniqueCallers: string[] = [];
+        for (const c of calls) {
+          if (c.phone) {
+            const cleanP = c.phone.trim();
+            if (cleanP && !uniqueCallers.includes(cleanP)) {
+              uniqueCallers.push(cleanP);
+              if (uniqueCallers.length >= 5) break;
+            }
+          }
+        }
+
+        if (uniqueCallers.length === 0) {
+          return xmlResponse(
+            sayEn("No recent callers found.") + 
+            redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+          );
+        }
+
+        let enMsg = "Here are the five most recent callers. ";
+        let heMsg = "להלן חמשת המתקשרים האחרונים. ";
+        for (let i = 0; i < uniqueCallers.length; i++) {
+          const phoneSpoken = uniqueCallers[i].split("").join(" ");
+          const callerCalls = calls.filter(c => c.phone === uniqueCallers[i]);
+          const latestCall = callerCalls[0];
+          const isSms = latestCall?.actions?.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:")) || false;
+          
+          const typeEn = isSms ? " via SMS" : " via phone call";
+          const typeHe = isSms ? " בהודעת סמס" : " בשיחת טלפון";
+
+          const latestTimestamp = latestCall?.timestamp;
+          let timeEn = "";
+          let timeHe = "";
+          if (latestTimestamp) {
+            const date = new Date(latestTimestamp);
+            try {
+              const formattedEn = new Intl.DateTimeFormat("en-US", {
+                timeZone: "America/New_York",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true
+              }).format(date);
+              timeEn = ` at ${formattedEn}`;
+              
+              const formattedHe = new Intl.DateTimeFormat("he-IL", {
+                timeZone: "America/New_York",
+                month: "numeric",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: false
+              }).format(date);
+              timeHe = ` בתאריך ושעה ${formattedHe}`;
+            } catch (err) {
+              timeEn = ` at ${date.toLocaleString()}`;
+              timeHe = ` בתאריך ושעה ${date.toLocaleString()}`;
+            }
+          }
+          enMsg += `Caller number ${i + 1} is ${phoneSpoken}${typeEn}${timeEn}. `;
+          heMsg += `מתקשר מספר ${i + 1} הוא ${phoneSpoken}${typeHe}${timeHe}. `;
+        }
+
+        const callersList = uniqueCallers.join(",");
+        const promptEn = "To call caller 1, press 1. To call caller 2, press 2. To call caller 3, press 3. To call caller 4, press 4. To call caller 5, press 5. Or press star to return to the admin menu.";
+        const promptHe = "להתקשר למתקשר ראשון, הקש 1. למתקשר שני, הקש 2. למתקשר שלישי, הקש 3. למתקשר רביעי, הקש 4. למתקשר חמישי, הקש 5. או הקש כוכבית לחזרה לתפריט המנהל.";
+
+        return xmlResponse(
+          say(enMsg, heMsg) +
+          gather(
+            `${origin}/api/twilio/gather?step=admin_call_recent_select&callers=${encodeURIComponent(callersList)}`,
+            1,
+            15,
+            say(promptEn, promptHe)
+          ) +
+          redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+        );
+      }
+      if (menuSelection === "9") {
+        await logCallEvent(callSid, fromPhoneNumber, "Admin selection: Talk to AI Assistant");
+        return xmlResponse(
+          redirect(`${origin}/api/twilio/gather?step=admin_ai_init`)
+        );
+      }
       if (!menuSelection) {
         // Just play the menu options (do not say invalid choice, as it was likely a redirect transition)
         return xmlResponse(
@@ -849,7 +1046,7 @@ export async function POST(req: NextRequest) {
             15,
             "en-US",
             sayEn(
-              "Admin menu. Press 1 to hear recent orders, 2 to update, 3 to lookup, 4 to add, 5 to call a customer. Or speak your command now."
+              "Admin menu. Press 1 to hear recent orders, 2 to update, 3 to lookup, 4 to add, 5 to call a customer, 6 to hear recent callers, or 9 to talk to the AI. Or speak your command now."
             )
           ) +
           sayEn("No input received.") +
@@ -858,6 +1055,203 @@ export async function POST(req: NextRequest) {
       }
       return xmlResponse(
         sayEn("Invalid option.") + 
+        redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+      );
+    }
+
+    // ── Admin AI Voice Assistant Init ──
+    if (step === "admin_ai_init") {
+      const promptEn = "To talk to the AI in English, press 1. To talk to the AI in Hebrew, press 2. Or press star to return to the admin menu.";
+      const promptHe = "לשיחה עם ה-AI בעברית הקש 2. באנגלית הקש 1. או הקש כוכבית לחזרה לתפריט המנהל.";
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=admin_ai_lang_select`,
+          1,
+          10,
+          say(promptEn, promptHe)
+        ) +
+        redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+      );
+    }
+
+    // ── Admin AI Voice Language Selection ──
+    if (step === "admin_ai_lang_select") {
+      const choice = cleanDigits;
+      if (choice === "1") {
+        return xmlResponse(
+          redirect(`${origin}/api/twilio/gather?step=admin_ai_chat&lang=en-US`)
+        );
+      } else if (choice === "2") {
+        return xmlResponse(
+          redirect(`${origin}/api/twilio/gather?step=admin_ai_chat&lang=he-IL`)
+        );
+      }
+      return xmlResponse(
+        sayEn("Returning to the admin menu.") +
+        redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+      );
+    }
+
+    // ── Admin AI Voice Chat ──
+    if (step === "admin_ai_chat") {
+      const lang = url.searchParams.get("lang") || "en-US";
+      
+      // If we have a voice input (SpeechResult) from the user
+      if (speechResult && speechResult.trim()) {
+        console.log(`[Twilio IVR AI Voice Chat] User said (${lang}): "${speechResult}"`);
+        
+        // Fetch DB state context
+        const orders = await getAllOrders();
+        const settings = await getAdminSettings();
+        const calls = await getAllCalls();
+        const balanceData = await getTwilioBalance();
+        const balanceStr = balanceData ? `${balanceData.balance} ${balanceData.currency}` : "Unavailable";
+        
+        // Summarize the orders concisely
+        const activeOrders = orders.filter(o => !o.archived);
+        const orderSummary = activeOrders.map(o => {
+          return `ID: ${o.id}, Customer: ${o.customerName || "Unknown"}, Phone: ${o.phone || "None"}, Status: ${o.status}, Result: ${o.result || "none"}, Location: ${o.location || "not set"}`;
+        }).slice(-15).join("\n"); // Limit to last 15 active orders to prevent token bloat
+        
+        const settingsSummary = `Forwarding Phone: ${settings.forwardingNumber || "none"}, twilio number: ${settings.twilioPhoneNumber || "none"}`;
+        const callsSummary = calls.slice(-5).map(c => `From: ${c.phone}, status: ${c.status}, direction: ${c.direction || "inbound"}, time: ${c.timestamp}`).join("\n");
+
+        // Call Gemini API
+        const apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+        let aiResponse = "";
+        
+        if (!apiKey) {
+          aiResponse = lang === "he-IL" 
+            ? "מפתח הבינה המלאכותית אינו מוגדר בהגדרות המערכת." 
+            : "Gemini API key is not configured in settings.";
+        } else {
+          try {
+            const systemPrompt = `You are a helpful Voice AI Assistant for "Shatnez Lab" (מעבדת שעטנז) admin telephone hotline.
+An administrator is speaking to you over the phone.
+Here is the current state of the database to answer their questions:
+
+[Active Orders (recent 15)]
+${orderSummary}
+
+[Settings]
+${settingsSummary}
+
+[Recent Calls]
+${callsSummary}
+
+[Twilio Account Balance]
+${balanceStr} (If the user asks for the Twilio balance, billing info, or account funds, use this value to answer their question).
+
+The administrator said: "${speechResult}" (Language: ${lang}).
+
+Requirements:
+1. Formulate a polite, clear, and very concise reply (under 2-3 sentences max) to be read back to the admin over the phone call.
+2. Reply directly to their question. If they ask about a specific order status, check the orders list and give them the details.
+3. You must reply in the exact language of their speech: if they spoke Hebrew, respond in Hebrew. If they spoke English, respond in English.
+4. Keep the output as plain text. Do not use asterisks, bullet points, markdown or any special formatting.
+5. If the user asks about the key press options or IVR menu selections of recent callers/calls, look at the recent calls data. If a call has no menu press events (e.g. only "Call started", "Call ended"), tell the user that the caller did not press any menu keys during that call. Do NOT state that you do not have access to keypress options, because you do.
+6. When reporting recent calls to the user, always specify whether each call was incoming (inbound) or outgoing (outbound). Use clear Hebrew or English words (e.g., "נכנסת" / "יוצאת" or "incoming" / "outgoing").`;
+
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            const response = await fetch(geminiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: systemPrompt }] }],
+                generationConfig: { temperature: 0.3 }
+              })
+            });
+
+            if (response.ok) {
+              const resData = await response.json();
+              aiResponse = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+              aiResponse = aiResponse.trim();
+            } else {
+              console.error("[Twilio IVR AI Voice Chat] Gemini call failed:", response.status, await response.text());
+              aiResponse = lang === "he-IL" ? "מצטער, חלה שגיאה בגישה לבינה המלאכותית." : "Sorry, there was an error accessing the AI service.";
+            }
+          } catch (err) {
+            console.error("[Twilio IVR AI Voice Chat] Gemini exception:", err);
+            aiResponse = lang === "he-IL" ? "מצטער, שירות הבינה המלאכותית אינו זמין כרגע." : "Sorry, the AI service is currently unavailable.";
+          }
+        }
+        
+        // Log the AI speech response
+        await logCallEvent(callSid, fromPhoneNumber, `AI Voice Chat: user="${speechResult}" AI="${aiResponse}"`);
+        
+        // Play AI response and gather next speech input
+        const escapedAction = `${origin}/api/twilio/gather?step=admin_ai_chat&amp;lang=${lang}`.replace(/&/g, "&amp;");
+        const speakTag = lang === "he-IL" 
+          ? `<Say voice="Google.he-IL-Wavenet-C" language="he-IL">${aiResponse.replace(/&/g, "&amp;")}</Say>`
+          : `<Say voice="Polly.Matthew" language="en-US">${aiResponse.replace(/&/g, "&amp;")}</Say>`;
+          
+        const nextPrompt = lang === "he-IL" 
+          ? `<Say voice="Google.he-IL-Wavenet-C" language="he-IL">משהו נוסף? או הקש כוכבית לחזרה לתפריט.</Say>`
+          : `<Say voice="Polly.Matthew" language="en-US">Anything else? Or press star to return to the menu.</Say>`;
+
+        return xmlResponse(
+          `<Gather action="${escapedAction}" method="POST" input="speech dtmf" timeout="5" language="${lang}" speechTimeout="auto">` +
+            speakTag +
+            nextPrompt +
+          `</Gather>` +
+          say(
+            "No input received. Returning to the admin menu.",
+            "לא התקבל קלט. חוזר לתפריט המנהל."
+          ) +
+          redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+        );
+      }
+      
+      // If we don't have voice input yet (first entry or timeout)
+      const escapedAction = `${origin}/api/twilio/gather?step=admin_ai_chat&amp;lang=${lang}`.replace(/&/g, "&amp;");
+      const initialSay = lang === "he-IL"
+        ? `<Say voice="Google.he-IL-Wavenet-C" language="he-IL">שלום, אני עוזר ה-AI של המעבדה. איך אוכל לעזור לך היום?</Say>`
+        : `<Say voice="Polly.Matthew" language="en-US">Hello, I am the lab's AI voice assistant. How can I help you today?</Say>`;
+
+      return xmlResponse(
+        `<Gather action="${escapedAction}" method="POST" input="speech dtmf" timeout="5" language="${lang}" speechTimeout="auto">` +
+          initialSay +
+        `</Gather>` +
+        say(
+          "No input received. Returning to the admin menu.",
+          "לא התקבל קלט. חוזר לתפריט המנהל."
+        ) +
+        redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
+      );
+    }
+
+    // ── Admin Call Recent Select ──
+    if (step === "admin_call_recent_select") {
+      const cleanInput = digits.replace(/[^0-9*]/g, "").trim();
+      const callersList = url.searchParams.get("callers") || "";
+      const callers = callersList.split(",");
+
+      if (cleanInput && cleanInput !== "*") {
+        const choice = parseInt(cleanInput, 10);
+        if (choice >= 1 && choice <= callers.length) {
+          const targetPhone = callers[choice - 1];
+          if (targetPhone) {
+            const formattedPhone = formatDialNumber(targetPhone);
+            console.log(`[Twilio IVR Voice Call] Bridging admin call directly to recent caller: "${formattedPhone}"`);
+
+            await logCallEvent(callSid, fromPhoneNumber, `Outbound Bridged Call to ${formattedPhone} from recent callers list`, "active", undefined, "outbound");
+
+            let dialTag = `<Dial action="${origin}/api/twilio/gather?step=admin_dial_completed&amp;customerPhone=${encodeURIComponent(formattedPhone)}">${formattedPhone}</Dial>`;
+            if (settings.twilioPhoneNumber) {
+              dialTag = `<Dial callerId="${settings.twilioPhoneNumber}" action="${origin}/api/twilio/gather?step=admin_dial_completed&amp;customerPhone=${encodeURIComponent(formattedPhone)}">${formattedPhone}</Dial>`;
+            }
+
+            return xmlResponse(
+              sayEn(`Connecting you to the caller now.`) +
+              dialTag
+            );
+          }
+        }
+      }
+
+      // If no valid input or star pressed, return to admin menu
+      return xmlResponse(
+        sayEn("Returning to the admin menu.") +
         redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
       );
     }
@@ -1557,26 +1951,8 @@ async function lookupOrder(input: string, origin: string) {
     if (!order && input.replace(/\D/g, "").length >= 7) {
       const allByPhone = await getOrdersByPhone(input);
       const byPhone = allByPhone.filter(o => !o.archived);
-      if (byPhone.length === 1) {
+      if (byPhone.length > 0) {
         order = byPhone[0];
-      } else if (byPhone.length > 1) {
-        let enMsg = `Found ${byPhone.length} orders. `;
-        let heMsg = `נמצאו ${byPhone.length} הזמנות. `;
-        for (const o of byPhone) {
-          const safeId = String(o.id).replace(/-/g, " dash ");
-          const safeIdHe = String(o.id).replace(/-/g, " מקף ");
-          enMsg += `Order ${safeId}, status ${o.status || "received"}. `;
-          heMsg += `הזמנה ${safeIdHe}, סטטוס ${translateStatus(o.status || "received")}. `;
-        }
-        return xmlResponse(
-          say(enMsg, heMsg) +
-          gather(
-            `${origin}/api/twilio/gather?step=menu`,
-            1,
-            10,
-            say("Press 1 to return to main menu.", "הקש 1 לחזרה לתפריט הראשי.")
-          )
-        );
       }
     }
 

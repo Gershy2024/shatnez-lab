@@ -49,6 +49,11 @@ export const translations: Translations = {
   vip_home_desc: { en: "Can't make it to the lab? We come to you! Premium home inspection.", he: "לא יכולים להגיע למעבדה? אנחנו באים אליכם! בדיקה בבית הלקוח." },
   store_testing: { en: "Store & Inventory Certification", he: "בדיקת חנויות ומלאי" },
   store_testing_desc: { en: "On-site certification for clothing stores and warehouses to ensure entire stock is shatnez-free.", he: "בדיקה ואישור של חנויות ביגוד ומחסנים במקום כדי להבטיח שכל המלאי נקי משעטנז." },
+  on_spot_badge: { en: "On-Spot Checking", he: "בדיקה על המקום" },
+  on_spot_text: {
+    en: "Need an urgent check? We offer on-spot testing by appointment. Please contact us to coordinate the exact time.",
+    he: "צריכים בדיקה דחופה? אנו מציעים שירות בדיקה על המקום בתיאום מראש. יש ליצור קשר עמנו לתיאום הזמן המדויק."
+  },
 
   // How it works
   how_it_works: { en: "How It Works", he: "איך זה עובד?" },
@@ -127,8 +132,8 @@ export const translations: Translations = {
   hours: { en: "Hours", he: "שעות פעילות" },
   dropoff_info: { en: "Drop-off Info", he: "הנחיות מסירה" },
   dropoff_details: { 
-    en: "Drop off garments at 14 Buchanan Rd. Place payment in the envelope/bag with the garment. Simple garments: $5. Lined garments (suits/coats): $10.",
-    he: "מסרו את הבגדים בכתובת 14 Buchanan Rd. הניחו את התשלום במעטפה או שקית יחד עם הבגד. בגד פשוט: $5. בגד עם בטנה (חליפות/מעילים): $10."
+    en: "Drop off garments at 14 Buchanan Rd. Place payment in the envelope/bag with the garment.",
+    he: "מסרו את הבגדים בכתובת 14 Buchanan Rd. הניחו את התשלום במעטפה או שקית יחד עם הבגד."
   },
   send_message: { en: "Send a Message", he: "שלחו הודעה" },
   name: { en: "Name", he: "שם" },
@@ -312,7 +317,7 @@ export const translations: Translations = {
   inclusion_checklist: { en: "Important Checklist for Your Package", he: "רשימת תיוג חשובה לפני שסוגרים את החבילה" },
   checklist_name: { en: "Your Full Name, Phone Number, and return address", he: "שמכם המלא, מספר הטלפון וכתובת למשלוח חזרה" },
   checklist_items: { en: "Number of garments and type (e.g. 1 suit, 2 coats) so we can verify", he: "מספר הבגדים וסוגם (כדי שנוכל לוודא ששום דבר לא הלך לאיבוד)" },
-  checklist_payment: { en: "Payment inside the bag ($5 per simple item, $10 per lined item)", he: "צירוף תשלום בתוך החבילה ($5 לבגד פשוט, $10 לבגד מעומלן או עם בטנה כגון חליפה/מעיל)" },
+  checklist_payment: { en: "Payment inside the bag", he: "צירוף תשלום בתוך החבילה" },
   checklist_ready: { en: "I have packed everything correctly!", he: "ארזתי את הכל כנדרש!" },
 };
 
