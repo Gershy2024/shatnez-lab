@@ -831,6 +831,8 @@ export interface SmsMessage {
   direction: "inbound" | "outbound";
   orderId?: string;
   read?: boolean;
+  price?: string;
+  priceUnit?: string;
 }
 
 const SMS_COLLECTION = "sms_messages";
@@ -1208,6 +1210,66 @@ export function subscribeToDeliveryRequests(callback: (requests: DeliveryRequest
   callback(lsGetDeliveries().sort((a, b) => b.timestamp - a.timestamp));
   return () => clearInterval(interval);
 }
+
+export async function getAllSmsMessages(): Promise<SmsMessage[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(
+        query(collection(db, SMS_COLLECTION), orderBy("timestamp", "desc"))
+      );
+      return snapshot.docs.map((d) => d.data() as SmsMessage);
+    } catch (e) {
+      console.error("Firestore getAllSmsMessages failed:", e);
+    }
+  }
+  const data = typeof window !== "undefined" ? localStorage.getItem(SMS_LS_KEY) : null;
+  return data ? (JSON.parse(data) as SmsMessage[]).sort((a, b) => b.timestamp - a.timestamp) : [];
+}
+
+export async function updateSmsMessagePrice(
+  id: string,
+  price: string,
+  priceUnit: string,
+  msgSid?: string
+): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, SMS_COLLECTION, id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const record = snap.data() as SmsMessage;
+        record.price = price;
+        record.priceUnit = priceUnit;
+        if (msgSid) record.id = msgSid;
+        
+        if (msgSid && msgSid !== id) {
+          await deleteDoc(docRef);
+          await setDoc(doc(db, SMS_COLLECTION, msgSid), record);
+        } else {
+          await setDoc(docRef, record);
+        }
+      }
+    } catch (e) {
+      console.error("Firestore updateSmsMessagePrice failed:", e);
+    }
+  } else {
+    // LocalStorage fallback
+    try {
+      const data = localStorage.getItem(SMS_LS_KEY) || "[]";
+      const messages = JSON.parse(data) as SmsMessage[];
+      const idx = messages.findIndex((m) => m.id === id);
+      if (idx >= 0) {
+        messages[idx].price = price;
+        messages[idx].priceUnit = priceUnit;
+        if (msgSid) messages[idx].id = msgSid;
+        localStorage.setItem(SMS_LS_KEY, JSON.stringify(messages));
+      }
+    } catch (e) {
+      console.error("LocalStorage updateSmsMessagePrice failed:", e);
+    }
+  }
+}
+
 
 
 
