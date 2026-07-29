@@ -7,6 +7,7 @@ import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import PrintCard from "@/components/PrintCard";
 import VirtualPhone from "@/components/VirtualPhone";
+import LiveChatAdminManager from "@/components/LiveChatAdminManager";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest } from "@/lib/db";
 import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User } from "lucide-react";
@@ -601,7 +602,7 @@ export default function AdminPage() {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const [adminNotes, setAdminNotes] = useState("");
-  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries">("orders");
+  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "livechat">("orders");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingCell, setEditingCell] = useState<{orderId: string, field: string} | null>(null);
 
@@ -1817,6 +1818,16 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => { setActiveAdminTab("livechat"); setSidebarOpen(false); }}
+            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
+              activeAdminTab === "livechat" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 shrink-0 text-gold-400" />
+            <span>{isRtl ? "צ'אט חי באתר" : "Website Live Chat"}</span>
+          </button>
+
+          <button
             onClick={() => { setActiveAdminTab("voicemails"); setSidebarOpen(false); }}
             className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
               activeAdminTab === "voicemails" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
@@ -1974,7 +1985,8 @@ export default function AdminPage() {
           <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 ${isRtl ? "sm:flex-row-reverse text-right" : ""}`}>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-navy-900">
-                {activeAdminTab === "orders" ? (isRtl ? "ניהול הזמנות" : "Orders Management") :
+                {activeAdminTab === "livechat" ? (isRtl ? "צ'אט חי באתר" : "Website Live Chat") :
+                 activeAdminTab === "orders" ? (isRtl ? "ניהול הזמנות" : "Orders Management") :
                  activeAdminTab === "deliveries" ? (isRtl ? "ניהול איסוף ומשלוחים" : "Pickup & Delivery Management") :
                  activeAdminTab === "voicemails" ? (isRtl ? "הודעות ותא קולי" : "Voicemails & Messages") :
                  activeAdminTab === "audio" ? (isRtl ? "מנהל שמע IVR" : "IVR Audio Manager") :
@@ -1986,7 +1998,8 @@ export default function AdminPage() {
                  t("orders_management")}
               </h1>
               <p className="text-sm text-primary-500 mt-0.5">
-                {activeAdminTab === "billing" ? (isRtl ? "ניהול ומעקב אחר עלויות השימוש ב-Twilio במעבדה" : "Track and manage Twilio usage costs for the lab") :
+                {activeAdminTab === "livechat" ? (isRtl ? "ניהול ומענה בזמן אמת לשיחות צ'אט נכנסות מגולשים באתר" : "Manage and respond in real-time to incoming website visitor live chats") :
+                 activeAdminTab === "billing" ? (isRtl ? "ניהול ומעקב אחר עלויות השימוש ב-Twilio במעבדה" : "Track and manage Twilio usage costs for the lab") :
                  activeAdminTab === "deliveries" ? (isRtl ? "מעקב וניהול בקשות של לקוחות לאיסוף והחזרה מדלת לדלת" : "Track and manage door-to-door garment pickup and delivery requests") :
                  (isRtl ? "לוח בקרה וניהול הזמנות מערכת" : "System Dashboard and Order Management")}
               </p>
@@ -1994,6 +2007,18 @@ export default function AdminPage() {
           </div>
 
         <AnimatePresence mode="wait">
+
+          {activeAdminTab === "livechat" && (
+            <motion.div
+              key="livechat"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-8"
+            >
+              <LiveChatAdminManager isRtl={isRtl} />
+            </motion.div>
+          )}
 
           {activeAdminTab === "settings" && (
             <motion.div

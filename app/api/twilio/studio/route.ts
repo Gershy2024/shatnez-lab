@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest } from "@/lib/db";
-import { triggerOutboundCall, sendSms } from "@/lib/twilioCall";
+import { triggerOutboundCall, sendSms, triggerCallBridge } from "@/lib/twilioCall";
+import { findChatSessionByShortId, addChatMessage } from "@/lib/liveChat";
 import nodemailer from "nodemailer";
 
 function formatSpokenDate(dateStr: string): { he: string; en: string } {
@@ -164,6 +165,31 @@ async function handleRequest(req: NextRequest) {
     const callSid = getParam("CallSid") || getParam("callSid") || getParam("call_sid") || getParam("FromSid") || "";
     
     console.log(`[Twilio Studio API] Action: "${action}" (Raw: "${rawAction}"), Query: "${query}", Phone: "${phone}", PIN: "${pin}", CallSid: "${callSid}"`);
+
+    // ─── GLOBAL LIVE CHAT SMS REPLY INTERCEPTION ───
+    const incomingSmsText = getParam("msg") || getParam("Body") || getParam("body") || getParam("message") || getParam("text") || getParam("SpeechResult") || "";
+    const incomingSmsPhone = getParam("phone") || getParam("From") || getParam("from") || getParam("Caller") || "";
+    const trimmedSmsText = incomingSmsText.trim();
+
+    if (trimmedSmsText) {
+      const chatMatch = trimmedSmsText.match(/^(?:#|\b)(\d{3,5})\b[:\s,.-]*([\s\S]*)/);
+      if (chatMatch) {
+        const targetShortId = chatMatch[1];
+        let replyText = chatMatch[2].trim();
+        if (!replyText) replyText = trimmedSmsText;
+
+        const chatSession = await findChatSessionByShortId(targetShortId);
+        if (chatSession && replyText) {
+          console.log(`[Twilio Studio API Global Intercept] Adding reply to Live Chat session #${chatSession.shortId}: "${replyText}"`);
+          await addChatMessage(chatSession.sessionId, "admin", replyText);
+          if (incomingSmsPhone) {
+            await logSmsMessage(incomingSmsPhone, trimmedSmsText, "inbound");
+            await logCallEvent(undefined, incomingSmsPhone, `Live Chat SMS Reply: "${replyText}"`, "completed");
+          }
+          return jsonResponse({ success: true, replyMessage: "" });
+        }
+      }
+    }
 
     // ─── 0.0 LOG CALL START ───
     if (action === "log_call_start") {
@@ -921,14 +947,30 @@ async function handleRequest(req: NextRequest) {
     // ─── 8. INCOMING SMS HANDLER ───
     const globalJsonResponse = jsonResponse;
     if (action === "incoming_sms") {
-      const fromPhone = getParam("phone") || "";
-      const msgBody = getParam("msg") || "";
+      const fromPhone = getParam("phone") || getParam("From") || getParam("from") || getParam("Caller") || "";
+      const msgBody = getParam("msg") || getParam("Body") || getParam("body") || getParam("message") || getParam("text") || getParam("SpeechResult") || "";
       
       console.log(`[Twilio Studio API] Incoming SMS from: "${fromPhone}", body: "${msgBody}"`);
 
       // Log the incoming SMS message immediately in database
       await logSmsMessage(fromPhone, msgBody, "inbound");
       await logCallEvent(undefined, fromPhone, `SMS: "${msgBody}"`, "completed");
+
+      // ─── LIVE CHAT SMS REPLY INTERCEPTION ───
+      const trimmedMsg = msgBody.trim();
+      const chatMatch = trimmedMsg.match(/^(?:#|\b)(\d{3,5})\b[:\s,.-]*([\s\S]*)/);
+      if (chatMatch) {
+        const targetShortId = chatMatch[1];
+        const replyText = chatMatch[2].trim();
+        const chatSession = await findChatSessionByShortId(targetShortId);
+        if (chatSession) {
+          console.log(`[Twilio Studio SMS] Intercepted live chat reply for session #${chatSession.shortId}: "${replyText}"`);
+          if (replyText) {
+            await addChatMessage(chatSession.sessionId, "admin", replyText);
+          }
+          return globalJsonResponse({ success: true, replyMessage: "" });
+        }
+      }
 
       // Shadow the jsonResponse function for the scope of incoming_sms to log all replies
       const jsonResponse = (data: any, status = 200) => {
@@ -995,7 +1037,7 @@ async function handleRequest(req: NextRequest) {
         const inputWord = parts[0]?.toLowerCase() || "";
 
         // If user entered a fresh command word, clear any active state to let it fall through
-        const overrideCommands = ["add", "הוסף", "הזן", "חדש", "update", "עדכן", "ערוך", "recent", "אחרונים", "אחרונות", "sms", "send", "text", "שלח", "מסרון", "cancel", "ביטול", "exit", "help", "עזרה"];
+        const overrideCommands = ["add", "הוסף", "הזן", "חדש", "update", "עדכן", "ערוך", "recent", "אחרונים", "אחרונות", "sms", "send", "text", "שלח", "מסרון", "cancel", "ביטול", "exit", "help", "עזרה", "call", "dial", "חייג", "התקשר", "צלצל"];
         if (activeState && overrideCommands.includes(inputWord)) {
           await clearAdminState(fromPhone);
           activeState = null;
@@ -1853,13 +1895,13 @@ The admin's message: "${inputMsg}"
 
 You must respond with a JSON object ONLY, matching this schema:
 {
-  "action": "update_order" | "add_order" | "send_sms" | "none",
-  "orderId": string (if updating/finding an order),
+  "action": "update_order" | "add_order" | "send_sms" | "bridge_call" | "none",
+  "orderId": string (if updating/finding/associating an order),
   "status": "received" | "testing" | "review" | "ready" | "delivered" | "issue" (if updating/adding),
   "result": "Clean / No Shatnez" | "Shatnez Found" | "Call to Discuss" (if updating),
   "location": "14 Buchanan Rd" | "166 Clinton Lane" (if updating/adding),
-  "customerPhone": string (for add_order or send_sms),
-  "customerName": string (for add_order),
+  "customerPhone": string (for add_order, send_sms, or bridge_call),
+  "customerName": string (for add_order or bridge_call),
   "message": string (message body to send to customer if action is send_sms),
   "adminReply": string (friendly response back to the admin via SMS in Hebrew or English depending on their language choice. If the action is none, answer their question or explain why you couldn't process it. If performing an action, describe what you did)
 }
@@ -1869,11 +1911,12 @@ Guidelines:
 2. If they want to update an order (e.g. "set order 102 to ready", "102 clean", "עדכן את 105 לנמסר"), identify the order ID, set action="update_order", and set the relevant fields. Keep fields null if not mentioned or unchanged.
 3. If they want to send a message to a customer (e.g. "tell 8455551212 that we need the payment"), set action="send_sms", set customerPhone, and set message.
 4. If they want to add a new order, set action="add_order", customerPhone, customerName (if provided), and location (default to 14 Buchanan Rd if not specified).
-5. If the intent is ambiguous, set action="none" and ask clarifying questions in "adminReply".
-6. Do NOT include markdown code blocks or any extra text. Return ONLY the JSON object.
-7. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
-8. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
-9. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".`;
+5. If the admin wants to make a call, dial, or contact a customer/phone number (e.g., "call 845-376-6452", "dial 8453766452", "צלצל ל-8453766452", "התקשר לגליק", "חייג אל 845-376-6452"), set action="bridge_call", set customerPhone (find it from orders or recent callers if they specify a customer name like "גליק"), and optionally set customerName and orderId if associated with a matched order.
+6. If the intent is ambiguous, set action="none" and ask clarifying questions in "adminReply".
+7. Do NOT include markdown code blocks or any extra text. Return ONLY the JSON object.
+8. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
+9. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
+10. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".`;
 
             const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             const geminiResponse = await fetch(geminiUrl, {
@@ -1957,6 +2000,26 @@ Guidelines:
                     return jsonResponse({
                       success: true,
                       replyMessage: `Failed to send SMS: ${smsResult.error || "Unknown error"}`
+                    });
+                  }
+                } else if (aiJson.action === "bridge_call" && aiJson.customerPhone) {
+                  const origin = `https://${req.headers.get("host")}`;
+                  const bridgeResult = await triggerCallBridge(
+                    aiJson.customerPhone,
+                    fromPhone,
+                    origin,
+                    aiJson.customerName,
+                    aiJson.orderId
+                  );
+                  if (bridgeResult.success) {
+                    return jsonResponse({
+                      success: true,
+                      replyMessage: aiJson.adminReply || `Initiating outbound bridge call. We will dial your admin phone number first, and connect you with ${aiJson.customerName || aiJson.customerPhone}.`
+                    });
+                  } else {
+                    return jsonResponse({
+                      success: true,
+                      replyMessage: `Failed to initiate bridge call: ${bridgeResult.error || "Unknown error"}`
                     });
                   }
                 } else if (aiJson.adminReply) {

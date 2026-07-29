@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 };
 
 import { LanguageProvider } from "@/lib/LanguageContext";
+import { LiveChatWidget } from "@/components/LiveChatWidget";
 
 export default function RootLayout({
   children,
@@ -23,6 +24,7 @@ export default function RootLayout({
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
+          <LiveChatWidget />
           <Analytics />
         </LanguageProvider>
       </body>
