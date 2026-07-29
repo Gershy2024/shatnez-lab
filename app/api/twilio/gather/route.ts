@@ -950,7 +950,7 @@ export async function POST(req: NextRequest) {
           redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
         );
       }
-      if (menuSelection === "6") {
+      if (menuSelection === "6" || menuSelection === "9") {
         await logCallEvent(callSid, fromPhoneNumber, "Admin selection: List recent callers");
         const calls = await getAllCalls();
         const uniqueCallers: string[] = [];
@@ -972,7 +972,6 @@ export async function POST(req: NextRequest) {
         }
 
         let enMsg = "Here are the five most recent callers. ";
-        let heMsg = "להלן חמשת המתקשרים האחרונים. ";
         for (let i = 0; i < uniqueCallers.length; i++) {
           const phoneSpoken = uniqueCallers[i].split("").join(" ");
           const callerCalls = calls.filter(c => c.phone === uniqueCallers[i]);
@@ -980,11 +979,9 @@ export async function POST(req: NextRequest) {
           const isSms = latestCall?.actions?.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:")) || false;
           
           const typeEn = isSms ? " via SMS" : " via phone call";
-          const typeHe = isSms ? " בהודעת סמס" : " בשיחת טלפון";
 
           const latestTimestamp = latestCall?.timestamp;
           let timeEn = "";
-          let timeHe = "";
           if (latestTimestamp) {
             const date = new Date(latestTimestamp);
             try {
@@ -997,44 +994,26 @@ export async function POST(req: NextRequest) {
                 hour12: true
               }).format(date);
               timeEn = ` at ${formattedEn}`;
-              
-              const formattedHe = new Intl.DateTimeFormat("he-IL", {
-                timeZone: "America/New_York",
-                month: "numeric",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                hour12: false
-              }).format(date);
-              timeHe = ` בתאריך ושעה ${formattedHe}`;
             } catch (err) {
               timeEn = ` at ${date.toLocaleString()}`;
-              timeHe = ` בתאריך ושעה ${date.toLocaleString()}`;
             }
           }
           enMsg += `Caller number ${i + 1} is ${phoneSpoken}${typeEn}${timeEn}. `;
-          heMsg += `מתקשר מספר ${i + 1} הוא ${phoneSpoken}${typeHe}${timeHe}. `;
         }
 
         const callersList = uniqueCallers.join(",");
         const promptEn = "To call caller 1, press 1. To call caller 2, press 2. To call caller 3, press 3. To call caller 4, press 4. To call caller 5, press 5. Or press star to return to the admin menu.";
-        const promptHe = "להתקשר למתקשר ראשון, הקש 1. למתקשר שני, הקש 2. למתקשר שלישי, הקש 3. למתקשר רביעי, הקש 4. למתקשר חמישי, הקש 5. או הקש כוכבית לחזרה לתפריט המנהל.";
+        const fullEnMsg = enMsg + promptEn;
 
         return xmlResponse(
-          say(enMsg, heMsg) +
-          gather(
+          gatherSpeechAndDtmf(
             `${origin}/api/twilio/gather?step=admin_call_recent_select&callers=${encodeURIComponent(callersList)}`,
             1,
             15,
-            say(promptEn, promptHe)
+            "en-US",
+            sayEn(fullEnMsg)
           ) +
           redirect(`${origin}/api/twilio/gather?step=admin_menu&clear=true`)
-        );
-      }
-      if (menuSelection === "9") {
-        await logCallEvent(callSid, fromPhoneNumber, "Admin selection: Talk to AI Assistant");
-        return xmlResponse(
-          redirect(`${origin}/api/twilio/gather?step=admin_ai_init`)
         );
       }
       if (!menuSelection) {

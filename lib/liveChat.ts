@@ -27,6 +27,7 @@ export interface ChatSession {
   currentPage?: string;
   deviceInfo?: string;
   referrer?: string;
+  location?: string;
 }
 
 const CHATS_COLLECTION = "live_chats";
@@ -56,7 +57,7 @@ async function getNextShortId(): Promise<string> {
 
 export async function getOrCreateChatSession(
   sessionIdInput?: string,
-  metadata?: { currentPage?: string; deviceInfo?: string; referrer?: string }
+  metadata?: { currentPage?: string; deviceInfo?: string; referrer?: string; location?: string }
 ): Promise<ChatSession> {
   let targetId = sessionIdInput;
   if (!targetId) {
@@ -72,6 +73,7 @@ export async function getOrCreateChatSession(
         if (metadata?.currentPage) data.currentPage = metadata.currentPage;
         if (metadata?.deviceInfo) data.deviceInfo = metadata.deviceInfo;
         if (metadata?.referrer) data.referrer = metadata.referrer;
+        if (metadata?.location) data.location = metadata.location;
         memoryStore.set(targetId, data);
         return data;
       }
@@ -87,6 +89,7 @@ export async function getOrCreateChatSession(
         currentPage: metadata?.currentPage || "/",
         deviceInfo: metadata?.deviceInfo,
         referrer: metadata?.referrer,
+        location: metadata?.location,
       };
 
       await setDoc(ref, newSession);
@@ -103,6 +106,7 @@ export async function getOrCreateChatSession(
     if (metadata?.currentPage) data.currentPage = metadata.currentPage;
     if (metadata?.deviceInfo) data.deviceInfo = metadata.deviceInfo;
     if (metadata?.referrer) data.referrer = metadata.referrer;
+    if (metadata?.location) data.location = metadata.location;
     return data;
   }
   const fallbackSession: ChatSession = {
@@ -115,6 +119,7 @@ export async function getOrCreateChatSession(
     currentPage: metadata?.currentPage || "/",
     deviceInfo: metadata?.deviceInfo,
     referrer: metadata?.referrer,
+    location: metadata?.location,
   };
   memoryStore.set(targetId, fallbackSession);
   return fallbackSession;
@@ -122,7 +127,7 @@ export async function getOrCreateChatSession(
 
 export async function updateSessionMetadata(
   sessionId: string,
-  metadata: { currentPage?: string; deviceInfo?: string; referrer?: string }
+  metadata: { currentPage?: string; deviceInfo?: string; referrer?: string; location?: string }
 ): Promise<ChatSession | null> {
   if (isConfigured && db) {
     try {
@@ -133,6 +138,7 @@ export async function updateSessionMetadata(
         if (metadata.currentPage) session.currentPage = metadata.currentPage;
         if (metadata.deviceInfo) session.deviceInfo = metadata.deviceInfo;
         if (metadata.referrer) session.referrer = metadata.referrer;
+        if (metadata.location) session.location = metadata.location;
         session.lastUpdated = Date.now();
 
         await setDoc(ref, session);
@@ -149,6 +155,7 @@ export async function updateSessionMetadata(
     if (metadata.currentPage) session.currentPage = metadata.currentPage;
     if (metadata.deviceInfo) session.deviceInfo = metadata.deviceInfo;
     if (metadata.referrer) session.referrer = metadata.referrer;
+    if (metadata.location) session.location = metadata.location;
     session.lastUpdated = Date.now();
     memoryStore.set(sessionId, session);
     return session;
