@@ -15,17 +15,36 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing sessionId parameter" }, { status: 400 });
     }
 
+    // Extract Geolocation from Vercel edge headers
+    const rawCity = req.headers.get("x-vercel-ip-city") || "";
+    const rawRegion = req.headers.get("x-vercel-ip-country-region") || "";
+    const rawCountry = req.headers.get("x-vercel-ip-country") || "";
+
+    let locationStr = searchParams.get("location") || "";
+    if (!locationStr && (rawCity || rawCountry)) {
+      const city = rawCity ? decodeURIComponent(rawCity) : "";
+      if (city) {
+        locationStr = city;
+        if (rawRegion) locationStr += `, ${rawRegion}`;
+        if (rawCountry) locationStr += ` (${rawCountry})`;
+      } else if (rawCountry) {
+        locationStr = rawCountry;
+      }
+    }
+
     let session = await getOrCreateChatSession(sessionId, {
       currentPage: page,
       deviceInfo: device,
       referrer: ref,
+      location: locationStr || undefined,
     });
 
-    if (page || device || ref) {
+    if (page || device || ref || locationStr) {
       const updated = await updateSessionMetadata(sessionId, {
         currentPage: page,
         deviceInfo: device,
         referrer: ref,
+        location: locationStr || undefined,
       });
       if (updated) session = updated;
     }

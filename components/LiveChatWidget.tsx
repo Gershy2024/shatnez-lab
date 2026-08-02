@@ -38,8 +38,12 @@ export function LiveChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const isAdminPage = pathname?.startsWith("/admin");
+
   // Initialize session ID & restore cached chat history from localStorage
   useEffect(() => {
+    if (isAdminPage) return;
+
     let storedSession = localStorage.getItem("shatnez_chat_session_id");
     if (!storedSession) {
       storedSession = `chat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -62,25 +66,27 @@ export function LiveChatWidget() {
         console.error("Error parsing cached chat messages:", e);
       }
     }
-  }, []);
+  }, [isAdminPage]);
 
   // Save messages to localStorage whenever they update
   useEffect(() => {
+    if (isAdminPage) return;
     if (sessionId && messages.length > 0) {
       localStorage.setItem(`shatnez_chat_messages_${sessionId}`, JSON.stringify(messages));
     }
-  }, [sessionId, messages]);
+  }, [sessionId, messages, isAdminPage]);
 
   // Save shortId to localStorage whenever it updates
   useEffect(() => {
+    if (isAdminPage) return;
     if (sessionId && shortId) {
       localStorage.setItem(`shatnez_chat_short_id_${sessionId}`, shortId);
     }
-  }, [sessionId, shortId]);
+  }, [sessionId, shortId, isAdminPage]);
 
   // Subscribe to real-time chat updates & active HTTP polling with page & device metadata
   useEffect(() => {
-    if (!sessionId) return;
+    if (isAdminPage || !sessionId) return;
 
     const fetchSessionData = () => {
       const pageParam = encodeURIComponent(window.location.pathname || "/");
@@ -135,10 +141,11 @@ export function LiveChatWidget() {
       unsubscribe();
       clearInterval(pollInterval);
     };
-  }, [sessionId, isOpen, pathname]);
+  }, [sessionId, isOpen, pathname, isAdminPage]);
 
   // Focus input and scroll when widget opens
   useEffect(() => {
+    if (isAdminPage) return;
     if (isOpen) {
       setUnreadCount(0);
       setTimeout(() => {
@@ -161,14 +168,15 @@ export function LiveChatWidget() {
           .catch(() => {});
       }
     }
-  }, [isOpen, sessionId]);
+  }, [isOpen, sessionId, isAdminPage]);
 
   // Auto scroll to bottom on new messages
   useEffect(() => {
+    if (isAdminPage) return;
     if (isOpen) {
       scrollToBottom();
     }
-  }, [messages, isOpen]);
+  }, [messages, isOpen, isAdminPage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -226,7 +234,7 @@ export function LiveChatWidget() {
   ];
 
   // Hide chat widget completely on admin dashboard pages
-  if (pathname?.startsWith("/admin")) {
+  if (isAdminPage) {
     return null;
   }
 

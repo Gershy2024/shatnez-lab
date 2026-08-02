@@ -298,7 +298,14 @@ export async function getAllChatSessions(): Promise<ChatSession[]> {
     }
   }
 
-  const sessions = Array.from(sessionsMap.values());
+  const now = Date.now();
+  const TEN_MINUTES = 10 * 60 * 1000;
+  const sessions = Array.from(sessionsMap.values()).filter((s) => {
+    const hasMsgs = s.messages && s.messages.length > 0;
+    const isRecent = (now - (s.lastUpdated || s.createdAt || 0)) < TEN_MINUTES;
+    return hasMsgs || isRecent;
+  });
+
   sessions.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
   return sessions;
 }
@@ -357,7 +364,14 @@ export function subscribeToAllChatSessions(callback: (sessions: ChatSession[]) =
           }
         });
 
-        const sessions = Array.from(sessionsMap.values());
+        const now = Date.now();
+        const TEN_MINUTES = 10 * 60 * 1000;
+        const sessions = Array.from(sessionsMap.values()).filter((s) => {
+          const hasMsgs = s.messages && s.messages.length > 0;
+          const isRecent = (now - (s.lastUpdated || s.createdAt || 0)) < TEN_MINUTES;
+          return hasMsgs || isRecent;
+        });
+
         sessions.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
         callback(sessions);
       },

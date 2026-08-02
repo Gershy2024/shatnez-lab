@@ -972,31 +972,40 @@ async function handleRequest(req: NextRequest) {
         }
       }
 
-      // Shadow the jsonResponse function for the scope of incoming_sms to log all replies
-      const jsonResponse = (data: any, status = 200) => {
+      // Shadow the jsonResponse function for the scope of incoming_sms to send outbound SMS and log all replies
+      const jsonResponse = async (data: any, status = 200) => {
         if (data && data.replyMessage) {
-          logSmsMessage(fromPhone, data.replyMessage, "outbound").catch(e => {
-            console.error("Error logging outbound SMS reply:", e);
-          });
-          logCallEvent(undefined, fromPhone, `SMS Outbound: "${data.replyMessage}"`, "completed").catch(e => {
-            console.error("Error logging call event for outbound SMS reply:", e);
-          });
-
           const isAdminPhone = fromPhone === "+18455524744" || fromPhone === "+18457092022";
           const isPinProvided = /^\d{4}(\s|$)/.test(msgBody.trim());
 
+          let cleanText = data.replyMessage;
           if (isAdminPhone || isPinProvided) {
             // Clean emojis, markdown, and bot tags to prevent carrier filtering
-            const cleanText = data.replyMessage
+            cleanText = cleanText
               .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "")
               .replace(/[\u2600-\u27BF]/g, "")
               .replace(/\[💬 SMS\]/g, "")
               .replace(/\[📞 Call\]/g, "")
               .replace(/`/g, "")
               .trim();
+          }
 
+          if (cleanText) {
             console.log(`[Twilio Studio SMS Admin Cleaned Reply]: "${cleanText}"`);
-            return globalJsonResponse({ ...data, replyMessage: cleanText }, status);
+            
+            // Actively send the SMS message back to the phone handset via Twilio API
+            const smsRes = await sendSms(fromPhone, cleanText);
+            const msgSid = smsRes.success ? smsRes.sid : undefined;
+            console.log(`[Twilio Studio SMS Send Status]: success=${smsRes.success}, sid=${msgSid || "N/A"}${smsRes.error ? `, error=${smsRes.error}` : ""}`);
+
+            logSmsMessage(fromPhone, cleanText, "outbound", msgSid).catch(e => {
+              console.error("Error logging outbound SMS reply:", e);
+            });
+            logCallEvent(undefined, fromPhone, `SMS Outbound: "${cleanText}"`, "completed").catch(e => {
+              console.error("Error logging call event for outbound SMS reply:", e);
+            });
+
+            return globalJsonResponse({ ...data, replyMessage: cleanText, smsSent: smsRes.success, smsSid: msgSid }, status);
           }
         }
         return globalJsonResponse(data, status);

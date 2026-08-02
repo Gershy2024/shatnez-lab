@@ -18,8 +18,9 @@ import {
   Globe,
   Smartphone,
   Laptop,
+  MapPin,
 } from "lucide-react";
-import { subscribeToAllChatSessions, addChatMessage, ChatSession, ChatMessage } from "@/lib/liveChat";
+import { subscribeToAllChatSessions, ChatSession, ChatMessage } from "@/lib/liveChat";
 
 interface LiveChatAdminManagerProps {
   isRtl: boolean;
@@ -90,7 +91,22 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
   };
 
   const updateSessionsState = (newSessions: ChatSession[]) => {
-    setSessions(newSessions);
+    setSessions((prevSessions) => {
+      if (prevSessions.length === 0) return newSessions;
+
+      return newSessions.map((newSess) => {
+        const prevSess = prevSessions.find((p) => p.sessionId === newSess.sessionId);
+        if (prevSess && prevSess.messages && newSess.messages) {
+          if (prevSess.messages.length > newSess.messages.length) {
+            return {
+              ...newSess,
+              messages: prevSess.messages,
+            };
+          }
+        }
+        return newSess;
+      });
+    });
 
     if (newSessions.length > 0 && !selectedSessionId) {
       setSelectedSessionId(newSessions[0].sessionId);
@@ -176,8 +192,17 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
     );
 
     try {
-      await addChatMessage(selectedSession.sessionId, "admin", text);
-      await fetchSessionsFromApi();
+      const res = await fetch("/api/chat/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: selectedSession.sessionId, text }),
+      });
+      const data = await res.json();
+      if (data.success && data.session) {
+        setSessions((prev) =>
+          prev.map((s) => (s.sessionId === data.session.sessionId ? data.session : s))
+        );
+      }
     } catch (err) {
       console.error("Failed to send admin chat reply:", err);
     } finally {
@@ -226,8 +251,9 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
     const matchPhone = s.visitorPhone?.toLowerCase().includes(q);
     const matchPage = s.currentPage?.toLowerCase().includes(q);
     const matchDevice = s.deviceInfo?.toLowerCase().includes(q);
+    const matchLocation = s.location?.toLowerCase().includes(q);
     const matchText = s.messages?.some((m) => m.text.toLowerCase().includes(q));
-    return matchId || matchEmail || matchPhone || matchPage || matchDevice || matchText;
+    return matchId || matchEmail || matchPhone || matchPage || matchDevice || matchLocation || matchText;
   });
 
   return (
@@ -279,7 +305,7 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={isRtl ? "חפש לפי מזהה, דף, אימייל..." : "Search by ID, page, email..."}
+              placeholder={isRtl ? "חפש לפי מזהה, עיר, דף..." : "Search by ID, city, page..."}
               className="w-full pl-9 pr-3 py-1.5 bg-primary-50 border border-primary-200 rounded-xl text-xs focus:outline-none focus:border-gold-400 text-navy-900"
             />
           </div>
@@ -325,10 +351,16 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
                     <span className="text-[10px] text-primary-400 font-medium">{lastTime}</span>
                   </div>
 
-                  {/* Current Page Badge */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Badges: Page, Device & City Location */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {session.location && (
+                      <span className="text-[10px] bg-rose-50 text-rose-800 font-semibold px-1.5 py-0.5 rounded border border-rose-200 flex items-center gap-1">
+                        <MapPin className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                        {session.location}
+                      </span>
+                    )}
                     {session.currentPage && (
-                      <span className="text-[10px] bg-amber-50 text-amber-800 font-medium px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                      <span className="text-[10px] bg-amber-50 text-amber-800 font-medium px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1">
                         <Globe className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                         {session.currentPage === "/" ? "Homepage" : session.currentPage}
                       </span>
@@ -366,57 +398,84 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
       <div className="flex-1 flex flex-col bg-white">
         {selectedSession ? (
           <>
-            {/* Top Bar Header */}
-            <div className="p-4 border-b border-primary-200 bg-white flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-navy-900 text-gold-400 flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
-                  #{selectedSession.shortId}
+            {/* Top Bar Header - Clean 2-Row Layout */}
+            <div className="p-4 border-b border-primary-200 bg-white flex flex-col gap-2.5 shadow-sm">
+              {/* Row 1: Main Title, Active Status, Sound Alert Button */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-navy-900 text-gold-400 flex items-center justify-center font-extrabold text-sm shadow-sm shrink-0">
+                    #{selectedSession.shortId}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-navy-900 text-base">
+                        Live Web Visitor #{selectedSession.shortId}
+                      </h4>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-200 uppercase tracking-wide">
+                        Active
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-primary-400 flex items-center gap-1 mt-0.5 font-medium">
+                      <Clock className="w-3 h-3 text-primary-400" />
+                      Started {new Date(selectedSession.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {selectedSession.referrer && ` • Source: ${selectedSession.referrer}`}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-navy-900 text-sm flex items-center gap-2 flex-wrap">
-                    Live Web Visitor #{selectedSession.shortId}
-                    {selectedSession.currentPage && (
-                      <span className="text-[11px] bg-amber-50 text-amber-800 font-bold px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
-                        🌐 Viewing: {selectedSession.currentPage === "/" ? "Homepage (/)" : selectedSession.currentPage}
-                      </span>
-                    )}
-                    {selectedSession.deviceInfo && (
-                      <span className="text-[11px] bg-purple-50 text-purple-700 font-bold px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
-                        💻 {selectedSession.deviceInfo}
-                      </span>
-                    )}
-                    {selectedSession.visitorEmail && (
-                      <span className="text-[11px] bg-blue-50 text-blue-700 font-bold px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
-                        ✉️ {selectedSession.visitorEmail}
-                      </span>
-                    )}
-                    {selectedSession.visitorPhone && (
-                      <span className="text-[11px] bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                        📞 {selectedSession.visitorPhone}
-                      </span>
-                    )}
-                    <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                      Active
-                    </span>
-                  </h4>
-                  <p className="text-xs text-primary-400 flex items-center gap-1 mt-0.5">
-                    <Clock className="w-3 h-3 text-primary-400" />
-                    Started {new Date(selectedSession.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    {selectedSession.referrer && ` • Source: ${selectedSession.referrer}`}
-                  </p>
-                </div>
+
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playNotificationChime();
+                  }}
+                  title={isRtl ? "נגן צליל דוגמה" : "Play Test Chime"}
+                  className="text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-xl transition font-semibold flex items-center gap-1.5 shrink-0 shadow-xs"
+                >
+                  <Bell className="w-3.5 h-3.5 text-emerald-600" />
+                  {isRtl ? "צליל התראה" : "Sound Alert"}
+                </button>
               </div>
 
-              <button
-                onClick={() => {
-                  if (soundEnabled) playNotificationChime();
-                }}
-                title={isRtl ? "נגן צליל דוגמה" : "Play Test Chime"}
-                className="text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition font-medium flex items-center gap-1 shrink-0"
-              >
-                <Bell className="w-3.5 h-3.5 text-emerald-600" />
-                {isRtl ? "צליל התראה" : "Sound Alert"}
-              </button>
+              {/* Row 2: Clean Metadata Badges */}
+              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-primary-100/60">
+                {selectedSession.location && (
+                  <span className="text-[11px] bg-rose-50 text-rose-800 font-semibold px-2.5 py-1 rounded-lg border border-rose-200/80 flex items-center gap-1.5 shadow-xs">
+                    <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    Location: {selectedSession.location}
+                  </span>
+                )}
+
+                {selectedSession.currentPage && (
+                  <span className="text-[11px] bg-amber-50 text-amber-900 font-semibold px-2.5 py-1 rounded-lg border border-amber-200/80 flex items-center gap-1.5 shadow-xs">
+                    <Globe className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    Viewing: {selectedSession.currentPage === "/" ? "Homepage (/)" : selectedSession.currentPage}
+                  </span>
+                )}
+
+                {selectedSession.deviceInfo && (
+                  <span className="text-[11px] bg-purple-50 text-purple-800 font-semibold px-2.5 py-1 rounded-lg border border-purple-200/80 flex items-center gap-1.5 shadow-xs">
+                    {selectedSession.deviceInfo.includes("Mobile") ? (
+                      <Smartphone className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    ) : (
+                      <Laptop className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    )}
+                    {selectedSession.deviceInfo}
+                  </span>
+                )}
+
+                {selectedSession.visitorEmail && (
+                  <span className="text-[11px] bg-blue-50 text-blue-800 font-semibold px-2.5 py-1 rounded-lg border border-blue-200/80 flex items-center gap-1.5 shadow-xs">
+                    <Mail className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    {selectedSession.visitorEmail}
+                  </span>
+                )}
+
+                {selectedSession.visitorPhone && (
+                  <span className="text-[11px] bg-emerald-50 text-emerald-800 font-semibold px-2.5 py-1 rounded-lg border border-emerald-200/80 flex items-center gap-1.5 shadow-xs">
+                    <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    {selectedSession.visitorPhone}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Message Stream */}
