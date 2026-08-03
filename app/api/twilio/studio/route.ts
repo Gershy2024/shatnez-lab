@@ -1005,7 +1005,10 @@ async function handleRequest(req: NextRequest) {
               console.error("Error logging call event for outbound SMS reply:", e);
             });
 
-            return globalJsonResponse({ ...data, replyMessage: cleanText, smsSent: smsRes.success, smsSid: msgSid }, status);
+            // If sendSms succeeded via REST API, return replyMessage: "" to Twilio Studio so it won't send a duplicate SMS.
+            // If sendSms failed, return replyMessage: cleanText as a fallback for Twilio Studio.
+            const studioReply = smsRes.success ? "" : cleanText;
+            return globalJsonResponse({ ...data, replyMessage: studioReply, smsSent: smsRes.success, smsSid: msgSid }, status);
           }
         }
         return globalJsonResponse(data, status);
