@@ -288,6 +288,7 @@ export async function POST(req: NextRequest) {
     let toPhoneNumber = "";
     let fromPhoneNumber = "";
     let callSid = "";
+    let dialCallStatus = "";
     const url = new URL(req.url);
     const step = url.searchParams.get("step") || "menu";
     const clearFlag = url.searchParams.get("clear") === "true";
@@ -299,12 +300,14 @@ export async function POST(req: NextRequest) {
       toPhoneNumber = (form.get("To") as string) || "";
       fromPhoneNumber = (form.get("From") as string) || "";
       callSid = (form.get("CallSid") as string) || "";
+      dialCallStatus = (form.get("DialCallStatus") as string) || (url.searchParams.get("DialCallStatus") || "");
     } catch (e) {
       digits = clearFlag ? "" : (url.searchParams.get("Digits") || "");
       speechResult = url.searchParams.get("SpeechResult") || "";
       toPhoneNumber = url.searchParams.get("To") || "";
       fromPhoneNumber = url.searchParams.get("From") || "";
       callSid = url.searchParams.get("CallSid") || "";
+      dialCallStatus = url.searchParams.get("DialCallStatus") || "";
     }
     
 
@@ -462,14 +465,20 @@ export async function POST(req: NextRequest) {
 
         const num = settings.forwardingNumber || "8455524744";
         const formattedNum = formatDialNumber(num);
-        console.log(`[Twilio IVR Log] Forwarding to: ${formattedNum} (within business hours)`);
+        console.log(`[Twilio IVR Log] Forwarding to: ${formattedNum} with Call Screening (within business hours)`);
         
-        await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative", "completed");
+        await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative (Call Screening)", "completed");
 
-        let dialTag = `<Dial>${formattedNum}</Dial>`;
-        if (settings.callerIdType === "twilio" && settings.twilioPhoneNumber) {
-          dialTag = `<Dial callerId="${settings.twilioPhoneNumber}">${formattedNum}</Dial>`;
-        }
+        const callerIdAttr = (settings.callerIdType === "twilio" && settings.twilioPhoneNumber)
+          ? ` callerId="${settings.twilioPhoneNumber}"`
+          : "";
+
+        const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper`;
+        const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed`;
+
+        const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20">
+  <Number url="${screenUrl}">${formattedNum}</Number>
+</Dial>`;
 
         return xmlResponse(
           say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
@@ -497,6 +506,60 @@ export async function POST(req: NextRequest) {
       return xmlResponse(
         say("Invalid selection. Returning to main menu.", "בחירה לא תקינה. חוזר לתפריט הראשי.") +
         redirect(`${origin}/api/twilio/voice`)
+      );
+    }
+
+    // ── Office Forwarding Call Screening (Whisper Leg) ──
+    if (step === "office_call_screen_whisper") {
+      console.log(`[Twilio IVR Call Screening] Admin answered call leg. Playing whisper prompt.`);
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=office_call_screen_accept`,
+          1,
+          10,
+          say(
+            "Incoming call from The Shatnez Lab. Press 1 to accept.",
+            "שיחה נכנסת ממעבדת שעטנז. הקש 1 לקבלת השיחה."
+          )
+        ) +
+        `<Hangup />`
+      );
+    }
+
+    // ── Office Forwarding Call Screening Accept / Reject ──
+    if (step === "office_call_screen_accept") {
+      const cleanInput = digits.replace(/[^0-9*]/g, "").trim();
+      console.log(`[Twilio IVR Call Screening] Admin input on whisper leg: "${cleanInput}"`);
+      if (cleanInput === "1") {
+        console.log(`[Twilio IVR Call Screening] Admin accepted call (pressed 1). Connecting call to customer.`);
+        return xmlResponse(
+          say("Connecting.", "מחבר.")
+        );
+      }
+      console.log(`[Twilio IVR Call Screening] Admin did not press 1 (pressed "${cleanInput}"). Hanging up whisper leg.`);
+      return xmlResponse(`<Hangup />`);
+    }
+
+    // ── Office Forward Completed (Caller Leg Result) ──
+    if (step === "office_forward_completed") {
+      const finalStatus = dialCallStatus || url.searchParams.get("DialCallStatus") || "";
+      console.log(`[Twilio IVR Log] Office forward completed with DialCallStatus: "${finalStatus}"`);
+
+      // If call was accepted and completed, hang up when done
+      if (finalStatus === "completed" || finalStatus === "answered") {
+        return xmlResponse(`<Hangup />`);
+      }
+
+      // If admin was busy, no-answer, or did not press 1 -> forward caller to company voicemail
+      console.log(`[Twilio IVR Log] Representative unavailable / not accepted (status: "${finalStatus}"). Redirecting caller to company voicemail.`);
+      await logCallEvent(callSid, fromPhoneNumber, "Representative Unavailable - Redirected to Company Voicemail", "voicemail");
+
+      return xmlResponse(
+        say(
+          "The representative is currently unavailable. Please leave a message after the beep, and we will get back to you.",
+          "הנציג אינו זמין כעת. אנא השאירו הודעה לאחר הצפצוף, ונחזור אליכם בהקדם."
+        ) +
+        `<Record action="${origin}/api/twilio/studio?action=voicemail" maxLength="120" playBeep="true" />`
       );
     }
 
