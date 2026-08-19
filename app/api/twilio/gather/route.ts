@@ -509,6 +509,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Office Forward Call Entry (from Studio or IVR) ──
+    if (step === "office_forward_call") {
+      const num = settings.forwardingNumber || "8455524744";
+      const formattedNum = formatDialNumber(num);
+      console.log(`[Twilio IVR Log] office_forward_call step triggered: Forwarding to ${formattedNum} with Call Screening`);
+      
+      await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative (Call Screening)", "completed");
+
+      const callerIdAttr = (settings.callerIdType === "twilio" && settings.twilioPhoneNumber)
+        ? ` callerId="${settings.twilioPhoneNumber}"`
+        : "";
+
+      const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper`;
+      const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed`;
+
+      const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20">
+  <Number url="${screenUrl}">${formattedNum}</Number>
+</Dial>`;
+
+      return xmlResponse(
+        say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
+        dialTag
+      );
+    }
+
     // ── Office Forwarding Call Screening (Whisper Leg) ──
     if (step === "office_call_screen_whisper") {
       console.log(`[Twilio IVR Call Screening] Admin answered call leg. Playing whisper prompt.`);
