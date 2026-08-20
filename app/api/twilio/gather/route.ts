@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest } from "@/lib/db";
 import { triggerOutboundCall, sendSms } from "@/lib/twilioCall";
 
+// Global cache to track calls accepted by admin during Call Screening whisper
+const acceptedScreenCalls = new Set<string>();
+
 function formatSpokenDate(dateStr: string): { he: string; en: string } {
   if (!dateStr) return { he: "", en: "" };
   try {
@@ -289,6 +292,7 @@ export async function POST(req: NextRequest) {
     let fromPhoneNumber = "";
     let callSid = "";
     let dialCallStatus = "";
+    let dialCallDuration = "0";
     const url = new URL(req.url);
     const step = url.searchParams.get("step") || "menu";
     const clearFlag = url.searchParams.get("clear") === "true";
@@ -301,6 +305,7 @@ export async function POST(req: NextRequest) {
       fromPhoneNumber = (form.get("From") as string) || "";
       callSid = (form.get("CallSid") as string) || "";
       dialCallStatus = (form.get("DialCallStatus") as string) || (url.searchParams.get("DialCallStatus") || "");
+      dialCallDuration = (form.get("DialCallDuration") as string) || (url.searchParams.get("DialCallDuration") || "0");
     } catch (e) {
       digits = clearFlag ? "" : (url.searchParams.get("Digits") || "");
       speechResult = url.searchParams.get("SpeechResult") || "";
@@ -308,6 +313,7 @@ export async function POST(req: NextRequest) {
       fromPhoneNumber = url.searchParams.get("From") || "";
       callSid = url.searchParams.get("CallSid") || "";
       dialCallStatus = url.searchParams.get("DialCallStatus") || "";
+      dialCallDuration = url.searchParams.get("DialCallDuration") || "0";
     }
     
 
@@ -473,15 +479,15 @@ export async function POST(req: NextRequest) {
           ? ` callerId="${settings.twilioPhoneNumber}"`
           : "";
 
-        const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper`;
-        const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed`;
+        const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper&amp;parentCallSid=${encodeURIComponent(callSid)}`;
+        const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed&amp;parentCallSid=${encodeURIComponent(callSid)}`;
 
         const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20">
   <Number url="${screenUrl}">${formattedNum}</Number>
 </Dial>`;
 
         return xmlResponse(
-          say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
+          sayEn("Connecting you to a representative. Please wait.") +
           dialTag
         );
       }
@@ -521,25 +527,27 @@ export async function POST(req: NextRequest) {
         ? ` callerId="${settings.twilioPhoneNumber}"`
         : "";
 
-      const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper`;
-      const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed`;
+      const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper&amp;parentCallSid=${encodeURIComponent(callSid)}`;
+      const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed&amp;parentCallSid=${encodeURIComponent(callSid)}`;
 
       const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20">
   <Number url="${screenUrl}">${formattedNum}</Number>
 </Dial>`;
 
       return xmlResponse(
-        say("Connecting you to a representative. Please wait.", "מעביר אותך לנציג. אנא המתן.") +
+        sayEn("Connecting you to a representative. Please wait.") +
         dialTag
       );
     }
 
     // ── Office Forwarding Call Screening (Whisper Leg) ──
     if (step === "office_call_screen_whisper") {
-      console.log(`[Twilio IVR Call Screening] Admin answered call leg. Playing whisper prompt.`);
+      const parentCallSid = url.searchParams.get("parentCallSid") || "";
+      console.log(`[Twilio IVR Call Screening] Admin answered call leg. ParentCallSid: "${parentCallSid}", CallSid: "${callSid}". Playing whisper prompt.`);
+      const acceptUrl = `${origin}/api/twilio/gather?step=office_call_screen_accept&amp;parentCallSid=${encodeURIComponent(parentCallSid)}`;
       return xmlResponse(
         gather(
-          `${origin}/api/twilio/gather?step=office_call_screen_accept`,
+          acceptUrl,
           1,
           10,
           say(
@@ -553,10 +561,13 @@ export async function POST(req: NextRequest) {
 
     // ── Office Forwarding Call Screening Accept / Reject ──
     if (step === "office_call_screen_accept") {
+      const parentCallSid = url.searchParams.get("parentCallSid") || "";
       const cleanInput = digits.replace(/[^0-9*]/g, "").trim();
-      console.log(`[Twilio IVR Call Screening] Admin input on whisper leg: "${cleanInput}"`);
+      console.log(`[Twilio IVR Call Screening] Admin input on whisper leg: "${cleanInput}". ParentCallSid: "${parentCallSid}", CallSid: "${callSid}"`);
       if (cleanInput === "1") {
-        console.log(`[Twilio IVR Call Screening] Admin accepted call (pressed 1). Connecting call to customer.`);
+        console.log(`[Twilio IVR Call Screening] Admin accepted call (pressed 1). Bridging call to customer.`);
+        if (parentCallSid) acceptedScreenCalls.add(parentCallSid);
+        if (callSid) acceptedScreenCalls.add(callSid);
         return xmlResponse(
           say("Connecting.", "מחבר.")
         );
@@ -567,16 +578,27 @@ export async function POST(req: NextRequest) {
 
     // ── Office Forward Completed (Caller Leg Result) ──
     if (step === "office_forward_completed") {
+      const parentCallSid = url.searchParams.get("parentCallSid") || "";
       const finalStatus = dialCallStatus || url.searchParams.get("DialCallStatus") || "";
-      console.log(`[Twilio IVR Log] Office forward completed with DialCallStatus: "${finalStatus}"`);
+      const dialDuration = parseInt(dialCallDuration || "0", 10);
+      
+      const wasAccepted = (parentCallSid && acceptedScreenCalls.has(parentCallSid)) ||
+                          (callSid && acceptedScreenCalls.has(callSid)) ||
+                          dialDuration > 0;
 
-      // If call was accepted and completed, hang up when done
-      if (finalStatus === "completed" || finalStatus === "answered") {
+      console.log(`[Twilio IVR Log] Office forward completed. Status: "${finalStatus}", Duration: ${dialDuration}, wasAccepted: ${wasAccepted}, parentCallSid: "${parentCallSid}"`);
+
+      if (parentCallSid) acceptedScreenCalls.delete(parentCallSid);
+      if (callSid) acceptedScreenCalls.delete(callSid);
+
+      // If call was accepted by pressing 1 AND bridged with duration > 0, hang up cleanly when finished
+      if (wasAccepted && dialDuration > 0) {
+        console.log(`[Twilio IVR Log] Call was successfully accepted and concluded. Hanging up.`);
         return xmlResponse(`<Hangup />`);
       }
 
       // If admin was busy, no-answer, or did not press 1 -> forward caller to company voicemail
-      console.log(`[Twilio IVR Log] Representative unavailable / not accepted (status: "${finalStatus}"). Redirecting caller to company voicemail.`);
+      console.log(`[Twilio IVR Log] Representative did NOT accept (wasAccepted: ${wasAccepted}, status: "${finalStatus}", duration: ${dialDuration}). Redirecting caller to company voicemail.`);
       await logCallEvent(callSid, fromPhoneNumber, "Representative Unavailable - Redirected to Company Voicemail", "voicemail");
 
       return xmlResponse(
