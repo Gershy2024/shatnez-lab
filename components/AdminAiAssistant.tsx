@@ -24,6 +24,10 @@ import {
   Maximize2,
   Minimize2,
   X,
+  BarChart3,
+  Microscope,
+  Truck,
+  Voicemail as VoicemailIcon,
 } from "lucide-react";
 import { Order, CallRecord, Voicemail, DeliveryRequest } from "@/lib/db";
 
@@ -84,23 +88,95 @@ How can I assist you today? You can tap any quick prompt below or ask anything i
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // Quick prompt presets
+  // Quick prompt presets with modern Lucide vector icons
   const quickPrompts = isRtl
     ? [
-        { label: "📊 סיכום פעילות היום", query: "תן לי סיכום מנהלים קצר של כל מה שקרה היום במעבדה (שיחות, הזמנות, משלוחים ותא קולי)." },
-        { label: "📞 שיחות היום", query: "כמה שיחות נכנסות ויוצאות היו היום? מה המתקשרים חיפשו ואיזה שלוחות הקישו?" },
-        { label: "📦 הזמנות מוכנות לאיסוף", query: "כמה הזמנות מוכנות כרגע לאיסוף? תן לי רשימה של שמות הלקוחות והטלפונים שלהם." },
-        { label: "📥 תא קולי חדש", query: "האם יש הודעות קוליות חדשות שלא נקראו? ממי הן ובאילו שעות התקבלו?" },
-        { label: "🔬 ממצאי שעטנז", query: "באילו הזמנות נמצא שעטנז (Shatnez Found) ומה הסטטוס שלהן?" },
-        { label: "🚚 בקשות משלוח פתוחות", query: "כמה בקשות משלוח ממתינות כרגע לטיפול ומה פרטי הלקוחות?" },
+        {
+          id: "summary",
+          label: "סיכום פעילות היום",
+          query: "תן לי סיכום מנהלים קצר של כל מה שקרה היום במעבדה (שיחות, הזמנות, משלוחים ותא קולי).",
+          icon: BarChart3,
+          iconColor: "text-indigo-600 bg-indigo-50 border-indigo-200/60",
+        },
+        {
+          id: "calls",
+          label: "שיחות היום",
+          query: "כמה שיחות נכנסות ויוצאות היו היום? מה המתקשרים חיפשו ואיזה שלוחות הקישו?",
+          icon: PhoneCall,
+          iconColor: "text-emerald-600 bg-emerald-50 border-emerald-200/60",
+        },
+        {
+          id: "ready",
+          label: "הזמנות מוכנות לאיסוף",
+          query: "כמה הזמנות מוכנות כרגע לאיסוף? תן לי רשימה של שמות הלקוחות והטלפונים שלהם.",
+          icon: Package,
+          iconColor: "text-sky-600 bg-sky-50 border-sky-200/60",
+        },
+        {
+          id: "voicemail",
+          label: "תא קולי חדש",
+          query: "האם יש הודעות קוליות חדשות שלא נקראו? ממי הן ובאילו שעות התקבלו?",
+          icon: VoicemailIcon,
+          iconColor: "text-rose-600 bg-rose-50 border-rose-200/60",
+        },
+        {
+          id: "shatnez",
+          label: "ממצאי שעטנז",
+          query: "באילו הזמנות נמצא שעטנז (Shatnez Found) ומה הסטטוס שלהן?",
+          icon: Microscope,
+          iconColor: "text-purple-600 bg-purple-50 border-purple-200/60",
+        },
+        {
+          id: "deliveries",
+          label: "בקשות משלוח פתוחות",
+          query: "כמה בקשות משלוח ממתינות כרגע לטיפול ומה פרטי הלקוחות?",
+          icon: Truck,
+          iconColor: "text-amber-600 bg-amber-50 border-amber-200/60",
+        },
       ]
     : [
-        { label: "📊 Today's Summary", query: "Give me an executive summary of today's operations (calls, orders, deliveries, and voicemails)." },
-        { label: "📞 Today's Calls", query: "How many inbound and outbound calls were there today? What did callers search for or press?" },
-        { label: "📦 Ready Orders", query: "Which orders are currently ready for pickup? List customer names and phone numbers." },
-        { label: "📥 New Voicemails", query: "Are there any unread voicemails? Who left them and at what time?" },
-        { label: "🔬 Shatnez Found", query: "Which orders had Shatnez detected (Shatnez Found) and what are their statuses?" },
-        { label: "🚚 Pending Deliveries", query: "How many delivery requests are currently pending and who requested them?" },
+        {
+          id: "summary",
+          label: "Today's Summary",
+          query: "Give me an executive summary of today's operations (calls, orders, deliveries, and voicemails).",
+          icon: BarChart3,
+          iconColor: "text-indigo-600 bg-indigo-50 border-indigo-200/60",
+        },
+        {
+          id: "calls",
+          label: "Today's Calls",
+          query: "How many inbound and outbound calls were there today? What did callers search for or press?",
+          icon: PhoneCall,
+          iconColor: "text-emerald-600 bg-emerald-50 border-emerald-200/60",
+        },
+        {
+          id: "ready",
+          label: "Ready Orders",
+          query: "Which orders are currently ready for pickup? List customer names and phone numbers.",
+          icon: Package,
+          iconColor: "text-sky-600 bg-sky-50 border-sky-200/60",
+        },
+        {
+          id: "voicemail",
+          label: "New Voicemails",
+          query: "Are there any unread voicemails? Who left them and at what time?",
+          icon: VoicemailIcon,
+          iconColor: "text-rose-600 bg-rose-50 border-rose-200/60",
+        },
+        {
+          id: "shatnez",
+          label: "Shatnez Found",
+          query: "Which orders had Shatnez detected (Shatnez Found) and what are their statuses?",
+          icon: Microscope,
+          iconColor: "text-purple-600 bg-purple-50 border-purple-200/60",
+        },
+        {
+          id: "deliveries",
+          label: "Pending Deliveries",
+          query: "How many delivery requests are currently pending and who requested them?",
+          icon: Truck,
+          iconColor: "text-amber-600 bg-amber-50 border-amber-200/60",
+        },
       ];
 
   // Quick stats calculations
@@ -500,22 +576,37 @@ How can I assist you today? You can tap any quick prompt below or ask anything i
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 4. Quick Question Chips */}
-      <div className="border-t border-primary-100 bg-white px-3.5 py-2.5">
-        <div className="text-[10px] text-primary-400 font-semibold mb-1.5 uppercase tracking-wider">
-          {isRtl ? "שאלות מהירות:" : "Quick Questions:"}
+      {/* 4. Quick Question Chips with Modern Vector Icons */}
+      <div className="border-t border-primary-100 bg-white/80 backdrop-blur-xs px-3.5 sm:px-4 py-2.5">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] font-bold text-primary-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-gold-500" />
+            {isRtl ? "שאלות מהירות:" : "Quick Questions:"}
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          {quickPrompts.map((p, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSendMessage(p.query)}
-              disabled={isLoading}
-              className="px-2.5 py-1 bg-primary-50 hover:bg-gold-50 hover:border-gold-300 border border-primary-200 rounded-lg text-xs text-navy-800 hover:text-gold-900 transition font-medium whitespace-nowrap shrink-0 disabled:opacity-50"
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {quickPrompts.map((p) => {
+            const IconComponent = p.icon;
+            return (
+              <motion.button
+                key={p.id}
+                whileHover={{ scale: 1.02, y: -1 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleSendMessage(p.query)}
+                disabled={isLoading}
+                className={`group flex items-center gap-2 px-3 py-1.5 bg-primary-50/60 hover:bg-white hover:border-gold-400/80 border border-primary-200/80 rounded-xl text-xs text-navy-800 hover:text-navy-950 transition-all duration-200 shadow-2xs hover:shadow-sm font-semibold whitespace-nowrap shrink-0 disabled:opacity-50 ${
+                  isRtl ? "flex-row-reverse" : ""
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-110 shadow-2xs ${p.iconColor}`}
+                >
+                  <IconComponent className="w-3.5 h-3.5" />
+                </span>
+                <span>{p.label}</span>
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
