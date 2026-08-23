@@ -2,12 +2,13 @@
 
 import { useState, useEffect, Fragment } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import PrintCard from "@/components/PrintCard";
 import VirtualPhone from "@/components/VirtualPhone";
 import LiveChatAdminManager from "@/components/LiveChatAdminManager";
+import AdminAiAssistant from "@/components/AdminAiAssistant";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest } from "@/lib/db";
 import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User } from "lucide-react";
@@ -602,7 +603,8 @@ export default function AdminPage() {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const [adminNotes, setAdminNotes] = useState("");
-  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "livechat">("orders");
+  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "livechat" | "ai_assistant">("orders");
+  const [showAiModal, setShowAiModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingCell, setEditingCell] = useState<{orderId: string, field: string} | null>(null);
 
@@ -1803,6 +1805,19 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => { setActiveAdminTab("ai_assistant"); setSidebarOpen(false); }}
+            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
+              activeAdminTab === "ai_assistant" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 shrink-0 text-gold-400" />
+            <span>{isRtl ? "עוזר AI למנהל" : "AI Assistant"}</span>
+            <span className="ms-auto bg-gold-500/20 text-gold-400 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+              AI
+            </span>
+          </button>
+
+          <button
             onClick={() => { setActiveAdminTab("deliveries"); setSidebarOpen(false); }}
             className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
               activeAdminTab === "deliveries" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
@@ -1985,7 +2000,8 @@ export default function AdminPage() {
           <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 ${isRtl ? "sm:flex-row-reverse text-right" : ""}`}>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-navy-900">
-                {activeAdminTab === "livechat" ? (isRtl ? "צ'אט חי באתר" : "Website Live Chat") :
+                {activeAdminTab === "ai_assistant" ? (isRtl ? "עוזר AI למנהל המעבדה" : "Executive AI Assistant") :
+                 activeAdminTab === "livechat" ? (isRtl ? "צ'אט חי באתר" : "Website Live Chat") :
                  activeAdminTab === "orders" ? (isRtl ? "ניהול הזמנות" : "Orders Management") :
                  activeAdminTab === "deliveries" ? (isRtl ? "ניהול איסוף ומשלוחים" : "Pickup & Delivery Management") :
                  activeAdminTab === "voicemails" ? (isRtl ? "הודעות ותא קולי" : "Voicemails & Messages") :
@@ -1998,7 +2014,8 @@ export default function AdminPage() {
                  t("orders_management")}
               </h1>
               <p className="text-sm text-primary-500 mt-0.5">
-                {activeAdminTab === "livechat" ? (isRtl ? "ניהול ומענה בזמן אמת לשיחות צ'אט נכנסות מגולשים באתר" : "Manage and respond in real-time to incoming website visitor live chats") :
+                {activeAdminTab === "ai_assistant" ? (isRtl ? "מענה חכם, ניתוח נתונים, סטטיסטיקות שיחות ודוחות בזמן אמת" : "Intelligent assistance, real-time data analysis, and lab insights") :
+                 activeAdminTab === "livechat" ? (isRtl ? "ניהול ומענה בזמן אמת לשיחות צ'אט נכנסות מגולשים באתר" : "Manage and respond in real-time to incoming website visitor live chats") :
                  activeAdminTab === "billing" ? (isRtl ? "ניהול ומעקב אחר עלויות השימוש ב-Twilio במעבדה" : "Track and manage Twilio usage costs for the lab") :
                  activeAdminTab === "deliveries" ? (isRtl ? "מעקב וניהול בקשות של לקוחות לאיסוף והחזרה מדלת לדלת" : "Track and manage door-to-door garment pickup and delivery requests") :
                  (isRtl ? "לוח בקרה וניהול הזמנות מערכת" : "System Dashboard and Order Management")}
@@ -2007,6 +2024,25 @@ export default function AdminPage() {
           </div>
 
         <AnimatePresence mode="wait">
+
+          {activeAdminTab === "ai_assistant" && (
+            <motion.div
+              key="ai_assistant"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-8"
+            >
+              <AdminAiAssistant
+                isRtl={isRtl}
+                orders={orders}
+                calls={calls}
+                voicemails={voicemails}
+                deliveries={deliveries}
+                billingData={billingData}
+              />
+            </motion.div>
+          )}
 
           {activeAdminTab === "livechat" && (
             <motion.div
@@ -5621,6 +5657,43 @@ export default function AdminPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating AI Assistant Button */}
+      <motion.button
+        onClick={() => setShowAiModal(true)}
+        className={`fixed bottom-6 ${isRtl ? "left-24" : "right-24"} z-40 p-4 bg-gradient-to-r from-navy-900 to-navy-950 text-gold-400 border border-gold-400/40 rounded-full shadow-2xl transition-all duration-200 flex items-center justify-center group hover:scale-105`}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        title={isRtl ? "עוזר AI למנהל" : "Executive AI Assistant"}
+      >
+        <Sparkles className="w-6 h-6 shrink-0 text-gold-400 animate-pulse" />
+        <span className={`max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out font-bold text-xs whitespace-nowrap text-white ${isRtl ? "mr-0 group-hover:mr-2" : "ml-0 group-hover:ml-2"}`}>
+          {isRtl ? "עוזר AI למנהל" : "Executive AI"}
+        </span>
+      </motion.button>
+
+      {/* Floating AI Assistant Modal */}
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            className="w-full max-w-4xl"
+          >
+            <AdminAiAssistant
+              isRtl={isRtl}
+              orders={orders}
+              calls={calls}
+              voicemails={voicemails}
+              deliveries={deliveries}
+              billingData={billingData}
+              isFloatingModal={true}
+              onCloseModal={() => setShowAiModal(false)}
+            />
+          </motion.div>
+        </div>
+      )}
 
       {/* Floating Dialer Button */}
       <motion.button

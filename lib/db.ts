@@ -746,6 +746,25 @@ export async function markVoicemailRead(id: string): Promise<void> {
   }
 }
 
+export async function getAllVoicemails(): Promise<Voicemail[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(
+        query(collection(db, VOICEMAILS_COLLECTION), orderBy("timestamp", "desc"))
+      );
+      return snapshot.docs.map((d) => d.data() as Voicemail);
+    } catch (e) {
+      console.error("Firestore getAllVoicemails failed:", e);
+    }
+  }
+  try {
+    const data = typeof window !== "undefined" ? localStorage.getItem(LS_VM_KEY) : null;
+    return data ? (JSON.parse(data) as Voicemail[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function subscribeToVoicemails(callback: (voicemails: Voicemail[]) => void) {
   if (isConfigured && db) {
     return onSnapshot(
