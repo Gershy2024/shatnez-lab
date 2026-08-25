@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrCreateChatSession, updateSessionMetadata } from "@/lib/liveChat";
+import { getOrCreateChatSession, updateSessionMetadata, getAdminPresence } from "@/lib/liveChat";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +49,12 @@ export async function GET(req: NextRequest) {
       if (updated) session = updated;
     }
 
+    const presence = await getAdminPresence();
+
     return NextResponse.json({
       success: true,
       session,
+      adminOnline: presence.isOnline,
     });
   } catch (error: any) {
     console.error("[Chat Session API] Error fetching session:", error);
@@ -61,3 +64,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+

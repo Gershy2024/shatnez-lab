@@ -9,6 +9,7 @@ import PrintCard from "@/components/PrintCard";
 import VirtualPhone from "@/components/VirtualPhone";
 import LiveChatAdminManager from "@/components/LiveChatAdminManager";
 import AdminAiAssistant from "@/components/AdminAiAssistant";
+import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest } from "@/lib/db";
 import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User } from "lucide-react";
@@ -609,6 +610,7 @@ export default function AdminPage() {
   const [editingCell, setEditingCell] = useState<{orderId: string, field: string} | null>(null);
 
   const [deliveries, setDeliveries] = useState<DeliveryRequest[]>([]);
+  const [liveChatSessions, setLiveChatSessions] = useState<ChatSession[]>([]);
   const [deliverySearchQuery, setDeliverySearchQuery] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState<"all" | "pending" | "called" | "completed" | "cancelled">("all");
 
@@ -1070,12 +1072,17 @@ export default function AdminPage() {
       setDeliveries(data);
     });
 
+    const unsubLiveChat = subscribeToAllChatSessions((data) => {
+      setLiveChatSessions(data);
+    });
+
     return () => {
       unsub();
       unsubVm();
       unsubCalls();
       unsubSms();
       unsubDeliveries();
+      unsubLiveChat();
     };
   }, [isAuthenticated]);
 
@@ -1840,6 +1847,11 @@ export default function AdminPage() {
           >
             <MessageSquare className="w-4 h-4 shrink-0 text-gold-400" />
             <span>{isRtl ? "צ'אט חי באתר" : "Website Live Chat"}</span>
+            {liveChatSessions.filter(s => s.status !== "closed" && s.messages && s.messages.length > 0).length > 0 && (
+              <span className="ms-auto bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">
+                {liveChatSessions.filter(s => s.status !== "closed" && s.messages && s.messages.length > 0).length}
+              </span>
+            )}
           </button>
 
           <button

@@ -10,8 +10,19 @@ import {
   ShieldCheck,
   ChevronRight,
   CheckCheck,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  Bot,
+  MapPin,
+  Clock,
+  Search,
+  Truck,
+  Phone,
+  UserCheck,
 } from "lucide-react";
 import { subscribeToChatSession, ChatMessage, ChatSession } from "@/lib/liveChat";
+import { useLanguage } from "@/lib/LanguageContext";
 
 function getDeviceInfo(): string {
   if (typeof window === "undefined") return "Unknown";
@@ -26,8 +37,33 @@ function getDeviceInfo(): string {
   return "Desktop Browser";
 }
 
+function playVisitorChime() {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(523.25, now); // C5
+    osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.18); // G5
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.35);
+  } catch (err) {
+    console.warn("[Visitor LiveChat] Sound playback failed:", err);
+  }
+}
+
 export function LiveChatWidget() {
   const pathname = usePathname();
+  const { language, isRtl } = useLanguage();
+
   const [isOpen, setIsOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [shortId, setShortId] = useState<string>("");
@@ -35,8 +71,13 @@ export function LiveChatWidget() {
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [adminOnline, setAdminOnline] = useState(false);
+  const [showConfirmReset, setShowConfirmReset] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const prevMsgCountRef = useRef<number>(-1);
 
   const isAdminPage = pathname?.startsWith("/admin");
 
@@ -51,7 +92,7 @@ export function LiveChatWidget() {
     }
     setSessionId(storedSession);
 
-    // Restore cached shortId & messages immediately so they persist on page refresh
+    // Restore cached shortId & messages
     const cachedShortId = localStorage.getItem(`shatnez_chat_short_id_${storedSession}`);
     if (cachedShortId) setShortId(cachedShortId);
 
@@ -61,6 +102,7 @@ export function LiveChatWidget() {
         const parsed = JSON.parse(cachedMsgs);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setMessages(parsed);
+          prevMsgCountRef.current = parsed.length;
         }
       } catch (e) {
         console.error("Error parsing cached chat messages:", e);
@@ -68,7 +110,7 @@ export function LiveChatWidget() {
     }
   }, [isAdminPage]);
 
-  // Save messages to localStorage whenever they update
+  // Save messages to localStorage
   useEffect(() => {
     if (isAdminPage) return;
     if (sessionId && messages.length > 0) {
@@ -76,7 +118,7 @@ export function LiveChatWidget() {
     }
   }, [sessionId, messages, isAdminPage]);
 
-  // Save shortId to localStorage whenever it updates
+  // Save shortId to localStorage
   useEffect(() => {
     if (isAdminPage) return;
     if (sessionId && shortId) {
@@ -84,7 +126,7 @@ export function LiveChatWidget() {
     }
   }, [sessionId, shortId, isAdminPage]);
 
-  // Subscribe to real-time chat updates & active HTTP polling with page & device metadata
+  // Subscribe to real-time chat updates & HTTP polling
   useEffect(() => {
     if (isAdminPage || !sessionId) return;
 
@@ -98,17 +140,25 @@ export function LiveChatWidget() {
         }
       } catch (e) {}
 
-      fetch(`/api/chat/session?sessionId=${sessionId}&page=${pageParam}&device=${deviceParam}&ref=${encodeURIComponent(refParam)}`)
+      fetch(
+        `/api/chat/session?sessionId=${sessionId}&page=${pageParam}&device=${deviceParam}&ref=${encodeURIComponent(
+          refParam
+        )}`
+      )
         .then((res) => res.json())
         .then((data) => {
-          if (data.success && data.session) {
-            if (data.session.shortId) {
-              setShortId(data.session.shortId);
-              localStorage.setItem(`shatnez_chat_short_id_${sessionId}`, data.session.shortId);
+          if (data.success) {
+            if (typeof data.adminOnline === "boolean") {
+              setAdminOnline(data.adminOnline);
             }
-            if (Array.isArray(data.session.messages) && data.session.messages.length > 0) {
-              setMessages(data.session.messages);
-              localStorage.setItem(`shatnez_chat_messages_${sessionId}`, JSON.stringify(data.session.messages));
+            if (data.session) {
+              if (data.session.shortId) {
+                setShortId(data.session.shortId);
+                localStorage.setItem(`shatnez_chat_short_id_${sessionId}`, data.session.shortId);
+              }
+              if (Array.isArray(data.session.messages) && data.session.messages.length > 0) {
+                handleNewIncomingMessages(data.session.messages);
+              }
             }
           }
         })
@@ -124,15 +174,7 @@ export function LiveChatWidget() {
           setShortId(sessionData.shortId);
         }
         if (Array.isArray(sessionData.messages) && sessionData.messages.length > 0) {
-          setMessages(sessionData.messages);
-        }
-
-        // Calculate unread count if chat is closed
-        if (!isOpen && sessionData.messages && sessionData.messages.length > 0) {
-          const lastMsg = sessionData.messages[sessionData.messages.length - 1];
-          if (lastMsg.sender === "admin") {
-            setUnreadCount((prev) => (prev > 0 ? prev : 1));
-          }
+          handleNewIncomingMessages(sessionData.messages);
         }
       }
     });
@@ -141,7 +183,25 @@ export function LiveChatWidget() {
       unsubscribe();
       clearInterval(pollInterval);
     };
-  }, [sessionId, isOpen, pathname, isAdminPage]);
+  }, [sessionId, isOpen, isAdminPage]);
+
+  const handleNewIncomingMessages = (newMsgs: ChatMessage[]) => {
+    setMessages(newMsgs);
+    localStorage.setItem(`shatnez_chat_messages_${sessionId}`, JSON.stringify(newMsgs));
+
+    if (prevMsgCountRef.current >= 0 && newMsgs.length > prevMsgCountRef.current) {
+      const lastMsg = newMsgs[newMsgs.length - 1];
+      if (lastMsg.sender === "admin") {
+        if (soundEnabled) {
+          playVisitorChime();
+        }
+        if (!isOpen) {
+          setUnreadCount((prev) => prev + 1);
+        }
+      }
+    }
+    prevMsgCountRef.current = newMsgs.length;
+  };
 
   // Focus input and scroll when widget opens
   useEffect(() => {
@@ -152,23 +212,8 @@ export function LiveChatWidget() {
         inputRef.current?.focus();
         scrollToBottom();
       }, 150);
-
-      // Instant re-sync with server when user opens the chat bubble
-      if (sessionId) {
-        const pageParam = encodeURIComponent(window.location.pathname || "/");
-        const deviceParam = encodeURIComponent(getDeviceInfo());
-
-        fetch(`/api/chat/session?sessionId=${sessionId}&page=${pageParam}&device=${deviceParam}`)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success && data.session && Array.isArray(data.session.messages)) {
-              setMessages(data.session.messages);
-            }
-          })
-          .catch(() => {});
-      }
     }
-  }, [isOpen, sessionId, isAdminPage]);
+  }, [isOpen, isAdminPage]);
 
   // Auto scroll to bottom on new messages
   useEffect(() => {
@@ -176,7 +221,7 @@ export function LiveChatWidget() {
     if (isOpen) {
       scrollToBottom();
     }
-  }, [messages, isOpen, isAdminPage]);
+  }, [messages, isOpen, isSending, isAdminPage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -196,6 +241,7 @@ export function LiveChatWidget() {
       text,
       timestamp: Date.now(),
     };
+
     setMessages((prev) => {
       const nextMsgs = [...prev, tempMsg];
       localStorage.setItem(`shatnez_chat_messages_${sessionId}`, JSON.stringify(nextMsgs));
@@ -210,14 +256,22 @@ export function LiveChatWidget() {
       });
 
       const data = await res.json();
-      if (data.success && data.session) {
-        if (data.session.shortId) {
-          setShortId(data.session.shortId);
-          localStorage.setItem(`shatnez_chat_short_id_${sessionId}`, data.session.shortId);
+      if (data.success) {
+        if (typeof data.adminOnline === "boolean") {
+          setAdminOnline(data.adminOnline);
         }
-        if (Array.isArray(data.session.messages) && data.session.messages.length > 0) {
-          setMessages(data.session.messages);
-          localStorage.setItem(`shatnez_chat_messages_${sessionId}`, JSON.stringify(data.session.messages));
+        if (data.session) {
+          if (data.session.shortId) {
+            setShortId(data.session.shortId);
+            localStorage.setItem(`shatnez_chat_short_id_${sessionId}`, data.session.shortId);
+          }
+          if (Array.isArray(data.session.messages) && data.session.messages.length > 0) {
+            setMessages(data.session.messages);
+            localStorage.setItem(`shatnez_chat_messages_${sessionId}`, JSON.stringify(data.session.messages));
+            if (soundEnabled && data.aiReplied) {
+              playVisitorChime();
+            }
+          }
         }
       }
     } catch (err) {
@@ -227,11 +281,32 @@ export function LiveChatWidget() {
     }
   };
 
-  const quickPrompts = [
-    "What are your lab opening hours?",
-    "Where is the drop-off location?",
-    "How can I check my order status?",
-  ];
+  const handleResetChat = () => {
+    const newSession = `chat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    localStorage.setItem("shatnez_chat_session_id", newSession);
+    setSessionId(newSession);
+    setShortId("");
+    setMessages([]);
+    setShowConfirmReset(false);
+    setUnreadCount(0);
+    prevMsgCountRef.current = 0;
+  };
+
+  const quickActionButtons = isRtl
+    ? [
+        { label: "📦 מעקב הזמנה", text: "אני מעוניין לבדוק סטטוס הזמנה" },
+        { label: "📍 כתובות מסירה", text: "איפה נקודות המסירה של המעבדה?" },
+        { label: "⏱️ שעות וזמני בדיקה", text: "מה שעות הפעילות וכמה זמן לוקחת בדיקה?" },
+        { label: "🚗 איסוף VIP מהבית", text: "איך עובד שירות איסוף VIP עד הבית?" },
+        { label: "📞 שיחה עם נציג", text: "אשמח שנציג יחזור אלי טלפונית" },
+      ]
+    : [
+        { label: "📦 Track Order", text: "I would like to check my order status" },
+        { label: "📍 Drop-off Locations", text: "Where are the lab drop-off locations?" },
+        { label: "⏱️ Hours & Turnaround", text: "What are your hours and turnaround time?" },
+        { label: "🚗 VIP Home Pickup", text: "How does the VIP home pickup service work?" },
+        { label: "📞 Request Callback", text: "I would like a representative to call me" },
+      ];
 
   // Hide chat widget completely on admin dashboard pages
   if (isAdminPage) {
@@ -239,13 +314,17 @@ export function LiveChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 font-sans dir-ltr text-left">
+    <div
+      className={`fixed bottom-5 ${isRtl ? "left-5" : "right-5"} z-50 font-sans ${
+        isRtl ? "dir-rtl text-right" : "dir-ltr text-left"
+      }`}
+    >
       {/* Floating Chat Trigger Button */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
           className="group relative flex items-center justify-center gap-3 bg-navy-900 hover:bg-navy-800 text-white px-5 py-3.5 rounded-full shadow-2xl hover:shadow-gold-500/30 hover:scale-105 transition-all duration-300 border border-gold-400/50"
-          aria-label="Open Live Support Chat"
+          aria-label={isRtl ? "פתח צ'אט שירות לקוחות" : "Open Live Support Chat"}
         >
           {/* Subtle Glow Ring */}
           <span className="absolute -inset-1 rounded-full bg-gold-400/25 blur-md group-hover:bg-gold-400/50 transition duration-300 animate-pulse"></span>
@@ -253,12 +332,20 @@ export function LiveChatWidget() {
           <div className="relative flex items-center gap-2.5">
             <div className="relative">
               <MessageCircle className="w-6 h-6 text-gold-400" />
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-navy-900 rounded-full animate-ping"></span>
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-navy-900 rounded-full"></span>
+              <span
+                className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-navy-900 ${
+                  adminOnline ? "bg-emerald-400 animate-ping" : "bg-gold-400"
+                }`}
+              ></span>
+              <span
+                className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-navy-900 ${
+                  adminOnline ? "bg-emerald-400" : "bg-gold-400"
+                }`}
+              ></span>
             </div>
 
-            <span className="font-bold text-sm tracking-wide text-white pr-1">
-              Live Chat
+            <span className="font-bold text-sm tracking-wide text-white px-1">
+              {isRtl ? "צ'אט חי" : "Live Chat"}
             </span>
           </div>
 
@@ -273,69 +360,171 @@ export function LiveChatWidget() {
 
       {/* Floating Modern High-Contrast Light Chat Window */}
       {isOpen && (
-        <div className="w-[94vw] sm:w-[390px] h-[600px] max-h-[85vh] bg-white border border-primary-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-300 text-navy-900">
-          
+        <div className="w-[94vw] sm:w-[410px] h-[630px] max-h-[88vh] bg-white border border-primary-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-300 text-navy-900">
           {/* Header */}
-          <div className="relative bg-gradient-to-r from-navy-900 via-navy-800 to-navy-950 p-4 border-b border-navy-700/80 flex items-center justify-between shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-gold-500 via-gold-400 to-gold-300 p-[2px] shadow-md">
-                  <div className="w-full h-full bg-navy-900 rounded-[14px] flex items-center justify-center">
-                    <ShieldCheck className="w-6 h-6 text-gold-400" />
+          <div className="relative bg-gradient-to-r from-navy-900 via-navy-800 to-navy-950 p-4 border-b border-navy-700/80 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-gold-500 via-gold-400 to-gold-300 p-[2px] shadow-md">
+                    <div className="w-full h-full bg-navy-900 rounded-[14px] flex items-center justify-center">
+                      <ShieldCheck className="w-6 h-6 text-gold-400" />
+                    </div>
                   </div>
+                  <span
+                    className={`absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-navy-900 rounded-full ${
+                      adminOnline ? "bg-emerald-400 animate-pulse" : "bg-gold-400"
+                    }`}
+                  ></span>
                 </div>
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-navy-900 rounded-full"></span>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-white text-base tracking-tight">
+                      {isRtl ? "מעבדת השעטנז" : "The Shatnez Lab"}
+                    </h3>
+                    <span className="text-[10px] bg-gold-500/20 text-gold-300 font-semibold px-2 py-0.5 rounded-full border border-gold-500/30">
+                      {isRtl ? "שירות ומענה" : "Support"}
+                    </span>
+                  </div>
+
+                  {/* Dynamic Availability Indicator */}
+                  {adminOnline ? (
+                    <p className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                      {isRtl ? "נציג מחובר • מענה אנושי מיידי" : "Lab Specialist Online • Instant Reply"}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gold-300 flex items-center gap-1.5 font-medium mt-0.5">
+                      <Bot className="w-3.5 h-3.5 text-gold-400" />
+                      {isRtl ? "סייר AI פעיל 24/7 • נציג בכוננות" : "AI Assistant 24/7 • Specialist on call"}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-extrabold text-white text-base tracking-tight">The Shatnez Lab</h3>
-                  <span className="text-[10px] bg-gold-500/20 text-gold-300 font-semibold px-2 py-0.5 rounded-full border border-gold-500/30">
-                    Support
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Online • Lab Representative
-                </p>
+              {/* Action Buttons: Sound Toggle, Reset, Close */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition ${
+                    soundEnabled
+                      ? "bg-white/10 hover:bg-white/20 text-gold-300"
+                      : "bg-white/5 text-slate-400 hover:text-slate-200"
+                  }`}
+                  title={
+                    soundEnabled
+                      ? isRtl
+                        ? "השתק צלילים"
+                        : "Mute Sounds"
+                      : isRtl
+                      ? "הפעל צלילים"
+                      : "Unmute Sounds"
+                  }
+                >
+                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+
+                <button
+                  onClick={() => setShowConfirmReset(true)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition"
+                  title={isRtl ? "שיחה חדשה / איפוס" : "New Chat / Reset"}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition"
+                  aria-label="Close Chat"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
-            <button
-              onClick={() => setIsOpen(false)}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition"
-              aria-label="Close Chat"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {/* Sub-banner: Live Queue & Waiting Info */}
+            <div className="mt-2.5 pt-2 border-t border-navy-700/60 flex items-center justify-between text-[11px] text-slate-300">
+              <span className="flex items-center gap-1">
+                {adminOnline ? (
+                  <>
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{isRtl ? "נציג אנושי זמין כעת" : "Live specialist ready"}</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3.5 h-3.5 text-gold-400" />
+                    <span>{isRtl ? "מענה AI מיידי + התראה לנציג" : "Instant AI answers + SMS to staff"}</span>
+                  </>
+                )}
+              </span>
+              {shortId && (
+                <span className="text-gold-400 font-mono font-semibold">
+                  {isRtl ? `מספר פנייה #${shortId}` : `Ref #${shortId}`}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Messages Body - Light Warm Cream Background for High Contrast */}
+          {/* Reset Confirmation Overlay */}
+          {showConfirmReset && (
+            <div className="bg-navy-950/90 p-4 text-center text-white space-y-3 animate-in fade-in duration-150 border-b border-gold-500/30">
+              <p className="text-xs font-semibold">
+                {isRtl ? "האם ברצונך לפתוח שיחה חדשה ולנקות את היסטוריית הצ'אט?" : "Start a fresh chat conversation?"}
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={handleResetChat}
+                  className="bg-gold-500 hover:bg-gold-600 text-navy-950 font-bold text-xs px-4 py-1.5 rounded-xl shadow transition"
+                >
+                  {isRtl ? "כן, התחל שיחה חדשה" : "Yes, Start New"}
+                </button>
+                <button
+                  onClick={() => setShowConfirmReset(false)}
+                  className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-xl transition"
+                >
+                  {isRtl ? "ביטול" : "Cancel"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Messages Body */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-primary-50/70 scrollbar-thin scrollbar-thumb-primary-200">
             {/* Welcome banner */}
             <div className="bg-white border border-gold-300/60 rounded-2xl p-4 text-center text-xs text-navy-800 space-y-1.5 shadow-sm">
               <div className="flex items-center justify-center gap-1.5 text-gold-600 font-bold text-sm">
                 <Sparkles className="w-4 h-4 text-gold-500" />
-                Welcome to The Shatnez Lab
+                {isRtl ? "ברוכים הבאים למעבדת השעטנז" : "Welcome to The Shatnez Lab"}
               </div>
               <p className="text-navy-700 text-xs leading-relaxed">
-                Have a question about garment testing, drop-off, or order status? Ask us below and we will assist you immediately.
+                {isRtl
+                  ? "שאל אותנו על בדיקת בגדים, מעקב הזמנה, שעות פתיחה או איסוף מהבית, וסייר ה-AI או נציג המעבדה ישיבו לך מיד."
+                  : "Have a question about garment testing, order status, hours, or VIP pickup? Ask us below and we will assist you immediately."}
               </p>
             </div>
 
-            {/* Quick Prompts */}
+            {/* Quick Action Buttons (Always accessible or on start) */}
             {messages.length === 0 && (
               <div className="space-y-2 pt-1">
-                <p className="text-xs font-bold text-navy-800 text-left">Frequently Asked Questions:</p>
+                <p className="text-xs font-bold text-navy-800">
+                  {isRtl ? "פעולות ושאלות נפוצות:" : "Frequently Asked Questions:"}
+                </p>
                 <div className="flex flex-col gap-2">
-                  {quickPrompts.map((prompt, idx) => (
+                  {quickActionButtons.map((item, idx) => (
                     <button
                       key={idx}
-                      onClick={() => handleSendMessage(prompt)}
-                      className="text-left text-xs bg-white hover:bg-gold-50 text-navy-800 font-medium border border-primary-200 hover:border-gold-400 p-3 rounded-xl transition duration-200 flex items-center justify-between group shadow-sm"
+                      onClick={() => handleSendMessage(item.text)}
+                      className={`text-xs bg-white hover:bg-gold-50 text-navy-800 font-medium border border-primary-200 hover:border-gold-400 p-3 rounded-xl transition duration-200 flex items-center justify-between group shadow-sm ${
+                        isRtl ? "text-right" : "text-left"
+                      }`}
                     >
-                      <span>{prompt}</span>
-                      <ChevronRight className="w-4 h-4 text-gold-600 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
+                      <span className="font-semibold">{item.label}</span>
+                      <ChevronRight
+                        className={`w-4 h-4 text-gold-600 opacity-60 group-hover:opacity-100 transition ${
+                          isRtl ? "rotate-180 group-hover:-translate-x-0.5" : "group-hover:translate-x-0.5"
+                        }`}
+                      />
                     </button>
                   ))}
                 </div>
@@ -356,7 +545,7 @@ export function LiveChatWidget() {
                   className={`flex flex-col ${isUser ? "items-end" : "items-start"} space-y-1`}
                 >
                   <div
-                    className={`max-w-[85%] px-4 py-3 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm ${
+                    className={`max-w-[88%] px-4 py-3 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm ${
                       isUser
                         ? "bg-gradient-to-r from-gold-500 to-gold-600 text-white font-medium rounded-br-none"
                         : "bg-navy-900 text-white font-normal rounded-bl-none border border-navy-800"
@@ -365,10 +554,10 @@ export function LiveChatWidget() {
                     {!isUser && (
                       <div className="text-[11px] font-bold text-gold-400 mb-1 flex items-center gap-1.5">
                         <ShieldCheck className="w-3.5 h-3.5 text-gold-400" />
-                        Lab Specialist
+                        {isRtl ? "מעבדת השעטנז" : "The Shatnez Lab"}
                       </div>
                     )}
-                    <p className="whitespace-pre-wrap text-left">{msg.text}</p>
+                    <p className={`whitespace-pre-wrap ${isRtl ? "text-right" : "text-left"}`}>{msg.text}</p>
                   </div>
                   <span className="text-[10px] text-navy-400 font-medium px-1 flex items-center gap-1">
                     {dateStr}
@@ -378,12 +567,16 @@ export function LiveChatWidget() {
               );
             })}
 
-            {/* Sending indicator */}
+            {/* Sending / Typing indicator */}
             {isSending && (
               <div className="flex justify-start">
                 <div className="bg-navy-900 text-slate-200 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 rounded-bl-none shadow-sm">
-                  <span className="w-2 h-2 bg-gold-400 rounded-full animate-ping"></span>
-                  Sending message...
+                  <span className="w-2 h-2 bg-gold-400 rounded-full animate-bounce"></span>
+                  <span className="w-2 h-2 bg-gold-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                  <span className="w-2 h-2 bg-gold-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                  <span className="text-[11px] text-gold-300 font-medium">
+                    {isRtl ? "המעבדה מנסחת תשובה..." : "Lab Assistant is replying..."}
+                  </span>
                 </div>
               </div>
             )}
@@ -391,7 +584,41 @@ export function LiveChatWidget() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Footer Input Area - High Contrast Light */}
+          {/* Quick Action Pills above Input when messages exist */}
+          {messages.length > 0 && (
+            <div className="px-3 py-1.5 bg-primary-100/60 border-t border-primary-200/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              <button
+                onClick={() => handleSendMessage(isRtl ? "איפה נקודות המסירה?" : "Where is the drop-off location?")}
+                className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs flex items-center gap-1"
+              >
+                <MapPin className="w-3 h-3 text-gold-600" />
+                {isRtl ? "מיקומי מסירה" : "Drop-off"}
+              </button>
+              <button
+                onClick={() => handleSendMessage(isRtl ? "מה שעות הפעילות?" : "What are your opening hours?")}
+                className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs flex items-center gap-1"
+              >
+                <Clock className="w-3 h-3 text-gold-600" />
+                {isRtl ? "שעות פתיחה" : "Hours"}
+              </button>
+              <button
+                onClick={() => handleSendMessage(isRtl ? "מעקב הזמנה" : "Track my order")}
+                className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs flex items-center gap-1"
+              >
+                <Search className="w-3 h-3 text-gold-600" />
+                {isRtl ? "מעקב הזמנה" : "Track Order"}
+              </button>
+              <button
+                onClick={() => handleSendMessage(isRtl ? "שירות איסוף VIP מהבית" : "VIP Home Pickup")}
+                className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs flex items-center gap-1"
+              >
+                <Truck className="w-3 h-3 text-gold-600" />
+                {isRtl ? "איסוף VIP" : "VIP Pickup"}
+              </button>
+            </div>
+          )}
+
+          {/* Footer Input Area */}
           <div className="p-3.5 bg-white border-t border-primary-200">
             <form
               onSubmit={(e) => {
@@ -405,22 +632,29 @@ export function LiveChatWidget() {
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 bg-transparent text-xs sm:text-sm text-navy-900 placeholder-navy-400 outline-none text-left py-1.5 font-medium"
+                placeholder={
+                  isRtl ? "הקלד הודעה, שאלה או מספר הזמנה..." : "Type your message or order number..."
+                }
+                className={`flex-1 bg-transparent text-xs sm:text-sm text-navy-900 placeholder-navy-400 outline-none py-1.5 font-medium ${
+                  isRtl ? "text-right" : "text-left"
+                }`}
                 disabled={isSending}
               />
               <button
                 type="submit"
                 disabled={!inputText.trim() || isSending}
-                className="w-9 h-9 rounded-xl bg-gold-500 hover:bg-gold-600 text-navy-950 font-bold flex items-center justify-center disabled:opacity-40 transition shadow-md"
+                className="w-9 h-9 rounded-xl bg-gold-500 hover:bg-gold-600 text-navy-950 font-bold flex items-center justify-center disabled:opacity-40 transition shadow-md shrink-0"
                 aria-label="Send Message"
               >
-                <Send className="w-4 h-4" />
+                <Send className={`w-4 h-4 ${isRtl ? "rotate-180" : ""}`} />
               </button>
             </form>
             <div className="flex items-center justify-between text-[10px] text-navy-500 font-semibold px-1 mt-2">
-              <span>Live Lab Representative</span>
-              {shortId && <span>Ref ID: #{shortId}</span>}
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-gold-600" />
+                {isRtl ? "מעבדת שעטנז מוסמכת" : "Certified Shatnez Laboratory"}
+              </span>
+              {shortId && <span>{isRtl ? `פנייה #${shortId}` : `Ref #${shortId}`}</span>}
             </div>
           </div>
         </div>

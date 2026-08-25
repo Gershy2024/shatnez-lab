@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   getDocs,
   onSnapshot,
 } from "firebase/firestore";
@@ -32,9 +33,14 @@ export interface ChatSession {
 
 const CHATS_COLLECTION = "live_chats";
 const COUNTER_DOC = "counter";
+const PRESENCE_DOC = "admin_presence";
 
 // In-memory fallback for local testing / offline / serverless RAM
 const memoryStore = new Map<string, ChatSession>();
+let inMemoryAdminPresence = {
+  isOnline: false,
+  lastActive: 0,
+};
 
 async function getNextShortId(): Promise<string> {
   if (isConfigured && db) {
@@ -393,3 +399,93 @@ export function subscribeToAllChatSessions(callback: (sessions: ChatSession[]) =
 
   return () => clearInterval(interval);
 }
+
+export async function updateAdminPresence(isOnline: boolean = true): Promise<void> {
+  const payload = {
+    isOnline,
+    lastActive: Date.now(),
+  };
+  inMemoryAdminPresence = payload;
+
+  if (isConfigured && db) {
+    try {
+      const ref = doc(db, CHATS_COLLECTION, PRESENCE_DOC);
+      await setDoc(ref, payload);
+    } catch (e) {
+      console.error("[LiveChat] Failed to update admin presence:", e);
+    }
+  }
+}
+
+export async function getAdminPresence(): Promise<{ isOnline: boolean; lastActive: number }> {
+  if (isConfigured && db) {
+    try {
+      const ref = doc(db, CHATS_COLLECTION, PRESENCE_DOC);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data() as { isOnline: boolean; lastActive: number };
+        const isFresh = Date.now() - (data.lastActive || 0) < 60000; // active within last 60s
+        return {
+          isOnline: !!data.isOnline && isFresh,
+          lastActive: data.lastActive || 0,
+        };
+      }
+    } catch (e) {
+      console.error("[LiveChat] Failed to get admin presence from Firestore:", e);
+    }
+  }
+
+  const isFresh = Date.now() - (inMemoryAdminPresence.lastActive || 0) < 60000;
+  return {
+    isOnline: inMemoryAdminPresence.isOnline && isFresh,
+    lastActive: inMemoryAdminPresence.lastActive,
+  };
+}
+
+export async function updateSessionStatus(
+  sessionId: string,
+  status: "active" | "closed"
+): Promise<ChatSession | null> {
+  if (isConfigured && db) {
+    try {
+      const ref = doc(db, CHATS_COLLECTION, sessionId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const session = snap.data() as ChatSession;
+        session.status = status;
+        session.lastUpdated = Date.now();
+        await setDoc(ref, session);
+        memoryStore.set(sessionId, session);
+        return session;
+      }
+    } catch (e) {
+      console.error("[LiveChat] Failed to update session status:", e);
+    }
+  }
+
+  const session = memoryStore.get(sessionId);
+  if (session) {
+    session.status = status;
+    session.lastUpdated = Date.now();
+    memoryStore.set(sessionId, session);
+    return session;
+  }
+  return null;
+}
+
+export async function deleteChatSession(sessionId: string): Promise<boolean> {
+  memoryStore.delete(sessionId);
+
+  if (isConfigured && db) {
+    try {
+      const ref = doc(db, CHATS_COLLECTION, sessionId);
+      await deleteDoc(ref);
+      return true;
+    } catch (e) {
+      console.error("[LiveChat] Failed to delete session from Firestore:", e);
+      return false;
+    }
+  }
+  return true;
+}
+
