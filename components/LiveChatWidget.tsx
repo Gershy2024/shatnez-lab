@@ -449,16 +449,16 @@ export function LiveChatWidget() {
                     </span>
                   </div>
 
-                  {/* Dynamic Availability Indicator */}
+                  {/* Availability Indicator */}
                   {adminOnline ? (
                     <p className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium mt-0.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                      {isRtl ? "נציג מחובר • מענה אנושי מיידי" : "Lab Specialist Online • Instant Reply"}
+                      {isRtl ? "נציג מחובר • מענה מיידי" : "Representative Online • Quick Reply"}
                     </p>
                   ) : (
-                    <p className="text-xs text-gold-300 flex items-center gap-1.5 font-medium mt-0.5">
-                      <Bot className="w-3.5 h-3.5 text-gold-400" />
-                      {isRtl ? "סייר AI פעיל 24/7 • נציג בכוננות" : "AI Assistant 24/7 • Specialist on call"}
+                    <p className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      {isRtl ? "שירות ומענה מהיר" : "Customer Support • Online"}
                     </p>
                   )}
                 </div>
@@ -504,20 +504,11 @@ export function LiveChatWidget() {
               </div>
             </div>
 
-            {/* Sub-banner: Live Queue & Waiting Info */}
+            {/* Sub-banner: Ref ID & Support Badge */}
             <div className="mt-2.5 pt-2 border-t border-navy-700/60 flex items-center justify-between text-[11px] text-slate-300">
-              <span className="flex items-center gap-1">
-                {adminOnline ? (
-                  <>
-                    <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{isRtl ? "נציג אנושי זמין כעת" : "Live specialist ready"}</span>
-                  </>
-                ) : (
-                  <>
-                    <Clock className="w-3.5 h-3.5 text-gold-400" />
-                    <span>{isRtl ? "מענה AI מיידי + התראה לנציג" : "Instant AI answers + SMS to staff"}</span>
-                  </>
-                )}
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-gold-400" />
+                <span>{isRtl ? "מעבדת שעטנז מוסמכת" : "Certified Shatnez Lab"}</span>
               </span>
               {shortId && (
                 <span className="text-gold-400 font-mono font-semibold">
@@ -560,7 +551,7 @@ export function LiveChatWidget() {
               </div>
               <p className="text-navy-700 text-xs leading-relaxed">
                 {isRtl
-                  ? "שאל אותנו על בדיקת בגדים, מעקב הזמנה, שעות פתיחה או איסוף מהבית, וסייר ה-AI או נציג המעבדה ישיבו לך מיד."
+                  ? "שאל אותנו על בדיקת בגדים, מעקב הזמנה, שעות פתיחה או איסוף מהבית, ונציגי המעבדה ישיבו לך מיד."
                   : "Have a question about garment testing, order status, hours, or VIP pickup? Ask us below and we will assist you immediately."}
               </p>
             </div>
