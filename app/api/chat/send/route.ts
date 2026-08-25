@@ -265,8 +265,8 @@ Interaction Guidelines:
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
       const recentMessages = history
-        .slice(-6)
-        .map((m) => `${m.sender === "user" ? "Visitor" : "Lab Assistant"}: ${m.text}`)
+        .slice(-20)
+        .map((m) => `${m.sender === "user" ? "Visitor" : "Lab Specialist"}: ${m.text}`)
         .join("\n");
       const promptText = `${systemInstruction}\n\nRecent conversation:\n${recentMessages}\n\nVisitor: ${userMessage}\nLab Assistant:`;
 
