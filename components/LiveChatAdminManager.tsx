@@ -26,6 +26,7 @@ import {
   ExternalLink,
   Bot,
   Zap,
+  Truck,
 } from "lucide-react";
 import {
   subscribeToAllChatSessions,
@@ -397,23 +398,23 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
     }
   };
 
-  // Canned Responses (תשובות מוכנות מראש)
+  // Canned Responses (תשובות מוכנות מראש עם וקטורים)
   const cannedResponses = isRtl
     ? [
-        { label: "🕒 שעות פעילות", text: "שלום! שעות הפעילות שלנו במעבדה הן ימים ראשון עד חמישי מ-9:00 עד 21:00 בערב (14 Buchanan Rd, Spring Valley)." },
-        { label: "📍 מיקום מסירה", text: "ניתן להניח את הבגד בכתובת 14 Buchanan Rd, Spring Valley בתוך מעטפה או שקית עם שמך ומספר הטלפון שלך." },
-        { label: "📦 מוכן לאיסוף", text: "הבגד שלך מוכן לאיסוף מהמעבדה בביוקנן 14! נשמח לראותך." },
-        { label: "⏱️ זמני בדיקה", text: "בדיקת שעטנז סטנדרטית אורכת בדרך כלל בין 1 ל-2 ימי עסקים." },
-        { label: "🚗 איסוף VIP", text: "אנו מציעים שירות VIP לאיסוף והחזרה עד הבית. אנא השאר כתובת וטלפון ונתאם." },
-        { label: "📞 נחזור אליך", text: "קיבלנו את פנייתך! נציג מהמעבדה יחזור אליך בהקדם למספר הטלפון שציינת." },
+        { icon: Clock, label: "שעות פעילות", text: "שלום! שעות הפעילות שלנו במעבדה הן ימים ראשון עד חמישי מ-9:00 עד 21:00 בערב (14 Buchanan Rd, Spring Valley)." },
+        { icon: MapPin, label: "מיקום מסירה", text: "ניתן להניח את הבגד בכתובת 14 Buchanan Rd, Spring Valley בתוך מעטפה או שקית עם שמך ומספר הטלפון שלך." },
+        { icon: Package, label: "מוכן לאיסוף", text: "הבגד שלך מוכן לאיסוף מהמעבדה בביוקנן 14! נשמח לראותך." },
+        { icon: Clock, label: "זמני בדיקה", text: "בדיקת שעטנז סטנדרטית אורכת בדרך כלל בין 1 ל-2 ימי עסקים." },
+        { icon: Truck, label: "איסוף VIP", text: "אנו מציעים שירות VIP לאיסוף והחזרה עד הבית. אנא השאר כתובת וטלפון ונתאם." },
+        { icon: Phone, label: "נחזור אליך", text: "קיבלנו את פנייתך! נציג מהמעבדה יחזור אליך בהקדם למספר הטלפון שציינת." },
       ]
     : [
-        { label: "🕒 Hours", text: "Hello! Our lab hours are Sunday through Thursday, 9:00 AM – 9:00 PM at 14 Buchanan Rd, Spring Valley, NY." },
-        { label: "📍 Drop-off", text: "You can drop off your garment at 14 Buchanan Rd, Spring Valley, NY. Please place it in a bag with your name and phone number." },
-        { label: "📦 Ready for Pickup", text: "Your order is ready for pickup at our lab (14 Buchanan Rd, Spring Valley)! Thank you." },
-        { label: "⏱️ Turnaround", text: "Standard microscopic shatnez inspection takes 1-2 business days." },
-        { label: "🚗 VIP Pickup", text: "We offer VIP home pickup and delivery service. Please provide your address and phone number to coordinate." },
-        { label: "📞 Calling You", text: "Thank you for reaching out! A lab specialist will call or text you shortly at your phone number." },
+        { icon: Clock, label: "Hours", text: "Hello! Our lab hours are Sunday through Thursday, 9:00 AM – 9:00 PM at 14 Buchanan Rd, Spring Valley, NY." },
+        { icon: MapPin, label: "Drop-off", text: "You can drop off your garment at 14 Buchanan Rd, Spring Valley, NY. Please place it in a bag with your name and phone number." },
+        { icon: Package, label: "Ready for Pickup", text: "Your order is ready for pickup at our lab (14 Buchanan Rd, Spring Valley)! Thank you." },
+        { icon: Clock, label: "Turnaround", text: "Standard microscopic shatnez inspection takes 1-2 business days." },
+        { icon: Truck, label: "VIP Pickup", text: "We offer VIP home pickup and delivery service. Please provide your address and phone number to coordinate." },
+        { icon: Phone, label: "Calling You", text: "Thank you for reaching out! A lab specialist will call or text you shortly at your phone number." },
       ];
 
   const filteredSessions = useMemo(() => {
@@ -882,15 +883,19 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
                 <Zap className="w-3 h-3 text-gold-600" />
                 {isRtl ? "תשובות מוכנות:" : "Canned:"}
               </span>
-              {cannedResponses.map((item, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setReplyText(item.text)}
-                  className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 hover:border-gold-400 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs"
-                >
-                  {item.label}
-                </button>
-              ))}
+              {cannedResponses.map((item, idx) => {
+                const IconComp = item.icon;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setReplyText(item.text)}
+                    className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 hover:border-gold-400 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs flex items-center gap-1.5"
+                  >
+                    <IconComp className="w-3 h-3 text-gold-600 shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Admin Input Bar */}

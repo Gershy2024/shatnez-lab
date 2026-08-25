@@ -13,13 +13,13 @@ function formatOrderStatusHebrew(order: Order): string {
     received: "התקבל במעבדה (ממתין לבדיקה)",
     testing: "בבדיקה מיקרוסקופית פעילה",
     review: "בביקורת סופית על ידי מומחה",
-    ready: "מוכן לאיסוף! 🎉",
+    ready: "מוכן לאיסוף",
     delivered: "נמסר ללקוח",
     issue: "דרוש בירור עם המעבדה",
   };
 
   const statusHebrew = statusLabels[order.status] || order.status;
-  let text = `📦 פרטי הזמנה #${order.id} עבור ${order.customerName}:\n`;
+  let text = `פרטי הזמנה #${order.id} עבור ${order.customerName}:\n`;
   text += `• סטטוס: ${statusHebrew}\n`;
   if (order.result) {
     text += `• תוצאת בדיקה: ${order.result}\n`;
@@ -41,13 +41,13 @@ function formatOrderStatusEnglish(order: Order): string {
     received: "Received in Lab (Awaiting testing)",
     testing: "In active microscopic examination",
     review: "Under final senior review",
-    ready: "Ready for pickup! 🎉",
+    ready: "Ready for pickup",
     delivered: "Delivered",
     issue: "Attention needed / Please contact lab",
   };
 
   const statusEn = statusLabels[order.status] || order.status;
-  let text = `📦 Order #${order.id} details for ${order.customerName}:\n`;
+  let text = `Order #${order.id} details for ${order.customerName}:\n`;
   text += `• Status: ${statusEn}\n`;
   if (order.result) {
     text += `• Test Result: ${order.result}\n`;

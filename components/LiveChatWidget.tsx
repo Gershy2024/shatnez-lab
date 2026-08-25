@@ -20,6 +20,7 @@ import {
   Truck,
   Phone,
   UserCheck,
+  Package,
 } from "lucide-react";
 import { subscribeToChatSession, ChatMessage, ChatSession } from "@/lib/liveChat";
 import { useLanguage } from "@/lib/LanguageContext";
@@ -292,20 +293,80 @@ export function LiveChatWidget() {
     prevMsgCountRef.current = 0;
   };
 
-  const quickActionButtons = isRtl
+  const quickActionCards = isRtl
     ? [
-        { label: "📦 מעקב הזמנה", text: "אני מעוניין לבדוק סטטוס הזמנה" },
-        { label: "📍 כתובות מסירה", text: "איפה נקודות המסירה של המעבדה?" },
-        { label: "⏱️ שעות וזמני בדיקה", text: "מה שעות הפעילות וכמה זמן לוקחת בדיקה?" },
-        { label: "🚗 איסוף VIP מהבית", text: "איך עובד שירות איסוף VIP עד הבית?" },
-        { label: "📞 שיחה עם נציג", text: "אשמח שנציג יחזור אלי טלפונית" },
+        {
+          icon: Package,
+          title: "מעקב הזמנה",
+          subtitle: "בדיקת סטטוס בגד לפי מספר הזמנה או טלפון",
+          text: "אני מעוניין לבדוק סטטוס הזמנה",
+          color: "text-amber-700 bg-amber-50 border-amber-200/90",
+        },
+        {
+          icon: MapPin,
+          title: "כתובות ומיקומי מסירה",
+          subtitle: "14 Buchanan Rd ו-166 Clinton Lane",
+          text: "איפה נקודות המסירה של המעבדה?",
+          color: "text-emerald-700 bg-emerald-50 border-emerald-200/90",
+        },
+        {
+          icon: Clock,
+          title: "שעות פעילות וזמני בדיקה",
+          subtitle: "א'-ה' 9:00-21:00 • 1-2 ימי עסקים",
+          text: "מה שעות הפעילות וכמה זמן לוקחת בדיקה?",
+          color: "text-blue-700 bg-blue-50 border-blue-200/90",
+        },
+        {
+          icon: Truck,
+          title: "שירות איסוף VIP מהבית",
+          subtitle: "איסוף והחזרה ישירות מבית הלקוח",
+          text: "איך עובד שירות איסוף VIP עד הבית?",
+          color: "text-purple-700 bg-purple-50 border-purple-200/90",
+        },
+        {
+          icon: Phone,
+          title: "בקשת שיחה חוזרת מנציג",
+          subtitle: "השארת פרטים לקבלת שיחה טלפונית",
+          text: "אשמח שנציג יחזור אלי טלפונית",
+          color: "text-rose-700 bg-rose-50 border-rose-200/90",
+        },
       ]
     : [
-        { label: "📦 Track Order", text: "I would like to check my order status" },
-        { label: "📍 Drop-off Locations", text: "Where are the lab drop-off locations?" },
-        { label: "⏱️ Hours & Turnaround", text: "What are your hours and turnaround time?" },
-        { label: "🚗 VIP Home Pickup", text: "How does the VIP home pickup service work?" },
-        { label: "📞 Request Callback", text: "I would like a representative to call me" },
+        {
+          icon: Package,
+          title: "Track Order",
+          subtitle: "Check garment status by order ID or phone",
+          text: "I would like to check my order status",
+          color: "text-amber-700 bg-amber-50 border-amber-200/90",
+        },
+        {
+          icon: MapPin,
+          title: "Drop-off Locations",
+          subtitle: "14 Buchanan Rd & 166 Clinton Lane",
+          text: "Where are the lab drop-off locations?",
+          color: "text-emerald-700 bg-emerald-50 border-emerald-200/90",
+        },
+        {
+          icon: Clock,
+          title: "Hours & Turnaround",
+          subtitle: "Sun-Thu 9am-9pm • 1-2 business days",
+          text: "What are your hours and turnaround time?",
+          color: "text-blue-700 bg-blue-50 border-blue-200/90",
+        },
+        {
+          icon: Truck,
+          title: "VIP Home Pickup",
+          subtitle: "Pick up & delivery directly to your door",
+          text: "How does the VIP home pickup service work?",
+          color: "text-purple-700 bg-purple-50 border-purple-200/90",
+        },
+        {
+          icon: Phone,
+          title: "Request Callback",
+          subtitle: "Leave your number for a lab specialist",
+          text: "I would like a representative to call me",
+          color: "text-rose-700 bg-rose-50 border-rose-200/90",
+        },
       ];
 
   // Hide chat widget completely on admin dashboard pages
@@ -504,29 +565,46 @@ export function LiveChatWidget() {
               </p>
             </div>
 
-            {/* Quick Action Buttons (Always accessible or on start) */}
+            {/* Quick Action Vector Cards */}
             {messages.length === 0 && (
               <div className="space-y-2 pt-1">
                 <p className="text-xs font-bold text-navy-800">
                   {isRtl ? "פעולות ושאלות נפוצות:" : "Frequently Asked Questions:"}
                 </p>
                 <div className="flex flex-col gap-2">
-                  {quickActionButtons.map((item, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSendMessage(item.text)}
-                      className={`text-xs bg-white hover:bg-gold-50 text-navy-800 font-medium border border-primary-200 hover:border-gold-400 p-3 rounded-xl transition duration-200 flex items-center justify-between group shadow-sm ${
-                        isRtl ? "text-right" : "text-left"
-                      }`}
-                    >
-                      <span className="font-semibold">{item.label}</span>
-                      <ChevronRight
-                        className={`w-4 h-4 text-gold-600 opacity-60 group-hover:opacity-100 transition ${
-                          isRtl ? "rotate-180 group-hover:-translate-x-0.5" : "group-hover:translate-x-0.5"
+                  {quickActionCards.map((item, idx) => {
+                    const IconComp = item.icon;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleSendMessage(item.text)}
+                        className={`bg-white hover:bg-gold-50/70 text-navy-900 border border-primary-200 hover:border-gold-400 p-2.5 rounded-2xl transition duration-200 flex items-center justify-between group shadow-xs ${
+                          isRtl ? "text-right" : "text-left"
                         }`}
-                      />
-                    </button>
-                  ))}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${item.color}`}
+                          >
+                            <IconComp className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-navy-900 text-xs truncate">{item.title}</div>
+                            <div className="text-[11px] text-primary-400 truncate font-normal">
+                              {item.subtitle}
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight
+                          className={`w-4 h-4 text-gold-600 opacity-60 group-hover:opacity-100 transition shrink-0 ${
+                            isRtl
+                              ? "rotate-180 group-hover:-translate-x-0.5"
+                              : "group-hover:translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
