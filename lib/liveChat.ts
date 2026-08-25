@@ -188,8 +188,13 @@ export async function addChatMessage(
     const emailMatch = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
     if (emailMatch) extractedEmail = emailMatch[0];
 
-    const phoneMatch = text.match(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/);
-    if (phoneMatch) extractedPhone = phoneMatch[0];
+    const clean = text.replace(/\D/g, "");
+    if (clean.length >= 7 && clean.length <= 15) {
+      extractedPhone = text.trim();
+    } else {
+      const phoneMatch = text.match(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/);
+      if (phoneMatch) extractedPhone = phoneMatch[0];
+    }
   }
 
   if (isConfigured && db) {

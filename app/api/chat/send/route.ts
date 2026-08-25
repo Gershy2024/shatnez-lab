@@ -316,44 +316,84 @@ export async function POST(req: NextRequest) {
     const presence = await getAdminPresence();
     const adminOnline = presence.isOnline;
 
-    // 3. Check for Live Database Order Lookup (e.g. "#105", "105", "order 105", phone number)
+    // 3. Check for Phone Callback Response or Order ID Lookup
     let aiReply: string | null = null;
-    let foundOrder = false;
 
-    // Check if input looks like an order ID
-    const orderMatch = trimmedText.match(/^(?:#|order\s*#?|הזמנה\s*#?)?(\d{2,6})$/i);
     const cleanDigits = trimmedText.replace(/\D/g, "");
+    const isExplicitPhone =
+      cleanDigits.length >= 7 &&
+      cleanDigits.length <= 15 &&
+      (cleanDigits.length >= trimmedText.replace(/[^a-zA-Z0-9]/g, "").length ||
+        trimmedText.includes("טלפון") ||
+        trimmedText.toLowerCase().includes("phone") ||
+        trimmedText.toLowerCase().includes("call") ||
+        trimmedText.toLowerCase().includes("number"));
 
-    if (orderMatch && orderMatch[1].length <= 5) {
-      const orderId = orderMatch[1];
-      try {
-        const order = await getOrderById(orderId);
-        if (order) {
-          foundOrder = true;
-          aiReply = userIsHeb ? formatOrderStatusHebrew(order) : formatOrderStatusEnglish(order);
+    // Check if bot previously asked for phone number in this session
+    const priorAdminMsgs = (updatedSession?.messages || []).filter(
+      (m) =>
+        m.sender === "admin" &&
+        m.id !== updatedSession?.messages?.[updatedSession.messages.length - 1]?.id
+    );
+    const lastAdminMsg = priorAdminMsgs.slice(-1)[0]?.text || "";
+    const botPreviouslyAskedForPhone =
+      lastAdminMsg.includes("טלפון") ||
+      lastAdminMsg.includes("phone") ||
+      lastAdminMsg.includes("חזרה") ||
+      lastAdminMsg.includes("callback") ||
+      lastAdminMsg.includes("reach you") ||
+      lastAdminMsg.includes("call you");
+
+    const isPhoneResponse =
+      isExplicitPhone || (botPreviouslyAskedForPhone && cleanDigits.length >= 7 && cleanDigits.length <= 15);
+
+    // If visitor provided a phone number:
+    if (isPhoneResponse) {
+      let linkedOrdersText = "";
+      if (cleanDigits.length >= 7) {
+        try {
+          const orders = await getOrdersByPhone(cleanDigits);
+          if (orders && orders.length > 0) {
+            const latestOrder = orders[0];
+            linkedOrdersText = userIsHeb
+              ? `\n\nבנוסף, אותרה במערכת הזמנה #${latestOrder.id} על שמך:\n${formatOrderStatusHebrew(
+                  latestOrder
+                )}`
+              : `\n\nAlso, order #${latestOrder.id} was found under your phone number:\n${formatOrderStatusEnglish(
+                  latestOrder
+                )}`;
+          }
+        } catch (e) {
+          console.warn("[LiveChat] Error querying order by phone:", e);
         }
-      } catch (e) {
-        console.warn("[LiveChat] Error querying order by ID:", e);
+      }
+
+      if (userIsHeb) {
+        aiReply = `תודה רבה! מספר הטלפון שלך (${trimmedText}) נקלט בהצלחה במערכת. נציג מעבדה קיבל התראה וייצור איתך קשר בהקדם האפשרי.${linkedOrdersText}`;
+      } else {
+        aiReply = `Thank you! We have received your phone number (${trimmedText}). A lab specialist has been notified and will contact you as soon as possible.${linkedOrdersText}`;
+      }
+    } else {
+      // Check if input looks like an order ID (e.g. "#105", "105", "order 105")
+      const orderMatch = trimmedText.match(/^(?:#|order\s*#?|הזמנה\s*#?)?(\d{2,6})$/i);
+      if (orderMatch && orderMatch[1].length <= 5) {
+        const orderId = orderMatch[1];
+        try {
+          const order = await getOrderById(orderId);
+          if (order) {
+            aiReply = userIsHeb ? formatOrderStatusHebrew(order) : formatOrderStatusEnglish(order);
+          } else {
+            aiReply = userIsHeb
+              ? `חיפשנו במערכת אך לא נמצאה הזמנה שמספרה #${orderId}. אנא ודא את המספר או השאר מספר טלפון לאיתור.`
+              : `We checked the database but could not find order #${orderId}. Please verify the number or provide your phone number.`;
+          }
+        } catch (e) {
+          console.warn("[LiveChat] Error querying order by ID:", e);
+        }
       }
     }
 
-    // If not found by ID and looks like a 10-digit phone number, search by phone
-    if (!foundOrder && cleanDigits.length === 10) {
-      try {
-        const orders = await getOrdersByPhone(cleanDigits);
-        if (orders && orders.length > 0) {
-          foundOrder = true;
-          const latestOrder = orders[0];
-          aiReply = userIsHeb
-            ? `${formatOrderStatusHebrew(latestOrder)}\n(נמצאו ${orders.length} הזמנות על שמך במערכת)`
-            : `${formatOrderStatusEnglish(latestOrder)}\n(Found ${orders.length} orders matching your phone number)`;
-        }
-      } catch (e) {
-        console.warn("[LiveChat] Error querying order by phone:", e);
-      }
-    }
-
-    // 4. Generate AI Reply if not an order match
+    // 4. Generate AI Reply if not an order match / phone callback
     if (!aiReply && updatedSession) {
       aiReply = await generateAiChatReply(
         trimmedText,
@@ -376,9 +416,11 @@ export async function POST(req: NextRequest) {
     // 5. Send SMS notification to admin with visitor question & AI reply
     const adminPhone = settings.forwardingNumber || settings.twilioPhoneNumber;
     if (adminPhone) {
-      let smsBody = `[#${session.shortId}] Web Visitor: ${trimmedText}`;
+      let smsBody = isPhoneResponse
+        ? `[#${session.shortId}] 📞 Customer Phone Callback Received: ${trimmedText}`
+        : `[#${session.shortId}] Web Visitor: ${trimmedText}`;
       if (aiReply) {
-        smsBody += `\n\nAI Replied: ${aiReply}`;
+        smsBody += `\n\nReply: ${aiReply.substring(0, 140)}`;
       }
       smsBody += `\n\n(Reply: #${session.shortId} your reply)`;
 
