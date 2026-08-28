@@ -322,8 +322,9 @@ export async function getAllChatSessions(): Promise<ChatSession[]> {
   const TEN_MINUTES = 10 * 60 * 1000;
   const sessions = Array.from(sessionsMap.values()).filter((s) => {
     const hasMsgs = s.messages && s.messages.length > 0;
+    const isClosed = s.status === "closed";
     const isRecent = (now - (s.lastUpdated || s.createdAt || 0)) < TEN_MINUTES;
-    return hasMsgs || isRecent;
+    return hasMsgs || isClosed || isRecent;
   });
 
   sessions.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
@@ -388,8 +389,9 @@ export function subscribeToAllChatSessions(callback: (sessions: ChatSession[]) =
         const TEN_MINUTES = 10 * 60 * 1000;
         const sessions = Array.from(sessionsMap.values()).filter((s) => {
           const hasMsgs = s.messages && s.messages.length > 0;
+          const isClosed = s.status === "closed";
           const isRecent = (now - (s.lastUpdated || s.createdAt || 0)) < TEN_MINUTES;
-          return hasMsgs || isRecent;
+          return hasMsgs || isClosed || isRecent;
         });
 
         sessions.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
@@ -397,7 +399,14 @@ export function subscribeToAllChatSessions(callback: (sessions: ChatSession[]) =
       },
       (err) => {
         console.error("[LiveChat] Firestore subscribeToAllChatSessions error:", err);
-        const sessions = Array.from(memoryStore.values());
+        const errNow = Date.now();
+        const errTenMin = 10 * 60 * 1000;
+        const sessions = Array.from(memoryStore.values()).filter((s) => {
+          const hasMsgs = s.messages && s.messages.length > 0;
+          const isClosed = s.status === "closed";
+          const isRecent = (errNow - (s.lastUpdated || s.createdAt || 0)) < errTenMin;
+          return hasMsgs || isClosed || isRecent;
+        });
         sessions.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
         callback(sessions);
       }

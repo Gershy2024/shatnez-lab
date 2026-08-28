@@ -8,6 +8,58 @@ function isHebrew(text: string): boolean {
   return /[\u0590-\u05FF]/.test(text);
 }
 
+function isYiddish(text: string): boolean {
+  if (!isHebrew(text)) return false;
+  const yiddishKeywords = [
+    "וועלכע",
+    "זענען",
+    "ענק",
+    "אפן",
+    "אפען",
+    "עפענען",
+    "קאסט",
+    "קאסטן",
+    "וויפיל",
+    "פרייז",
+    "פרייזן",
+    "וואו",
+    "וואס",
+    "הערט",
+    "איבערלאזן",
+    "איבערגעבן",
+    "נעמט",
+    "צייט",
+    "געדויערט",
+    "שנעל",
+    "באצאלן",
+    "געלט",
+    "רעדן",
+    "מענטש",
+    "האבן",
+    "מיר",
+    "איר",
+    "אייך",
+    "קומען",
+    "זונטאג",
+    "מאנטיג",
+    "דינסטיג",
+    "מיטוואך",
+    "דאנערשטאג",
+    "פרייטאג",
+    "ביינאכט",
+    "צופרי",
+    "אנצוג",
+    "רעקל",
+    "מאנטל",
+    "הויזן",
+    "קלייד",
+    "גוט מארגן",
+    "גוט אוונט",
+  ];
+  const lower = text.toLowerCase();
+  return yiddishKeywords.some((w) => lower.includes(w));
+}
+
 function formatOrderStatusHebrew(order: Order): string {
   const statusLabels: Record<string, string> = {
     received: "התקבל במעבדה (ממתין לבדיקה)",
@@ -67,101 +119,168 @@ function formatOrderStatusEnglish(order: Order): string {
 function getSmartFallbackReply(text: string, isHeb: boolean, adminOnline: boolean): string {
   const cleanDigits = text.replace(/\D/g, "");
   const q = text.toLowerCase();
+  const isYid = isYiddish(text);
 
-  // Contact number provided
+  // 1. Contact number provided
   if (cleanDigits.length >= 7) {
+    if (isYid) {
+      return `א גרויסן דאנק! מיר האבן באקומען אייער טעלעפאן נומער (${text.trim()}). א נציג פון די מעבדה וועט אייך צוריקרופן ווי שנעלער.`;
+    }
     if (isHeb) {
       return `תודה רבה! קיבלנו את מספר הטלפון שלך (${text.trim()}). נציג המעבדה קיבל התראה ויחזור אליך בהקדם האפשרי.`;
     }
     return `Thank you! We have received your phone number (${text.trim()}). A lab specialist has been notified and will contact you as soon as possible.`;
   }
 
-  // Email provided
+  // 2. Email provided
   const emailMatch = text.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
   if (emailMatch) {
+    if (isYid) {
+      return `א דאנק! מיר האבן באקומען אייער אימעיל (${emailMatch[0]}). א נציג וועט זיך פארבינדן מיט אייך אין קורצן.`;
+    }
     if (isHeb) {
       return `תודה! קיבלנו את כתובת האימייל שלך (${emailMatch[0]}). נציג המעבדה עודכן וייצור איתך קשר בהקדם.`;
     }
     return `Thank you! We have received your email address (${emailMatch[0]}). A lab specialist has been notified and will be in touch shortly.`;
   }
 
-  // Opening Hours
-  if (
-    q.includes("hour") ||
-    q.includes("open") ||
-    q.includes("close") ||
-    q.includes("when") ||
-    q.includes("time") ||
-    q.includes("שעות") ||
-    q.includes("פתוח") ||
-    q.includes("מתי") ||
-    q.includes("זמנים")
-  ) {
-    if (isHeb) {
-      return "שעות הפעילות של המעבדה: ימים ראשון עד חמישי בין השעות 9:00 בבוקר ל-21:00 בערב. בימי שישי ובשבת המעבדה סגורה.";
-    }
-    return "Our business hours are Sunday through Thursday from 9:00 AM to 9:00 PM. We are closed on Friday and Shabbat.";
-  }
-
-  // Drop-off / Locations
-  if (
-    q.includes("location") ||
-    q.includes("address") ||
-    q.includes("where") ||
-    q.includes("drop") ||
-    q.includes("bring") ||
-    q.includes("place") ||
-    q.includes("כתובת") ||
-    q.includes("מיקום") ||
-    q.includes("איפה") ||
-    q.includes("מסירה") ||
-    q.includes("להביא") ||
-    q.includes("להניח")
-  ) {
-    if (isHeb) {
-      return "כתובת המסירה הראשית: 14 Buchanan Rd, Spring Valley, NY. יש לנו גם נקודת מסירה נוספת ב-166 Clinton Lane, Spring Valley, NY. ניתן להניח את הבגד במעטפה/שקית עם פרטי קשר.";
-    }
-    return "Our primary drop-off location is 14 Buchanan Rd, Spring Valley, NY. We also have a secondary drop-off location at 166 Clinton Lane, Spring Valley, NY. Place garments in a bag with your name and phone number.";
-  }
-
-  // Tracking / Order status
-  if (
-    q.includes("track") ||
-    q.includes("status") ||
-    q.includes("order") ||
-    q.includes("ready") ||
-    q.includes("check") ||
-    q.includes("מעקב") ||
-    q.includes("סטטוס") ||
-    q.includes("הזמנה") ||
-    q.includes("מוכן") ||
-    q.includes("בדיקה")
-  ) {
-    if (isHeb) {
-      return "למעקב אחר הזמנה, תוכל להקליד כאן את מספר ההזמנה שלך (למשל 105) או מספר הטלפון, או לבקר בעמוד מעקב הזמנה באתר (/track).";
-    }
-    return "To track your order, you can type your order number (e.g. 105) or phone number right here, or visit the Track Order page on our website (/track).";
-  }
-
-  // Pricing / Cost
+  // 3. Pricing / Cost / How much (Checked FIRST before tracking!)
   if (
     q.includes("price") ||
     q.includes("cost") ||
     q.includes("fee") ||
     q.includes("how much") ||
     q.includes("charge") ||
+    q.includes("rate") ||
+    q.includes("pricing") ||
     q.includes("מחיר") ||
+    q.includes("מחירים") ||
     q.includes("עלות") ||
     q.includes("כמה עולה") ||
-    q.includes("תשלום")
+    q.includes("תשלום") ||
+    q.includes("קאסט") ||
+    q.includes("קאסטן") ||
+    q.includes("וויפיל") ||
+    q.includes("פרייז") ||
+    q.includes("פרייזן") ||
+    q.includes("געלט") ||
+    q.includes("באצאלן")
   ) {
-    if (isHeb) {
-      return "עלות הבדיקה תלויה בסוג הבגד (חליפות, מעילים, ז'קטים, מכנסיים או בדים). זמן הבדיקה הוא כ-1-2 ימי עסקים. ניתן לפנות למעבדה לקבלת הצעת מחיר מדויקת.";
+    if (isYid) {
+      return "די פרייז פאר שעטנז בדיקה איז געווענליך צווישן $15 ביז $25 פאר א קלייד (רעקלאך, אנצוגן, מאנטלען, הויזן וכדומה). עס נעמט געווענליך 1-2 טעג. איר קענט עס איבערלאזן ביי 14 Buchanan Rd אדער רופן 845-552-4744.";
     }
-    return "Testing fees depend on the garment type (suits, coats, jackets, pants, or custom textiles). Standard turnaround is 1-2 business days. Drop off your item or contact the lab for an exact quote.";
+    if (isHeb) {
+      return "עלות בדיקת שעטנז נעה בדרך כלל בין $15 ל-$25 לבגד (חליפות, מעילים, ז'קטים, מכנסיים וכו'). זמן הבדיקה הרגיל הוא 1-2 ימי עסקים. ניתן להניח את הבגד ב-14 Buchanan Rd או ליצור קשר ב-845-552-4744.";
+    }
+    return "Testing fees typically range from $15 to $25 per garment (suits, coats, jackets, pants, or custom textiles). Standard turnaround is 1-2 business days. Drop off items at 14 Buchanan Rd or call 845-552-4744 for an exact quote.";
   }
 
-  // VIP pickup / Delivery
+  // 4. Opening Hours / Schedule / When open
+  if (
+    q.includes("hour") ||
+    q.includes("hours") ||
+    q.includes("open") ||
+    q.includes("opening") ||
+    q.includes("close") ||
+    q.includes("closing") ||
+    q.includes("schedule") ||
+    q.includes("when") ||
+    q.includes("time") ||
+    q.includes("שעות") ||
+    q.includes("פתוח") ||
+    q.includes("שעות פעילות") ||
+    q.includes("מתי") ||
+    q.includes("זמנים") ||
+    q.includes("מתי פתוח") ||
+    q.includes("שעה") ||
+    q.includes("שעות פתיחה") ||
+    q.includes("סגור") ||
+    q.includes("וועלכע שעה") ||
+    q.includes("אפן") ||
+    q.includes("אפען") ||
+    q.includes("עפענען") ||
+    q.includes("ווען") ||
+    q.includes("זענען ענק אפן") ||
+    q.includes("זענט איר אפן")
+  ) {
+    if (isYid) {
+      return "די מעבדה איז אפן זונטאג ביז דאנערשטאג פון 9:00 צופרי ביז 9:00 ביינאכט (9:00 AM - 9:00 PM). פרייטאג און שבת איז פארמאכט.";
+    }
+    if (isHeb) {
+      return "שעות הפעילות של מעבדת השעטנז: ימים ראשון עד חמישי בין השעות 9:00 בבוקר ל-21:00 בערב (9:00 AM – 9:00 PM). בימי שישי ובשבת המעבדה סגורה.";
+    }
+    return "The Shatnez Lab is open Sunday through Thursday from 9:00 AM to 9:00 PM. We are closed on Friday and Shabbat.";
+  }
+
+  // 5. Drop-off / Locations / Address
+  if (
+    q.includes("location") ||
+    q.includes("locations") ||
+    q.includes("address") ||
+    q.includes("where") ||
+    q.includes("drop") ||
+    q.includes("dropoff") ||
+    q.includes("bring") ||
+    q.includes("place") ||
+    q.includes("directions") ||
+    q.includes("כתובת") ||
+    q.includes("מיקום") ||
+    q.includes("איפה") ||
+    q.includes("איפה לשים") ||
+    q.includes("מסירה") ||
+    q.includes("להביא") ||
+    q.includes("להניח") ||
+    q.includes("איפה אתם") ||
+    q.includes("נקודת מסירה") ||
+    q.includes("וואו") ||
+    q.includes("וואו איז") ||
+    q.includes("וואו קען מען") ||
+    q.includes("ברענגען") ||
+    q.includes("אדרעס") ||
+    q.includes("פלאץ") ||
+    q.includes("איבערלאזן")
+  ) {
+    if (isYid) {
+      return "אונזער הויפט פלאץ איז: 14 Buchanan Rd, Spring Valley, NY. מיר האבן אויך נאך א דראפ-אף לאקאציע ביי: 166 Clinton Lane, Spring Valley, NY. לייגט אריין די בגדים אין א זעקל מיט אייער נאמען און טעלעפאן נומער.";
+    }
+    if (isHeb) {
+      return "כתובת המסירה הראשית: 14 Buchanan Rd, Spring Valley, NY. נקודת מסירה נוספת: 166 Clinton Lane, Spring Valley, NY. ניתן להניח את הבגדים בשקית/מעטפה עם שמך ומספר הטלפון שלך.";
+    }
+    return "Our primary drop-off location is 14 Buchanan Rd, Spring Valley, NY. We also have a secondary drop-off location at 166 Clinton Lane, Spring Valley, NY. Place garments in a bag with your name and phone number.";
+  }
+
+  // 6. Turnaround Time / How long
+  if (
+    q.includes("how long") ||
+    q.includes("duration") ||
+    q.includes("time take") ||
+    q.includes("turnaround") ||
+    q.includes("when ready") ||
+    q.includes("fast") ||
+    q.includes("urgent") ||
+    q.includes("same day") ||
+    q.includes("כמה זמן") ||
+    q.includes("זמן בדיקה") ||
+    q.includes("תוך כמה זמן") ||
+    q.includes("מתי מוכן") ||
+    q.includes("דחוף") ||
+    q.includes("באותו יום") ||
+    q.includes("מהר") ||
+    q.includes("ווי לאנג") ||
+    q.includes("נעמט") ||
+    q.includes("געדויערט") ||
+    q.includes("שנעל")
+  ) {
+    if (isYid) {
+      return "געווענליך נעמט די בדיקה 1-2 ביזנעס טעג. אויב איר דארפט א שנעלע / דרינגענדע בדיקה אויפן פלאץ, ביטע רופט 845-552-4744 צו קאארדינירן פון פאראויס.";
+    }
+    if (isHeb) {
+      return "זמן הבדיקה הרגיל במעבדה הוא 1 עד 2 ימי עסקים. בדיקה דחופה או במקום אפשרית בתיאום טלפוני מראש ב-845-552-4744.";
+    }
+    return "Standard testing turnaround is 1 to 2 business days. Urgent or on-the-spot checking is available by prior coordination at 845-552-4744.";
+  }
+
+  // 7. VIP pickup / Delivery
   if (
     q.includes("pickup") ||
     q.includes("delivery") ||
@@ -170,27 +289,100 @@ function getSmartFallbackReply(text: string, isHeb: boolean, adminOnline: boolea
     q.includes("איסוף") ||
     q.includes("משלוח") ||
     q.includes("בית") ||
-    q.includes("עד הבית")
+    q.includes("עד הבית") ||
+    q.includes("החזרה") ||
+    q.includes("היים") ||
+    q.includes("נעמען")
   ) {
+    if (isYid) {
+      return "מיר שטעלן צו א ספעציעלע VIP סערוויס פון אויפנעמען און צוריקברענגען בגדים ביז צום טיר. מען קען עס באשטעלן אויפן וועבסייט אדער רופן 845-552-4744.";
+    }
     if (isHeb) {
       return "אנו מציעים שירות VIP של איסוף והחזרה עד לבית הלקוח, וכן בדיקת שעטנז מקצועית בבית או בחנות. ניתן לתאם זאת באתר או מול המעבדה בטלפון 845-552-4744.";
     }
     return "We offer premium VIP home pickup & delivery services, as well as on-site store inventory certification. You can coordinate this on our website or by calling 845-552-4744.";
   }
 
-  // Human representative / Callback
+  // 8. Order Tracking (Strict matching - only when asking for specific status/order)
+  if (
+    q.includes("track") ||
+    q.includes("tracking") ||
+    q.includes("order status") ||
+    q.includes("check status") ||
+    q.includes("where is my order") ||
+    q.includes("my order") ||
+    q.includes("is my order ready") ||
+    q.includes("order ready") ||
+    q.includes("סטטוס הזמנה") ||
+    q.includes("מעקב הזמנה") ||
+    q.includes("מצב הזמנה") ||
+    q.includes("האם ההזמנה מוכנה") ||
+    q.includes("ההזמנה שלי מוכנה") ||
+    q.includes("איפה ההזמנה") ||
+    q.includes("איפה הבגד") ||
+    q.includes("ווי האלט מיין ארדער") ||
+    q.includes("ארדער סטאטוס") ||
+    q.includes("מיין ארדער")
+  ) {
+    if (isYid) {
+      return "צו זען דעם סטאטוס פון אייער ארדער, ביטע שרייבט דא אייער ארדער נומער (למשל 105) אדער טעלעפאן נומער, אדער באזוכט די טרעקינג פעידזש (/track).";
+    }
+    if (isHeb) {
+      return "למעקב אחר הזמנה, תוכל להקליד כאן את מספר ההזמנה שלך (למשל 105) או מספר הטלפון, או לבקר בעמוד מעקב הזמנה באתר (/track).";
+    }
+    return "To track your order, you can type your order number (e.g. 105) or phone number right here, or visit the Track Order page on our website (/track).";
+  }
+
+  // 9. Greetings
+  if (
+    q.includes("hello") ||
+    q.includes("hi") ||
+    q.includes("hey") ||
+    q.includes("good morning") ||
+    q.includes("good evening") ||
+    q.includes("שלום") ||
+    q.includes("היי") ||
+    q.includes("בוקר טוב") ||
+    q.includes("ערב טוב") ||
+    q.includes("גוט מארגן") ||
+    q.includes("גוט אוונט") ||
+    q.includes("שלום עליכם") ||
+    q.includes("וואס הערט זיך") ||
+    q.includes("גוט יום טוב") ||
+    q.includes("גוט וואך")
+  ) {
+    if (isYid) {
+      return "שלום עליכם! ברוכים הבאים צו מעבדת השעטנז (ClearFabric). ווי אזוי קענען מיר אייך העלפן היינט מיט אייערע בגדים אדער שאלות?";
+    }
+    if (isHeb) {
+      return "שלום וברכה! ברוכים הבאים למעבדת השעטנז. כיצד נוכל לעזור לך היום עם בדיקת הבגדים או שאלות?";
+    }
+    return "Hello! Welcome to The Shatnez Lab. How can we assist you today with your garment testing or questions?";
+  }
+
+  // 10. Human representative / Callback
   if (
     q.includes("human") ||
     q.includes("person") ||
     q.includes("speak") ||
     q.includes("call") ||
     q.includes("phone") ||
+    q.includes("agent") ||
     q.includes("נציג") ||
     q.includes("אדם") ||
+    q.includes("בנאדם") ||
+    q.includes("אנושי") ||
     q.includes("לדבר") ||
     q.includes("שיחה") ||
-    q.includes("טלפון")
+    q.includes("טלפון") ||
+    q.includes("רעדן") ||
+    q.includes("מענטש") ||
+    q.includes("רופן") ||
+    q.includes("קאל")
   ) {
+    if (isYid) {
+      return "א נציג פון די מעבדה האט באקומען א נאטיפיקאציע. ביטע לאזט איבער אייער טעלעפאן נומער אדער שרייבט 'אמתין' און מיר וועלן אייך גערן ענטפערן.";
+    }
     if (isHeb) {
       if (adminOnline) {
         return "נציג מעבדה מחובר כעת במערכת וקיבל התראה על הודעתך. זמן מענה משוער: 1-3 דקות. תוכל להמתין כאן או להשאיר מספר טלפון לחזרה.";
@@ -203,18 +395,14 @@ function getSmartFallbackReply(text: string, isHeb: boolean, adminOnline: boolea
     return "A lab specialist has been alerted to your message. Please leave your phone number and the best time to reach you, and we will call or text you shortly.";
   }
 
-  // Generic fallback with routing notice
+  // 11. Natural comprehensive fallback
+  if (isYid) {
+    return "א גרויסן דאנק פארן זיך פארבינדן מיט מעבדת השעטנז! מיר זענען אפן זונטאג ביז דאנערשטאג 9AM-9PM ביי 14 Buchanan Rd (פרייזן $15-$25, נעמט 1-2 טעג). אויב איר דארפט הילף אדער ווילט רעדן מיט א נציג, לאזט איבער אייער טעלעפאן נומער און מיר וועלן אייך צוריקרופן.";
+  }
   if (isHeb) {
-    if (adminOnline) {
-      return "תודה שפנית למעבדת השעטנז! סייר ה-AI של המעבדה כאן לשירותך, ונציג אנושי מחובר כעת במערכת. תוכל להמתין למענה או להשאיר מספר טלפון לחזרה.";
-    }
-    return "תודה שפנית למעבדת השעטנז! סייר ה-AI רשם את שאלתך ונציג המעבדה עודכן. להמשך בירור מהיר תוכל להשאיר מספר טלפון ונחזור אליך בהקדם.";
+    return "תודה שפנית למעבדת השעטנז! שעות הפעילות הן א'-ה' 9:00-21:00 ב-14 Buchanan Rd, עלות בדיקה $15-$25 (זמן בדיקה 1-2 ימים). לבירור נוסף או שיחה עם נציג תוכל להשאיר כאן מספר טלפון ונחזור אליך בהקדם.";
   }
-
-  if (adminOnline) {
-    return "Thank you for contacting The Shatnez Lab! Our AI assistant is here to help, and a live lab representative is currently online. You can wait a moment or leave your phone number.";
-  }
-  return "Thank you for contacting The Shatnez Lab! A lab specialist has been alerted. If you would like us to call or text you, please reply with your phone number.";
+  return "Thank you for contacting The Shatnez Lab! We are open Sun-Thu 9:00 AM – 9:00 PM at 14 Buchanan Rd. Testing is typically $15–$25 (1-2 business days). To speak with a specialist or request a callback, simply reply with your phone number!";
 }
 
 async function generateAiChatReply(
@@ -227,45 +415,54 @@ async function generateAiChatReply(
   const key = apiKey || process.env.GEMINI_API_KEY;
   if (!key) return null;
 
-  const targetLang = isHeb ? "HEBREW (עברית טבעית ונעימה)" : "ENGLISH";
+  const isYid = isYiddish(userMessage);
+  let targetLang = "ENGLISH";
+  if (isYid) {
+    targetLang = "YIDDISH (אידיש / Yiddish dialect) or warm HEBREW";
+  } else if (isHeb) {
+    targetLang = "HEBREW (עברית טבעית, ברורה ונעימה)";
+  }
 
-  const systemInstruction = `You are a helpful, courteous, and knowledgeable customer service AI assistant and first responder for "The Shatnez Lab" (מעבדת השעטנז - ClearFabric).
-Your role is to assist website visitors, clarify their needs, provide accurate answers from the knowledge base, and smoothly route inquiries to human lab specialists when needed.
+  const systemInstruction = `You are a courteous, natural, and knowledgeable first responder AI assistant for "The Shatnez Lab" (מעבדת השעטנז - ClearFabric).
+You talk like a real helpful human assistant at the front desk of a professional Shatnez testing laboratory in Spring Valley, NY.
 
 Language Requirement:
-- Reply in ${targetLang}. If the visitor writes in Hebrew or Yiddish, reply in fluent Hebrew. If they write in English, reply in English.
+- Reply in ${targetLang}. If the visitor speaks Yiddish (e.g. "וועלכע שעה זענען ענק אפן?", "וויפיל קאסט?"), reply in fluent, authentic Yiddish. If they speak Hebrew, reply in Hebrew. If English, reply in English.
 
 Knowledge Base & Lab Facts:
 - Business Name: The Shatnez Lab (ClearFabric) / מעבדת השעטנז
-- Primary Drop-off Location: 14 Buchanan Rd, Spring Valley, NY (הנחת בגדים במעטפה/שקית עם פרטי קשר).
+- Primary Drop-off Location: 14 Buchanan Rd, Spring Valley, NY (place garments in bag with name and phone number).
 - Secondary Drop-off Location: 166 Clinton Lane, Spring Valley, NY.
-- Business Hours: Sunday through Thursday, 9:00 AM – 9:00 PM. Closed on Friday & Shabbat (סגור בשישי ושבת).
+- Business Hours: Sunday through Thursday, 9:00 AM – 9:00 PM. Closed Friday & Shabbat (סגור בשישי ושבת).
 - Phone: 845-552-4744.
-- Turnaround Time: Standard turnaround is 1 to 2 business days (1-2 ימי עסקים). Urgent / on-spot checking is available by prior appointment.
-- Services: Certified laboratory microscopic testing of coats, suits, jackets, blazers, pants, skirts, wool garments, linens, and home textiles. VIP home pickup & delivery service. On-site store and inventory certification. Mail-in shipping available.
+- Pricing / Fees: Standard testing fees are typically $15 to $25 per garment (suits, coats, blazers, pants, wool garments). Very affordable and certified.
+- Turnaround Time: Standard turnaround is 1 to 2 business days (1-2 ימי עסקים). Urgent / on-the-spot checking available by appointment.
+- Services: Microscopic laboratory testing for wool and linen fibers in men's, women's, and children's suits, jackets, coats, skirts, pants, sweaters, and blankets. VIP home pickup & delivery service. On-site store inventory certification.
 - Order Tracking: Visitors can track orders directly by providing their order number (e.g. 105) or phone number in this chat, or on /track.
 
-Representative Availability Status:
-- Human Lab Representative is currently: ${adminOnline ? "ONLINE (מחובר כעת)" : "AWAY / ON CALL (נציג מקבל התראות SMS/מייל בזמן אמת)"}.
+Representative Availability:
+- Human Lab Representative is currently: ${adminOnline ? "ONLINE (מחובר כעת)" : "AWAY / ON CALL"}.
 
-Interaction Guidelines:
-1. Contact Info Recognition: If the visitor provides a phone number or email, acknowledge it warmly and confirm that a lab specialist has been notified and will reach out.
-2. Direct Answers: Answer standard questions (hours, drop-off locations, turnaround time, services, how testing works) directly, clearly, and concisely.
-3. Complex Inquiries & Human Escalation:
-   - If the inquiry is complex, specialized, or if the visitor asks to speak with a human representative:
-     - Answer any part you can, and inform them politely:
-       - If representative is online: "נציג מעבדה מחובר כעת וקיבל את הודעתך (זמן מענה משוער: 1-3 דקות). תוכל להמתין כאן או להשאיר מספר טלפון לחזרה." / "A lab representative is online and has been alerted (est. wait: 1-3 mins). You can wait here or leave your phone number."
-       - If representative is away: "פנייתך הועברה לנציג המעבדה שקיבל התראה מיידית. תוכל להשאיר כאן מספר טלפון ונחזור אליך בהקדם האפשרי." / "Your inquiry has been forwarded to our lab specialist. Please leave your phone number and we will contact you shortly."
-4. Conciseness: Keep answers clear, friendly, and brief (2-4 sentences maximum). Do not use markdown headers or json.`;
+Guidelines:
+1. Answer directly: When asked about hours, prices ($15-$25), addresses (14 Buchanan Rd), turnaround (1-2 days), or services, provide the exact direct answer immediately without generic filler.
+2. If asked about tracking an order, ask for their Order ID or Phone Number.
+3. If they leave a phone number or email, confirm it warmly and state that a lab specialist will contact them.
+4. Keep answers brief, warm, concise, and natural (1-3 sentences). Never return JSON or markdown headers.`;
 
-  const modelsToTry = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"];
+  const modelsToTry = [
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
+  ];
 
   for (const model of modelsToTry) {
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
       const recentMessages = history
-        .slice(-20)
+        .slice(-15)
         .map((m) => `${m.sender === "user" ? "Visitor" : "Lab Specialist"}: ${m.text}`)
         .join("\n");
       const promptText = `${systemInstruction}\n\nRecent conversation:\n${recentMessages}\n\nVisitor: ${userMessage}\nLab Assistant:`;
@@ -284,7 +481,7 @@ Interaction Guidelines:
         const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
         if (replyText.trim()) return replyText.trim();
       } else {
-        console.warn(`[LiveChat AI] Gemini model ${model} status ${response.status}`);
+        console.warn(`[LiveChat AI] Gemini model ${model} returned HTTP ${response.status}`);
       }
     } catch (err) {
       console.error(`[LiveChat AI] Error calling Gemini API with model ${model}:`, err);
