@@ -316,8 +316,9 @@ export async function POST(req: NextRequest) {
     const presence = await getAdminPresence();
     const adminOnline = presence.isOnline;
 
-    // 3. Check for Phone Callback Response or Order ID Lookup
+    // 3. Human Escalation, Callback Response, or Order ID Lookup
     let aiReply: string | null = null;
+    let sendAdminSmsNotice: { type: "phone_callback" | "chat_wait"; text: string } | null = null;
 
     const cleanDigits = trimmedText.replace(/\D/g, "");
     const isExplicitPhone =
@@ -329,25 +330,62 @@ export async function POST(req: NextRequest) {
         trimmedText.toLowerCase().includes("call") ||
         trimmedText.toLowerCase().includes("number"));
 
-    // Check if bot previously asked for phone number in this session
+    // Check if bot previously asked for phone or preference
     const priorAdminMsgs = (updatedSession?.messages || []).filter(
       (m) =>
         m.sender === "admin" &&
         m.id !== updatedSession?.messages?.[updatedSession.messages.length - 1]?.id
     );
     const lastAdminMsg = priorAdminMsgs.slice(-1)[0]?.text || "";
-    const botPreviouslyAskedForPhone =
+    const botPreviouslyAskedForContact =
       lastAdminMsg.includes("טלפון") ||
       lastAdminMsg.includes("phone") ||
       lastAdminMsg.includes("חזרה") ||
       lastAdminMsg.includes("callback") ||
-      lastAdminMsg.includes("reach you") ||
-      lastAdminMsg.includes("call you");
+      lastAdminMsg.includes("שיחה חוזרת") ||
+      lastAdminMsg.includes("מענה") ||
+      lastAdminMsg.includes("להמתין") ||
+      lastAdminMsg.includes("wait");
 
     const isPhoneResponse =
-      isExplicitPhone || (botPreviouslyAskedForPhone && cleanDigits.length >= 7 && cleanDigits.length <= 15);
+      isExplicitPhone || (botPreviouslyAskedForContact && cleanDigits.length >= 7 && cleanDigits.length <= 15);
 
-    // If visitor provided a phone number:
+    const lower = trimmedText.toLowerCase();
+    const isWaitInChatChoice =
+      lower.includes("להמתין") ||
+      lower.includes("אמתין") ||
+      lower.includes("בחלון") ||
+      lower.includes("בצ'אט") ||
+      lower.includes("wait in chat") ||
+      lower.includes("wait here") ||
+      lower.includes("hold on") ||
+      lower.includes("stay in chat") ||
+      trimmedText.includes("מענה כאן בצ'אט") ||
+      trimmedText.includes("אמתין למענה");
+
+    const isRepresentativeRequest =
+      !isPhoneResponse &&
+      !isWaitInChatChoice &&
+      (lower.includes("נציג") ||
+        lower.includes("אדם חי") ||
+        lower.includes("אדם") ||
+        lower.includes("בנאדם") ||
+        lower.includes("אנושי") ||
+        lower.includes("לדבר עם") ||
+        lower.includes("שיחה עם") ||
+        lower.includes("שיחה חוזרת") ||
+        lower.includes("תתקשרו") ||
+        lower.includes("חייגו") ||
+        lower.includes("human") ||
+        lower.includes("representative") ||
+        lower.includes("agent") ||
+        lower.includes("specialist") ||
+        lower.includes("real person") ||
+        lower.includes("talk to someone") ||
+        lower.includes("call me") ||
+        lower.includes("request callback"));
+
+    // Case 1: Visitor provided a phone number (Phone Callback)
     if (isPhoneResponse) {
       let linkedOrdersText = "";
       if (cleanDigits.length >= 7) {
@@ -369,12 +407,46 @@ export async function POST(req: NextRequest) {
       }
 
       if (userIsHeb) {
-        aiReply = `תודה רבה! מספר הטלפון שלך (${trimmedText}) נקלט בהצלחה במערכת. נציג מעבדה קיבל התראה וייצור איתך קשר בהקדם האפשרי.${linkedOrdersText}`;
+        aiReply = `תודה רבה! מספר הטלפון שלך (${trimmedText}) נקלט בהצלחה במערכת. נציג מעבדה קיבל התראה ויחייג אליך בהקדם האפשרי.${linkedOrdersText}`;
       } else {
-        aiReply = `Thank you! We have received your phone number (${trimmedText}). A lab specialist has been notified and will contact you as soon as possible.${linkedOrdersText}`;
+        aiReply = `Thank you! We have received your phone number (${trimmedText}). A lab specialist has been notified and will call you as soon as possible.${linkedOrdersText}`;
       }
-    } else {
-      // Check if input looks like an order ID (e.g. "#105", "105", "order 105")
+
+      sendAdminSmsNotice = {
+        type: "phone_callback",
+        text: trimmedText,
+      };
+    }
+    // Case 2: Visitor chose to wait in the chat window for an SMS reply from admin
+    else if (isWaitInChatChoice) {
+      // Find what question or topic the visitor previously asked
+      const userQuestions = (updatedSession?.messages || [])
+        .filter((m) => m.sender === "user" && m.text !== trimmedText)
+        .slice(-2)
+        .map((m) => m.text);
+      const questionContext = userQuestions.length > 0 ? userQuestions.join(" | ") : trimmedText;
+
+      if (userIsHeb) {
+        aiReply = `נציג המעבדה עודכן והודעתך הועברה אליו ישירות. אנא המתן כאן בחלון הצ'אט בזמן שהנציג מנסח עבורך תשובה...`;
+      } else {
+        aiReply = `Our lab specialist has been alerted directly via SMS. Please hold on in this chat window while they prepare your answer...`;
+      }
+
+      sendAdminSmsNotice = {
+        type: "chat_wait",
+        text: questionContext,
+      };
+    }
+    // Case 3: Visitor requested a human representative -> Ask how they want to connect
+    else if (isRepresentativeRequest) {
+      if (userIsHeb) {
+        aiReply = `בשמחה! כיצד תרצה לקבל מענה מנציג המעבדה?\n\n1. 📞 שיחה חוזרת לטלפון: אנא הקלד את מספר הטלפון שלך ונחייג אליך בהקדם.\n2. 💬 מענה כאן בחלון הצ'אט: הקלד "אמתין כאן" והנציג ישיב לך ישירות לכאן.`;
+      } else {
+        aiReply = `Gladly! How would you prefer to connect with a lab specialist?\n\n1. 📞 Phone Callback: Please reply with your phone number and we will call you.\n2. 💬 Wait in Chat: Reply "Wait in chat" and a specialist will answer you right here.`;
+      }
+    }
+    // Case 4: Order ID Lookup (e.g. "#105", "105", "order 105")
+    else {
       const orderMatch = trimmedText.match(/^(?:#|order\s*#?|הזמנה\s*#?)?(\d{2,6})$/i);
       if (orderMatch && orderMatch[1].length <= 5) {
         const orderId = orderMatch[1];
@@ -393,7 +465,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Generate AI Reply if not an order match / phone callback
+    // 4. Generate AI Reply if not an escalation / order match
     if (!aiReply && updatedSession) {
       aiReply = await generateAiChatReply(
         trimmedText,
@@ -413,20 +485,21 @@ export async function POST(req: NextRequest) {
       updatedSession = await addChatMessage(session.sessionId, "admin", aiReply);
     }
 
-    // 5. Send SMS notification to admin with visitor question & AI reply
+    // 5. Send SMS notification to admin ONLY on human escalation or phone callback
     const adminPhone = settings.forwardingNumber || settings.twilioPhoneNumber;
-    if (adminPhone) {
-      let smsBody = isPhoneResponse
-        ? `[#${session.shortId}] 📞 Customer Phone Callback Received: ${trimmedText}`
-        : `[#${session.shortId}] Web Visitor: ${trimmedText}`;
-      if (aiReply) {
-        smsBody += `\n\nReply: ${aiReply.substring(0, 140)}`;
+    if (adminPhone && sendAdminSmsNotice) {
+      let smsBody = "";
+      if (sendAdminSmsNotice.type === "phone_callback") {
+        smsBody = `[#${session.shortId}] 📞 Live Callback Request from customer phone: ${sendAdminSmsNotice.text}.\nPlease dial this number to assist the customer.`;
+      } else if (sendAdminSmsNotice.type === "chat_wait") {
+        smsBody = `[#${session.shortId}] 💬 Visitor is WAITING in Website Live Chat for your reply!\nQuestion: "${sendAdminSmsNotice.text}"\n\nReply directly to visitor by texting:\n#${session.shortId} your reply`;
       }
-      smsBody += `\n\n(Reply: #${session.shortId} your reply)`;
 
-      sendSms(adminPhone, smsBody).catch((err) => {
-        console.warn(`[Chat API] SMS notification background send error:`, err);
-      });
+      if (smsBody) {
+        sendSms(adminPhone, smsBody).catch((err) => {
+          console.warn(`[Chat API] SMS notification background send error:`, err);
+        });
+      }
     }
 
     // 6. Send Email Alert Notification to Admin

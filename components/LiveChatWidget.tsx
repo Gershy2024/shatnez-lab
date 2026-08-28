@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import {
   MessageCircle,
+  MessageSquare,
   X,
   Send,
   Sparkles,
@@ -650,6 +651,74 @@ export function LiveChatWidget() {
               </div>
             )}
 
+            {/* Escalation Prompt Action Buttons */}
+            {(() => {
+              const lastMsg = messages[messages.length - 1];
+              const isEscalationPrompt =
+                lastMsg &&
+                lastMsg.sender === "admin" &&
+                (lastMsg.text.includes("כיצד תרצה לקבל מענה") ||
+                  lastMsg.text.includes("How would you prefer to connect") ||
+                  lastMsg.text.includes("שיחה חוזרת לטלפון") ||
+                  lastMsg.text.includes("מענה כאן בחלון הצ'אט"));
+
+              const isWaitingOnAdmin =
+                lastMsg &&
+                (lastMsg.text.includes("הודעתך הועברה ישירות") ||
+                  lastMsg.text.includes("forwarded directly to our lab specialist") ||
+                  lastMsg.text.includes("אנא המתן כאן בחלון הצ'אט") ||
+                  lastMsg.text.includes("hold on in this chat window"));
+
+              if (isEscalationPrompt) {
+                return (
+                  <div className="p-3 bg-gold-50 border border-gold-200 rounded-2xl space-y-2 mt-2 shadow-xs">
+                    <p className="text-xs font-bold text-gold-950 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-gold-600" />
+                      {isRtl ? "בחר את אופן ההתקשרות המועדף:" : "Choose your preferred connection:"}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          setInputText(isRtl ? "הטלפון שלי הוא: " : "My phone number is: ");
+                          inputRef.current?.focus();
+                        }}
+                        className="p-2.5 bg-white hover:bg-gold-100 text-navy-950 font-bold text-xs rounded-xl border border-gold-300 shadow-2xs transition flex items-center justify-center gap-1.5"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{isRtl ? "📞 שיחה חוזרת לטלפון" : "📞 Phone Callback"}</span>
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleSendMessage(
+                            isRtl ? "אמתין כאן למענה נציג בחלון הצ'אט" : "Wait in chat for representative"
+                          )
+                        }
+                        className="p-2.5 bg-white hover:bg-gold-100 text-navy-950 font-bold text-xs rounded-xl border border-gold-300 shadow-2xs transition flex items-center justify-center gap-1.5"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-gold-600 shrink-0" />
+                        <span>{isRtl ? "💬 אמתין למענה בצ'אט" : "💬 Wait in Chat"}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isWaitingOnAdmin) {
+                return (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs font-semibold flex items-center gap-2 mt-2 shadow-2xs animate-pulse">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span>
+                      {isRtl
+                        ? "נציג המעבדה קיבל SMS ומנסח עבורך מענה, אנא המתן..."
+                        : "Lab specialist has been texted and will reply here momentarily..."}
+                    </span>
+                  </div>
+                );
+              }
+
+              return null;
+            })()}
+
             <div ref={messagesEndRef} />
           </div>
 
@@ -676,6 +745,13 @@ export function LiveChatWidget() {
               >
                 <Search className="w-3 h-3 text-gold-600" />
                 {isRtl ? "מעקב הזמנה" : "Track Order"}
+              </button>
+              <button
+                onClick={() => handleSendMessage(isRtl ? "שיחה עם נציג אנושי" : "Speak to a human")}
+                className="text-[11px] bg-white hover:bg-gold-50 text-navy-900 border border-primary-200 px-2.5 py-1 rounded-lg shrink-0 font-medium transition shadow-2xs flex items-center gap-1"
+              >
+                <Phone className="w-3 h-3 text-gold-600" />
+                {isRtl ? "שיחה עם נציג" : "Human Agent"}
               </button>
               <button
                 onClick={() => handleSendMessage(isRtl ? "שירות איסוף VIP מהבית" : "VIP Home Pickup")}

@@ -57,8 +57,8 @@ async function handleWebhook(req: NextRequest) {
       });
     }
 
-    // Parse shortId prefix e.g. "#837 Hello" or "837 Hello" or "#837"
-    const match = trimmedBody.match(/^(?:#|\b)(\d{3,5})\b[:\s,.-]*([\s\S]*)/);
+    // Parse shortId prefix e.g. "#837 Hello" or "chat 837 Hello" or "#837"
+    const match = trimmedBody.match(/^(?:#|chat\s*#?|שיחה\s*#?|reply\s*#?)(\d{2,6})\b[:\s,.-]*([\s\S]*)/i);
 
     let targetShortId = "";
     let replyText = trimmedBody;
@@ -66,10 +66,9 @@ async function handleWebhook(req: NextRequest) {
     if (match) {
       targetShortId = match[1];
       replyText = match[2].trim();
-    }
-
-    if (!replyText && match) {
-      replyText = trimmedBody;
+      if (!replyText) {
+        replyText = trimmedBody.replace(/^#\d{2,6}\s*/, "").trim();
+      }
     }
 
     // Find session by shortId (or fallback to most recent active session)
@@ -78,13 +77,23 @@ async function handleWebhook(req: NextRequest) {
     if (session && replyText) {
       console.log(`[Twilio Chat Webhook] Routing admin reply to session ${session.sessionId} (shortId: #${session.shortId}): "${replyText}"`);
       await addChatMessage(session.sessionId, "admin", replyText);
+
+      const confirmationXml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>✅ Reply sent to website chat visitor #${session.shortId}: "${replyText}"</Message></Response>`;
+      return new NextResponse(confirmationXml, {
+        headers: { "Content-Type": "text/xml" },
+      });
+    } else if (session && !replyText) {
+      const promptXml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Please include your reply message after #${targetShortId} (e.g. #${targetShortId} Hello, how can I help?)</Message></Response>`;
+      return new NextResponse(promptXml, {
+        headers: { "Content-Type": "text/xml" },
+      });
     } else {
       console.warn(`[Twilio Chat Webhook] Could not route reply. Target ID: "${targetShortId}", Reply Text: "${replyText}"`);
+      const errorXml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>❌ Live chat session #${targetShortId || "N/A"} was not found or has closed.</Message></Response>`;
+      return new NextResponse(errorXml, {
+        headers: { "Content-Type": "text/xml" },
+      });
     }
-
-    return new NextResponse("<Response/>", {
-      headers: { "Content-Type": "text/xml" },
-    });
   } catch (error: any) {
     console.error("[Twilio Chat Webhook] Error processing incoming SMS:", error);
     return new NextResponse("<Response/>", {

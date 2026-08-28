@@ -3695,17 +3695,17 @@ export default function AdminPage() {
 
             {/* SMS Chat Sub-tab */}
             {callLogSubTab === "sms" && (
-              <div className={`grid grid-cols-1 md:grid-cols-3 border border-primary-200 rounded-3xl overflow-hidden bg-white shadow-sm min-h-[550px] max-h-[700px] ${isRtl ? "direction-rtl" : ""}`}>
+              <div className={`grid grid-cols-1 md:grid-cols-3 border border-primary-200 rounded-3xl overflow-hidden bg-white shadow-sm h-[620px] max-h-[calc(100vh-220px)] ${isRtl ? "direction-rtl" : ""}`}>
                 
                 {/* Left Thread List Pane (1/3) */}
-                <div className="md:col-span-1 border-r border-primary-150 flex flex-col bg-primary-50/25 h-full overflow-y-auto">
-                  <div className="p-4 border-b border-primary-150 bg-white">
+                <div className="md:col-span-1 border-r border-primary-150 flex flex-col bg-primary-50/25 h-full overflow-hidden">
+                  <div className="p-4 border-b border-primary-150 bg-white shrink-0">
                     <h3 className="font-bold text-navy-950 text-sm flex items-center gap-1.5">
                       <MessageSquare className="w-4 h-4 text-gold-500" />
                       {isRtl ? "שיחות אחרונות" : "Conversations"}
                     </h3>
                   </div>
-                  <div className="flex-1 overflow-y-auto divide-y divide-primary-100">
+                  <div className="flex-1 overflow-y-auto divide-y divide-primary-100 min-h-0">
                     {smsThreads.map((thread) => {
                       const isActive = selectedSmsPhone === thread.phone;
                       return (
@@ -3762,16 +3762,16 @@ export default function AdminPage() {
                 </div>
 
                 {/* Right Chat Message Pane (2/3) */}
-                <div className="md:col-span-2 flex flex-col h-full bg-white relative">
+                <div className="md:col-span-2 flex flex-col h-full bg-white relative overflow-hidden">
                   {selectedSmsPhone ? (() => {
                     const thread = smsThreads.find(t => t.phone === selectedSmsPhone);
                     const matchedOrder = orders.find(o => o.phone && o.phone.replace(/\D/g, "") === selectedSmsPhone.replace(/\D/g, ""));
                     const customerName = thread?.customerName || matchedOrder?.customerName;
 
                     return (
-                      <div className="flex flex-col h-full absolute inset-0">
+                      <div className="flex flex-col h-full absolute inset-0 min-h-0">
                         {/* Chat Pane Header */}
-                        <div className={`p-4 border-b border-primary-150 flex items-center justify-between bg-primary-50/30 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <div className={`p-4 border-b border-primary-150 flex items-center justify-between bg-primary-50/30 shrink-0 ${isRtl ? "flex-row-reverse" : ""}`}>
                           <div className={`flex items-center gap-3.5 ${isRtl ? "flex-row-reverse" : ""}`}>
                             <div className="w-10 h-10 rounded-full bg-gold-100 flex items-center justify-center font-bold text-gold-700 shrink-0">
                               {customerName ? customerName.charAt(0) : <User className="w-5 h-5 text-gold-600" />}
@@ -3819,8 +3819,8 @@ export default function AdminPage() {
                         </div>
 
                         {/* Message Bubble Container */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50 flex flex-col justify-end">
-                          <div className="space-y-3.5 overflow-y-auto flex-1 flex flex-col">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50 min-h-0 flex flex-col justify-end">
+                          <div className="space-y-3.5 overflow-y-auto flex-1 flex flex-col min-h-0">
                             {thread?.messages.map((msg) => {
                               const isInbound = msg.direction === "inbound";
                               return (
@@ -3849,7 +3849,7 @@ export default function AdminPage() {
                         </div>
 
                         {/* Chat Input Area */}
-                        <form onSubmit={handleSendSms} className={`p-4 border-t border-primary-150 bg-white flex gap-2.5 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <form onSubmit={handleSendSms} className={`p-3.5 border-t border-primary-150 bg-white flex gap-2.5 shrink-0 ${isRtl ? "flex-row-reverse" : ""}`}>
                           <input
                             type="text"
                             value={smsInput}
@@ -3862,7 +3862,7 @@ export default function AdminPage() {
                           <button
                             type="submit"
                             disabled={sendingSms || !smsInput.trim()}
-                            className="btn-primary py-2.5 px-4 rounded-xl flex items-center justify-center gap-1.5 shadow"
+                            className="btn-primary py-2.5 px-4 rounded-xl flex items-center justify-center gap-1.5 shadow shrink-0"
                           >
                             <Send className="w-4 h-4" />
                             <span>{isRtl ? "שלח" : "Send"}</span>

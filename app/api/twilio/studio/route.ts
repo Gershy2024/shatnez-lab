@@ -171,12 +171,14 @@ async function handleRequest(req: NextRequest) {
     const incomingSmsPhone = getParam("phone") || getParam("From") || getParam("from") || getParam("Caller") || "";
     const trimmedSmsText = incomingSmsText.trim();
 
-    if (trimmedSmsText) {
-      const chatMatch = trimmedSmsText.match(/^(?:#|\b)(\d{3,5})\b[:\s,.-]*([\s\S]*)/);
+    if (trimmedSmsText.startsWith("#") || trimmedSmsText.match(/^(?:chat|שיחה|reply)\s*#?\d{2,6}/i)) {
+      const chatMatch = trimmedSmsText.match(/^(?:#|chat\s*#?|שיחה\s*#?|reply\s*#?)(\d{2,6})\b[:\s,.-]*([\s\S]*)/i);
       if (chatMatch) {
         const targetShortId = chatMatch[1];
         let replyText = chatMatch[2].trim();
-        if (!replyText) replyText = trimmedSmsText;
+        if (!replyText) {
+          replyText = trimmedSmsText.replace(/^#\d{2,6}\s*/, "").trim();
+        }
 
         const chatSession = await findChatSessionByShortId(targetShortId);
         if (chatSession && replyText) {
@@ -185,8 +187,24 @@ async function handleRequest(req: NextRequest) {
           if (incomingSmsPhone) {
             await logSmsMessage(incomingSmsPhone, trimmedSmsText, "inbound");
             await logCallEvent(undefined, incomingSmsPhone, `Live Chat SMS Reply: "${replyText}"`, "completed");
+            
+            const confirmationMsg = `✅ Reply sent to website chat visitor #${chatSession.shortId}:\n"${replyText}"`;
+            await sendSms(incomingSmsPhone, confirmationMsg);
           }
-          return jsonResponse({ success: true, replyMessage: "" });
+          return jsonResponse({ success: true, replyMessage: `✅ Reply sent to visitor #${chatSession.shortId}` });
+        } else if (chatSession && !replyText) {
+          const promptMsg = `Please include your reply message after #${targetShortId} (e.g. #${targetShortId} Hello, how can I help?)`;
+          if (incomingSmsPhone) await sendSms(incomingSmsPhone, promptMsg);
+          return jsonResponse({ success: true, replyMessage: promptMsg });
+        } else {
+          // Session not found
+          const notFoundMsg = `❌ Live chat session #${targetShortId} was not found or has closed. Please check the Admin Dashboard.`;
+          console.warn(`[Twilio Studio API Global Intercept] Chat session #${targetShortId} not found.`);
+          if (incomingSmsPhone) {
+            await logSmsMessage(incomingSmsPhone, trimmedSmsText, "inbound");
+            await sendSms(incomingSmsPhone, notFoundMsg);
+          }
+          return jsonResponse({ success: true, replyMessage: notFoundMsg });
         }
       }
     }
@@ -958,17 +976,32 @@ async function handleRequest(req: NextRequest) {
 
       // ─── LIVE CHAT SMS REPLY INTERCEPTION ───
       const trimmedMsg = msgBody.trim();
-      const chatMatch = trimmedMsg.match(/^(?:#|\b)(\d{3,5})\b[:\s,.-]*([\s\S]*)/);
-      if (chatMatch) {
-        const targetShortId = chatMatch[1];
-        const replyText = chatMatch[2].trim();
-        const chatSession = await findChatSessionByShortId(targetShortId);
-        if (chatSession) {
-          console.log(`[Twilio Studio SMS] Intercepted live chat reply for session #${chatSession.shortId}: "${replyText}"`);
-          if (replyText) {
-            await addChatMessage(chatSession.sessionId, "admin", replyText);
+      if (trimmedMsg.startsWith("#") || trimmedMsg.match(/^(?:chat|שיחה|reply)\s*#?\d{2,6}/i)) {
+        const chatMatch = trimmedMsg.match(/^(?:#|chat\s*#?|שיחה\s*#?|reply\s*#?)(\d{2,6})\b[:\s,.-]*([\s\S]*)/i);
+        if (chatMatch) {
+          const targetShortId = chatMatch[1];
+          let replyText = chatMatch[2].trim();
+          if (!replyText) {
+            replyText = trimmedMsg.replace(/^#\d{2,6}\s*/, "").trim();
           }
-          return globalJsonResponse({ success: true, replyMessage: "" });
+
+          const chatSession = await findChatSessionByShortId(targetShortId);
+          if (chatSession && replyText) {
+            console.log(`[Twilio Studio SMS] Intercepted live chat reply for session #${chatSession.shortId}: "${replyText}"`);
+            await addChatMessage(chatSession.sessionId, "admin", replyText);
+            
+            const confirmationMsg = `✅ Reply sent to website chat visitor #${chatSession.shortId}:\n"${replyText}"`;
+            if (fromPhone) await sendSms(fromPhone, confirmationMsg);
+            return globalJsonResponse({ success: true, replyMessage: confirmationMsg });
+          } else if (chatSession && !replyText) {
+            const promptMsg = `Please include your reply message after #${targetShortId} (e.g. #${targetShortId} Hello, how can I help?)`;
+            if (fromPhone) await sendSms(fromPhone, promptMsg);
+            return globalJsonResponse({ success: true, replyMessage: promptMsg });
+          } else {
+            const notFoundMsg = `❌ Live chat session #${targetShortId} was not found or has closed. Please check the Admin Dashboard.`;
+            if (fromPhone) await sendSms(fromPhone, notFoundMsg);
+            return globalJsonResponse({ success: true, replyMessage: notFoundMsg });
+          }
         }
       }
 

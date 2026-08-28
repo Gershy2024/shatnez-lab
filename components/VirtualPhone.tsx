@@ -693,7 +693,7 @@ export default function VirtualPhone({
   const activeInboundCall = calls.find(c => c.status === "active" && Date.now() - c.timestamp < 90000 && c.direction !== "outbound");
 
   return (
-    <div className={`w-full max-w-6xl mx-auto rounded-3xl overflow-hidden flex flex-col h-[700px] font-sans transition-colors duration-300 border ${
+    <div className={`w-full max-w-6xl mx-auto rounded-3xl overflow-hidden flex flex-col h-[min(680px,calc(100vh-80px))] max-h-[88vh] font-sans transition-colors duration-300 border ${
       theme === "dark"
         ? "bg-[#0d1b2a] text-slate-100 border border-slate-800/80 shadow-2xl"
         : "bg-white text-slate-850 border border-slate-200 shadow-2xl"
@@ -945,7 +945,7 @@ export default function VirtualPhone({
           </div>
 
           {/* List Scroll Area */}
-          <div className={`flex-1 overflow-y-auto p-3 space-y-2 transition-colors ${
+          <div className={`flex-1 overflow-y-auto min-h-0 p-3 space-y-2 transition-colors ${
             theme === "dark" ? "bg-slate-950/50" : "bg-[#F5F7FA]"
           }`}>
             
@@ -1681,7 +1681,7 @@ export default function VirtualPhone({
                 </div>
 
                 {/* Message Bubble Threads Area */}
-                <div className={`flex-1 overflow-y-auto p-4 space-y-3 transition-colors duration-300 ${
+                <div className={`flex-1 overflow-y-auto min-h-0 p-4 space-y-3 transition-colors duration-300 ${
                   theme === "dark" ? "bg-[#0b132b]/20" : "bg-slate-100/30"
                 }`}>
                   {threadMessages.map(msg => {

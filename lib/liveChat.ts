@@ -248,7 +248,7 @@ export async function addChatMessage(
   return session;
 }
 
-export async function findChatSessionByShortId(shortId: string): Promise<ChatSession | null> {
+export async function findChatSessionByShortId(shortId?: string): Promise<ChatSession | null> {
   const cleanShortId = shortId ? shortId.replace(/\D/g, "") : "";
 
   if (isConfigured && db) {
@@ -256,11 +256,14 @@ export async function findChatSessionByShortId(shortId: string): Promise<ChatSes
       const snapshotAll = await getDocs(collection(db, CHATS_COLLECTION));
       const docs = snapshotAll.docs
         .map((d) => d.data() as ChatSession)
-        .filter((s) => s && s.sessionId && s.shortId);
+        .filter((s) => s && s.sessionId);
 
       if (cleanShortId) {
-        const found = docs.find((s) => s.shortId === cleanShortId || s.sessionId.includes(cleanShortId));
+        const found = docs.find(
+          (s) => String(s.shortId).trim() === cleanShortId || s.sessionId.includes(cleanShortId)
+        );
         if (found) return found;
+        return null; // Don't return random session if specific ID was searched and not found
       }
 
       if (docs.length > 0) {
@@ -276,8 +279,14 @@ export async function findChatSessionByShortId(shortId: string): Promise<ChatSes
   const allSessions = Array.from(memoryStore.values());
   if (cleanShortId) {
     for (let i = 0; i < allSessions.length; i++) {
-      if (allSessions[i].shortId === cleanShortId) return allSessions[i];
+      if (
+        String(allSessions[i].shortId).trim() === cleanShortId ||
+        allSessions[i].sessionId.includes(cleanShortId)
+      ) {
+        return allSessions[i];
+      }
     }
+    return null;
   }
   if (allSessions.length > 0) {
     allSessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
