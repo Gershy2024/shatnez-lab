@@ -29,11 +29,27 @@ export interface ChatSession {
   deviceInfo?: string;
   referrer?: string;
   location?: string;
+  isLiveChat?: boolean;
 }
 
-const CHATS_COLLECTION = "live_chats";
-const COUNTER_DOC = "counter";
-const PRESENCE_DOC = "admin_presence";
+// Stored in the 'settings' collection to comply with Firebase Firestore security rules
+const SETTINGS_COLLECTION = "settings";
+const COUNTER_DOC = "chat_counter";
+const PRESENCE_DOC = "chat_admin_presence";
+
+function getChatDocId(sessionId: string): string {
+  return sessionId.startsWith("chat_") ? sessionId : `chat_${sessionId}`;
+}
+
+function cleanUndefined<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const key of Object.keys(obj)) {
+    if (obj[key] !== undefined) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
+}
 
 // In-memory fallback for local testing / offline / serverless RAM
 const memoryStore = new Map<string, ChatSession>();
@@ -45,14 +61,14 @@ let inMemoryAdminPresence = {
 async function getNextShortId(): Promise<string> {
   if (isConfigured && db) {
     try {
-      const counterRef = doc(db, CHATS_COLLECTION, COUNTER_DOC);
+      const counterRef = doc(db, SETTINGS_COLLECTION, COUNTER_DOC);
       const snap = await getDoc(counterRef);
       let currentVal = 100;
       if (snap.exists()) {
         currentVal = snap.data().val || 100;
       }
       const nextVal = currentVal + 1;
-      await setDoc(counterRef, { val: nextVal });
+      await setDoc(counterRef, cleanUndefined({ val: nextVal, isCounter: true }));
       return String(nextVal);
     } catch (e) {
       console.error("[LiveChat] Failed to generate shortId from Firestore:", e);
@@ -70,9 +86,11 @@ export async function getOrCreateChatSession(
     targetId = `chat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   }
 
+  const docId = getChatDocId(targetId);
+
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, targetId);
+      const ref = doc(db, SETTINGS_COLLECTION, docId);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data() as ChatSession;
@@ -80,6 +98,7 @@ export async function getOrCreateChatSession(
         if (metadata?.deviceInfo) data.deviceInfo = metadata.deviceInfo;
         if (metadata?.referrer) data.referrer = metadata.referrer;
         if (metadata?.location) data.location = metadata.location;
+        if (!Array.isArray(data.messages)) data.messages = [];
         memoryStore.set(targetId, data);
         return data;
       }
@@ -96,9 +115,10 @@ export async function getOrCreateChatSession(
         deviceInfo: metadata?.deviceInfo,
         referrer: metadata?.referrer,
         location: metadata?.location,
+        isLiveChat: true,
       };
 
-      await setDoc(ref, newSession);
+      await setDoc(ref, cleanUndefined(newSession));
       memoryStore.set(targetId, newSession);
       return newSession;
     } catch (e) {
@@ -113,6 +133,7 @@ export async function getOrCreateChatSession(
     if (metadata?.deviceInfo) data.deviceInfo = metadata.deviceInfo;
     if (metadata?.referrer) data.referrer = metadata.referrer;
     if (metadata?.location) data.location = metadata.location;
+    if (!Array.isArray(data.messages)) data.messages = [];
     return data;
   }
   const fallbackSession: ChatSession = {
@@ -126,6 +147,7 @@ export async function getOrCreateChatSession(
     deviceInfo: metadata?.deviceInfo,
     referrer: metadata?.referrer,
     location: metadata?.location,
+    isLiveChat: true,
   };
   memoryStore.set(targetId, fallbackSession);
   return fallbackSession;
@@ -135,9 +157,11 @@ export async function updateSessionMetadata(
   sessionId: string,
   metadata: { currentPage?: string; deviceInfo?: string; referrer?: string; location?: string }
 ): Promise<ChatSession | null> {
+  const docId = getChatDocId(sessionId);
+
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, sessionId);
+      const ref = doc(db, SETTINGS_COLLECTION, docId);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const session = snap.data() as ChatSession;
@@ -147,7 +171,7 @@ export async function updateSessionMetadata(
         if (metadata.location) session.location = metadata.location;
         session.lastUpdated = Date.now();
 
-        await setDoc(ref, session);
+        await setDoc(ref, cleanUndefined({ ...session, isLiveChat: true }));
         memoryStore.set(sessionId, session);
         return session;
       }
@@ -197,14 +221,17 @@ export async function addChatMessage(
     }
   }
 
+  const docId = getChatDocId(sessionId);
+
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, sessionId);
+      const ref = doc(db, SETTINGS_COLLECTION, docId);
       const snap = await getDoc(ref);
       let session: ChatSession;
 
       if (snap.exists()) {
         session = snap.data() as ChatSession;
+        if (!Array.isArray(session.messages)) session.messages = [];
         session.messages.push(newMsg);
         session.lastUpdated = Date.now();
         if (extractedEmail) session.visitorEmail = extractedEmail;
@@ -220,10 +247,11 @@ export async function addChatMessage(
           status: "active",
           visitorEmail: extractedEmail,
           visitorPhone: extractedPhone,
+          isLiveChat: true,
         };
       }
 
-      await setDoc(ref, session);
+      await setDoc(ref, cleanUndefined({ ...session, isLiveChat: true }));
       memoryStore.set(sessionId, session);
       return session;
     } catch (e) {
@@ -239,7 +267,9 @@ export async function addChatMessage(
     lastUpdated: Date.now(),
     messages: [],
     status: "active",
+    isLiveChat: true,
   };
+  if (!Array.isArray(session.messages)) session.messages = [];
   session.messages.push(newMsg);
   session.lastUpdated = Date.now();
   if (extractedEmail) session.visitorEmail = extractedEmail;
@@ -253,8 +283,9 @@ export async function findChatSessionByShortId(shortId?: string): Promise<ChatSe
 
   if (isConfigured && db) {
     try {
-      const snapshotAll = await getDocs(collection(db, CHATS_COLLECTION));
+      const snapshotAll = await getDocs(collection(db, SETTINGS_COLLECTION));
       const docs = snapshotAll.docs
+        .filter((d) => d.id.startsWith("chat_") && d.id !== COUNTER_DOC && d.id !== PRESENCE_DOC)
         .map((d) => d.data() as ChatSession)
         .filter((s) => s && s.sessionId);
 
@@ -263,7 +294,7 @@ export async function findChatSessionByShortId(shortId?: string): Promise<ChatSe
           (s) => String(s.shortId).trim() === cleanShortId || s.sessionId.includes(cleanShortId)
         );
         if (found) return found;
-        return null; // Don't return random session if specific ID was searched and not found
+        return null;
       }
 
       if (docs.length > 0) {
@@ -303,11 +334,12 @@ export async function getAllChatSessions(): Promise<ChatSession[]> {
 
   if (isConfigured && db) {
     try {
-      const snapshot = await getDocs(collection(db, CHATS_COLLECTION));
+      const snapshot = await getDocs(collection(db, SETTINGS_COLLECTION));
       snapshot.forEach((docSnap) => {
-        if (docSnap.id !== COUNTER_DOC) {
+        if (docSnap.id.startsWith("chat_") && docSnap.id !== COUNTER_DOC && docSnap.id !== PRESENCE_DOC) {
           const data = docSnap.data() as ChatSession;
           if (data && data.sessionId) {
+            if (!Array.isArray(data.messages)) data.messages = [];
             sessionsMap.set(data.sessionId, data);
             memoryStore.set(data.sessionId, data);
           }
@@ -324,6 +356,7 @@ export async function getAllChatSessions(): Promise<ChatSession[]> {
     const hasMsgs = s.messages && s.messages.length > 0;
     const isClosed = s.status === "closed";
     const isRecent = (now - (s.lastUpdated || s.createdAt || 0)) < TEN_MINUTES;
+    // Always preserve all sessions that have messages or are closed
     return hasMsgs || isClosed || isRecent;
   });
 
@@ -335,13 +368,16 @@ export function subscribeToChatSession(
   sessionId: string,
   callback: (session: ChatSession | null) => void
 ) {
+  const docId = getChatDocId(sessionId);
+
   if (isConfigured && db) {
-    const ref = doc(db, CHATS_COLLECTION, sessionId);
+    const ref = doc(db, SETTINGS_COLLECTION, docId);
     return onSnapshot(
       ref,
       (snap) => {
         if (snap.exists()) {
           const data = snap.data() as ChatSession;
+          if (!Array.isArray(data.messages)) data.messages = [];
           memoryStore.set(sessionId, data);
           callback(data);
         } else {
@@ -367,7 +403,7 @@ export function subscribeToChatSession(
 export function subscribeToAllChatSessions(callback: (sessions: ChatSession[]) => void) {
   if (isConfigured && db) {
     return onSnapshot(
-      collection(db, CHATS_COLLECTION),
+      collection(db, SETTINGS_COLLECTION),
       (snap) => {
         const sessionsMap = new Map<string, ChatSession>();
 
@@ -376,9 +412,10 @@ export function subscribeToAllChatSessions(callback: (sessions: ChatSession[]) =
 
         // Override with Firestore live docs
         snap.forEach((docSnap) => {
-          if (docSnap.id !== COUNTER_DOC) {
+          if (docSnap.id.startsWith("chat_") && docSnap.id !== COUNTER_DOC && docSnap.id !== PRESENCE_DOC) {
             const data = docSnap.data() as ChatSession;
             if (data && data.sessionId) {
+              if (!Array.isArray(data.messages)) data.messages = [];
               sessionsMap.set(data.sessionId, data);
               memoryStore.set(data.sessionId, data);
             }
@@ -427,13 +464,14 @@ export async function updateAdminPresence(isOnline: boolean = true): Promise<voi
   const payload = {
     isOnline,
     lastActive: Date.now(),
+    isPresence: true,
   };
   inMemoryAdminPresence = payload;
 
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, PRESENCE_DOC);
-      await setDoc(ref, payload);
+      const ref = doc(db, SETTINGS_COLLECTION, PRESENCE_DOC);
+      await setDoc(ref, cleanUndefined(payload));
     } catch (e) {
       console.error("[LiveChat] Failed to update admin presence:", e);
     }
@@ -443,7 +481,7 @@ export async function updateAdminPresence(isOnline: boolean = true): Promise<voi
 export async function getAdminPresence(): Promise<{ isOnline: boolean; lastActive: number }> {
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, PRESENCE_DOC);
+      const ref = doc(db, SETTINGS_COLLECTION, PRESENCE_DOC);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data() as { isOnline: boolean; lastActive: number };
@@ -469,15 +507,17 @@ export async function updateSessionStatus(
   sessionId: string,
   status: "active" | "closed"
 ): Promise<ChatSession | null> {
+  const docId = getChatDocId(sessionId);
+
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, sessionId);
+      const ref = doc(db, SETTINGS_COLLECTION, docId);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const session = snap.data() as ChatSession;
         session.status = status;
         session.lastUpdated = Date.now();
-        await setDoc(ref, session);
+        await setDoc(ref, cleanUndefined({ ...session, isLiveChat: true }));
         memoryStore.set(sessionId, session);
         return session;
       }
@@ -498,10 +538,11 @@ export async function updateSessionStatus(
 
 export async function deleteChatSession(sessionId: string): Promise<boolean> {
   memoryStore.delete(sessionId);
+  const docId = getChatDocId(sessionId);
 
   if (isConfigured && db) {
     try {
-      const ref = doc(db, CHATS_COLLECTION, sessionId);
+      const ref = doc(db, SETTINGS_COLLECTION, docId);
       await deleteDoc(ref);
       return true;
     } catch (e) {

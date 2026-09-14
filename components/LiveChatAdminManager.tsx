@@ -78,6 +78,8 @@ function playNotificationChime() {
 export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const selectedSessionIdRef = useRef<string | null>(null);
+  selectedSessionIdRef.current = selectedSessionId;
   const [replyText, setReplyText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -151,23 +153,35 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
 
   const updateSessionsState = (newSessions: ChatSession[]) => {
     setSessions((prevSessions) => {
-      if (prevSessions.length === 0) return newSessions;
+      const map = new Map<string, ChatSession>();
+      // Keep previous sessions
+      prevSessions.forEach((s) => map.set(s.sessionId, s));
 
-      return newSessions.map((newSess) => {
-        const prevSess = prevSessions.find((p) => p.sessionId === newSess.sessionId);
-        if (prevSess && prevSess.messages && newSess.messages) {
-          if (prevSess.messages.length > newSess.messages.length) {
-            return {
+      // Merge new sessions from Firestore/API
+      newSessions.forEach((newSess) => {
+        const prev = map.get(newSess.sessionId);
+        if (!prev) {
+          map.set(newSess.sessionId, newSess);
+        } else {
+          const prevCount = prev.messages?.length || 0;
+          const newCount = newSess.messages?.length || 0;
+          if (newCount >= prevCount) {
+            map.set(newSess.sessionId, newSess);
+          } else {
+            map.set(newSess.sessionId, {
               ...newSess,
-              messages: prevSess.messages,
-            };
+              messages: prev.messages,
+            });
           }
         }
-        return newSess;
       });
+
+      const merged = Array.from(map.values());
+      merged.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+      return merged;
     });
 
-    if (newSessions.length > 0 && !selectedSessionId) {
+    if (newSessions.length > 0 && !selectedSessionIdRef.current) {
       setSelectedSessionId(newSessions[0].sessionId);
     }
 
@@ -217,13 +231,13 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
 
     const interval = setInterval(() => {
       fetchSessionsFromApi();
-    }, 4000);
+    }, 5000);
 
     return () => {
       unsubscribe();
       clearInterval(interval);
     };
-  }, [soundEnabled, selectedSessionId]);
+  }, [soundEnabled]);
 
   const selectedSession =
     sessions.find((s) => s.sessionId === selectedSessionId) || sessions[0] || null;

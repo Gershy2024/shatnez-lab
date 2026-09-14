@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
@@ -9,16 +9,34 @@ import PrintCard from "@/components/PrintCard";
 import VirtualPhone from "@/components/VirtualPhone";
 import LiveChatAdminManager from "@/components/LiveChatAdminManager";
 import AdminAiAssistant from "@/components/AdminAiAssistant";
+import OrderAnalytics from "@/components/OrderAnalytics";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest } from "@/lib/db";
-import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User } from "lucide-react";
+import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2 } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
-function formatDateTime(timestamp: number): string {
-  if (!timestamp) return "";
+function parseTimestamp(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === "number") return ts;
+  if (typeof ts === "object") {
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000 + (ts.nanoseconds ? Math.floor(ts.nanoseconds / 1000000) : 0);
+  }
+  if (typeof ts === "string") {
+    const asNum = Number(ts);
+    if (!isNaN(asNum) && asNum > 1000000000) return asNum;
+    const asDate = Date.parse(ts);
+    if (!isNaN(asDate)) return asDate;
+  }
+  return 0;
+}
+
+function formatDateTime(timestamp: any): string {
+  const tsNum = parseTimestamp(timestamp);
+  if (!tsNum) return "";
   try {
-    return new Date(timestamp).toLocaleString("en-US", {
+    return new Date(tsNum).toLocaleString("en-US", {
       timeZone: "America/New_York",
       year: "numeric",
       month: "numeric",
@@ -307,8 +325,9 @@ function getTimelineIcon(parsed: any) {
   return <Info className="w-3 h-3 text-primary-500" />;
 }
 
-function getRelativeTime(timestamp: number, isRtl: boolean): string {
-  const diff = Date.now() - timestamp;
+function getRelativeTime(timestamp: any, isRtl: boolean): string {
+  const tsNum = parseTimestamp(timestamp);
+  const diff = Date.now() - tsNum;
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days = Math.floor(hours / 24);
@@ -552,7 +571,18 @@ export default function AdminPage() {
   const [callLogSubTab, setCallLogSubTab] = useState<"timeline" | "sms">("timeline");
   const [smsInput, setSmsInput] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
+  const isSendingSmsRef = useRef(false);
+  const [smsAttachment, setSmsAttachment] = useState<{
+    file: File;
+    previewUrl: string;
+    base64: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  } | null>(null);
+  const smsFileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedSmsPhone, setSelectedSmsPhone] = useState<string | null>(null);
+  const smsChatEndRef = useRef<HTMLDivElement | null>(null);
   const [holidayModeActive, setHolidayModeActive] = useState(false);
   const [dndActive, setDndActive] = useState(false);
   const [ivrHolidayMsgEn, setIvrHolidayMsgEn] = useState("");
@@ -605,6 +635,7 @@ export default function AdminPage() {
 
   const [adminNotes, setAdminNotes] = useState("");
   const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "livechat" | "ai_assistant">("orders");
+  const [analyticsSubTab, setAnalyticsSubTab] = useState<"orders" | "calls" | "all">("orders");
   const [showAiModal, setShowAiModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingCell, setEditingCell] = useState<{orderId: string, field: string} | null>(null);
@@ -1127,38 +1158,70 @@ export default function AdminPage() {
     }
   }, [isAuthenticated]);
 
-  // Group SMS Messages by Phone number
-  const smsThreads = (() => {
-    const groups: Record<string, { lastMessage: SmsMessage; messages: SmsMessage[]; customerName?: string }> = {};
+  // Fast map of cleanPhone -> Order for O(1) instant lookups without looping
+  const ordersPhoneMap = useMemo(() => {
+    const map = new Map<string, Order>();
+    orders.forEach(o => {
+      if (o.phone) {
+        const clean = o.phone.replace(/\D/g, "");
+        if (clean) map.set(clean, o);
+      }
+    });
+    return map;
+  }, [orders]);
+
+  // Group SMS Messages by Phone number, strictly sorted newest first
+  const smsThreads = useMemo(() => {
+    const groups: Record<string, { lastMessage: SmsMessage; messages: SmsMessage[]; customerName?: string; location?: string }> = {};
+
     smsMessages.forEach(msg => {
-      const cleanPhone = msg.phone.replace(/\D/g, "");
+      const cleanPhone = msg.phone ? msg.phone.replace(/\D/g, "") : "";
+      if (!cleanPhone) return;
+
+      const msgTime = parseTimestamp(msg.timestamp);
+
       if (!groups[cleanPhone]) {
-        const matchedOrder = orders.find(o => o.phone && o.phone.replace(/\D/g, "") === cleanPhone);
+        const matchedOrder = ordersPhoneMap.get(cleanPhone);
         groups[cleanPhone] = {
-          lastMessage: msg,
+          lastMessage: { ...msg, timestamp: msgTime },
           messages: [],
-          customerName: matchedOrder?.customerName
+          customerName: matchedOrder?.customerName,
+          location: matchedOrder?.location
         };
       }
-      groups[cleanPhone].messages.push(msg);
-      if (msg.timestamp > groups[cleanPhone].lastMessage.timestamp) {
-        groups[cleanPhone].lastMessage = msg;
+
+      groups[cleanPhone].messages.push({ ...msg, timestamp: msgTime });
+
+      const currentLastTime = parseTimestamp(groups[cleanPhone].lastMessage.timestamp);
+      if (msgTime >= currentLastTime) {
+        groups[cleanPhone].lastMessage = { ...msg, timestamp: msgTime };
       }
     });
 
     return Object.entries(groups)
       .map(([phone, data]) => ({
         phone,
-        ...data
+        ...data,
+        messages: [...data.messages].sort((a, b) => parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp))
       }))
-      .sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
-  })();
+      .sort((a, b) => parseTimestamp(b.lastMessage.timestamp) - parseTimestamp(a.lastMessage.timestamp));
+  }, [smsMessages, ordersPhoneMap]);
 
+  // Ensure the most recent conversation is selected by default
   useEffect(() => {
-    if (!selectedSmsPhone && smsThreads.length > 0) {
-      setSelectedSmsPhone(smsThreads[0].phone);
+    if (smsThreads.length > 0) {
+      if (!selectedSmsPhone || !smsThreads.some(t => t.phone === selectedSmsPhone)) {
+        setSelectedSmsPhone(smsThreads[0].phone);
+      }
     }
   }, [smsThreads, selectedSmsPhone]);
+
+  // Auto-scroll to bottom of chat when switching threads or new messages arrive
+  useEffect(() => {
+    if (callLogSubTab === "sms" && selectedSmsPhone) {
+      smsChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [selectedSmsPhone, smsMessages.length, callLogSubTab]);
 
   const loadAudioFiles = async () => {
     try {
@@ -1583,26 +1646,173 @@ export default function AdminPage() {
     }
   };
 
-  const handleSendSms = async () => {
-    const selectedCall = calls.find(c => c.id === selectedCallId) || calls[0];
-    if (!smsInput.trim() || !selectedCall) return;
+  const processFileForSms = async (file: File): Promise<{
+    file: File;
+    previewUrl: string;
+    base64: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  } | null> => {
+    if (file.size > 8 * 1024 * 1024) {
+      showToast(isRtl ? "גודל הקובץ עולה על 8MB" : "File size exceeds 8MB limit", "error");
+      return null;
+    }
+
+    if (file.type.startsWith("image/")) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 1600;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+              const base64 = dataUrl.split(",")[1];
+              resolve({
+                file,
+                previewUrl: dataUrl,
+                base64,
+                filename: file.name.replace(/\.[^/.]+$/, ".jpg"),
+                contentType: "image/jpeg",
+                size: Math.round((base64.length * 3) / 4)
+              });
+            } else {
+              const fullData = (e.target?.result as string) || "";
+              const base64 = fullData.split(",")[1] || "";
+              resolve({
+                file,
+                previewUrl: fullData,
+                base64,
+                filename: file.name,
+                contentType: file.type || "image/jpeg",
+                size: file.size
+              });
+            }
+          };
+          img.src = (e.target?.result as string) || "";
+        };
+        reader.readAsDataURL(file);
+      });
+    } else {
+      if (file.size > 750 * 1024) {
+        showToast(isRtl ? "עבור מסמכים, הגודל המקסימלי הוא 750KB" : "Document size must be under 750KB", "error");
+        return null;
+      }
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const fullData = (e.target?.result as string) || "";
+          const base64 = fullData.split(",")[1] || "";
+          resolve({
+            file,
+            previewUrl: "",
+            base64,
+            filename: file.name,
+            contentType: file.type || "application/octet-stream",
+            size: file.size
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const handleAttachmentChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    const processed = await processFileForSms(file);
+    if (processed) {
+      setSmsAttachment(processed);
+    }
+    e.target.value = "";
+  };
+
+  const handlePasteSms = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    if (e.clipboardData.files && e.clipboardData.files.length > 0) {
+      const file = e.clipboardData.files[0];
+      e.preventDefault();
+      const processed = await processFileForSms(file);
+      if (processed) {
+        setSmsAttachment(processed);
+        showToast(isRtl ? "תמונה צורפה מהלוח!" : "Image attached from clipboard!", "info");
+      }
+    }
+  };
+
+  const handleSendSms = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    // Prevent duplicate sending if already in flight
+    if (isSendingSmsRef.current) {
+      console.warn("[Admin SMS] Blocked concurrent send request");
+      return;
+    }
+
+    const targetPhone = selectedSmsPhone || (calls.find(c => c.id === selectedCallId) || calls[0])?.phone;
+    if ((!smsInput.trim() && !smsAttachment) || !targetPhone) return;
+
+    isSendingSmsRef.current = true;
     setSendingSms(true);
+
+    const msgToSend = smsInput.trim();
+    const attToSend = smsAttachment;
+
+    // Immediately clear input fields to prevent accidental double-clicks or multiple submissions
+    setSmsInput("");
+    setSmsAttachment(null);
+
     try {
+      const payload: any = { phone: targetPhone, message: msgToSend };
+      if (attToSend) {
+        payload.media = {
+          base64: attToSend.base64,
+          filename: attToSend.filename,
+          contentType: attToSend.contentType
+        };
+      }
+
       const res = await fetch("/api/twilio/send-sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: selectedCall.phone, message: smsInput })
+        body: JSON.stringify(payload)
       });
+
+      const resData = await res.json().catch(() => ({}));
+
       if (res.ok) {
-        setSmsInput("");
+        showToast(isRtl ? "הודעת SMS נשלחה בהצלחה" : "SMS sent successfully", "success");
       } else {
-        const errData = await res.json();
-        showToast(isRtl ? `שגיאה בשליחת ה-SMS: ${errData.error || ""}` : `Error sending SMS: ${errData.error || ""}`, "error");
+        // Restore input if sending failed
+        setSmsInput(msgToSend);
+        setSmsAttachment(attToSend);
+        showToast(isRtl ? `שגיאה בשליחת ה-SMS: ${resData.error || ""}` : `Error sending SMS: ${resData.error || ""}`, "error");
       }
     } catch (error) {
       console.error("Failed to send SMS:", error);
+      setSmsInput(msgToSend);
+      setSmsAttachment(attToSend);
       showToast(isRtl ? "שגיאה בחיבור לשרת" : "Network error sending SMS", "error");
     } finally {
+      isSendingSmsRef.current = false;
       setSendingSms(false);
     }
   };
@@ -2007,7 +2217,7 @@ export default function AdminPage() {
 
       {/* Main Content Area */}
       <div className={`min-h-screen transition-all duration-300 ${isRtl ? "lg:mr-60" : "lg:ml-60"} pt-16 lg:pt-0`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        <div className={`w-full ${activeAdminTab === "orders" || activeAdminTab === "archive" || activeAdminTab === "deliveries" || activeAdminTab === "calls" ? "max-w-[98%] 2xl:max-w-[1850px]" : "max-w-7xl 2xl:max-w-[1650px]"} mx-auto px-3 sm:px-5 lg:px-6 py-5 lg:py-8`}>
           {/* Page Header */}
           <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 ${isRtl ? "sm:flex-row-reverse text-right" : ""}`}>
             <div>
@@ -2739,18 +2949,18 @@ export default function AdminPage() {
           )}
         </AnimatePresence>
 
-        <div className="card overflow-hidden">
+        <div className="card overflow-hidden shadow-sm border border-primary-150">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full min-w-[1150px]">
               <thead>
-                <tr className={`bg-primary-50 border-b border-primary-100 ${isRtl ? "text-right" : "text-left"}`}>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("status")}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תאריכים" : "Dates"}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תוצאה" : "Result"}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "מיקום" : "Location"}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
+                <tr className={`bg-primary-50/80 border-b border-primary-100 ${isRtl ? "text-right" : "text-left"}`}>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 min-w-[200px] ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap text-center">{t("status")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תאריכים" : "Dates"}</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap text-center">{isRtl ? "תוצאה" : "Result"}</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap text-center">{isRtl ? "מיקום" : "Location"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
                 </tr>
               </thead>
               <tbody className={isRtl ? "text-right" : "text-left"}>
@@ -2765,7 +2975,7 @@ export default function AdminPage() {
                 ) : (
                   filteredOrders.map((order) => (
                     <tr key={order.id} className="border-b border-primary-50 hover:bg-primary-50/50 transition-colors">
-                      <td className="px-4 py-4 font-bold text-navy-900">
+                      <td className="px-4 py-4 font-bold text-navy-900 whitespace-nowrap">
                         <button
                           onClick={() => openCustomerModal(order.phone || "", order.customerName)}
                           className="hover:text-gold-600 hover:underline font-bold text-left focus:outline-none"
@@ -2774,7 +2984,7 @@ export default function AdminPage() {
                           {order.id}
                         </button>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 min-w-[200px]">
                         <button
                           onClick={() => openCustomerModal(order.phone || "", order.customerName)}
                           className="font-semibold text-navy-800 hover:text-gold-600 hover:underline text-left focus:outline-none block"
@@ -2782,7 +2992,7 @@ export default function AdminPage() {
                         >
                           {order.customerName}
                         </button>
-                        <div className="text-sm text-primary-500 mt-1" dir="ltr">
+                        <div className="text-sm text-primary-500 mt-1 font-mono" dir="ltr">
                           {order.phone ? (
                             <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
                               {order.phone}
@@ -2790,7 +3000,7 @@ export default function AdminPage() {
                           ) : "—"}
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap text-center">
                         {editingCell?.orderId === order.id && editingCell?.field === 'status' ? (
                           <select
                             autoFocus
@@ -2808,26 +3018,26 @@ export default function AdminPage() {
                         ) : (
                           <button
                             onClick={() => setEditingCell({orderId: order.id, field: 'status'})}
-                            className={`inline-badge ${getStatusBadgeClasses(order.status)}`}
+                            className={`inline-badge whitespace-nowrap justify-center min-w-[130px] ${getStatusBadgeClasses(order.status)}`}
                           >
                             {statusOptions.find(o => o.value === order.status)?.label || order.status}
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-sm hidden sm:table-cell">
+                      <td className="px-4 py-4 text-sm hidden sm:table-cell whitespace-nowrap">
                         <div className="space-y-1.5">
-                          <div className="text-navy-700 flex items-center gap-1.5">
+                          <div className="text-navy-700 flex items-center gap-1.5 whitespace-nowrap">
                             <span className="text-primary-400 text-xs uppercase tracking-wider font-medium">{isRtl ? "קבל:" : "In:"}</span>
-                            <span>{order.dateReceived}</span>
+                            <span className="font-mono text-xs">{order.dateReceived}</span>
                           </div>
                           {order.estimatedCompletion && (
-                            <div className="text-primary-600 flex items-center gap-1.5">
+                            <div className="text-primary-600 flex items-center gap-1.5 whitespace-nowrap">
                               <span className="text-primary-400 text-xs uppercase tracking-wider font-medium">{isRtl ? "צפי:" : "Est:"}</span>
-                              <span>{order.estimatedCompletion}</span>
+                              <span className="font-mono text-xs">{order.estimatedCompletion}</span>
                             </div>
                           )}
                           {order.callLogs && order.callLogs.length > 0 && (
-                            <div className="mt-1 flex items-center gap-1.5 text-xs">
+                            <div className="mt-1 flex items-center gap-1.5 text-xs whitespace-nowrap">
                               {order.callLogs[order.callLogs.length - 1].status === 'completed' ? (
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                               ) : order.callLogs[order.callLogs.length - 1].status === 'failed' ? (
@@ -2846,7 +3056,7 @@ export default function AdminPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap text-center">
                         {editingCell?.orderId === order.id && editingCell?.field === 'result' ? (
                           <select
                             autoFocus
@@ -2864,13 +3074,13 @@ export default function AdminPage() {
                         ) : (
                           <button
                             onClick={() => setEditingCell({orderId: order.id, field: 'result'})}
-                            className={`inline-badge ${getResultBadgeClasses(order.result || "")}`}
+                            className={`inline-badge whitespace-nowrap justify-center min-w-[135px] ${getResultBadgeClasses(order.result || "")}`}
                           >
                             {order.result ? (resultOptions.find(o => o.value === order.result)?.label || order.result) : (isRtl ? "אין תוצאה" : "No result")}
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap text-center">
                         {editingCell?.orderId === order.id && editingCell?.field === 'location' ? (
                           <select
                             autoFocus
@@ -2887,14 +3097,14 @@ export default function AdminPage() {
                         ) : (
                           <button
                             onClick={() => setEditingCell({orderId: order.id, field: 'location'})}
-                            className="inline-badge bg-primary-50 text-navy-700 border border-primary-200"
+                            className="inline-badge whitespace-nowrap justify-center min-w-[145px] bg-primary-50 text-navy-700 border border-primary-200"
                           >
-                            <MapPin className="w-3 h-3 mr-1 shrink-0" />
-                            {order.location || "14 Buchanan Rd"}
+                            <MapPin className="w-3.5 h-3.5 mr-1 shrink-0 text-gold-600" />
+                            <span>{order.location || "14 Buchanan Rd"}</span>
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <div className={`flex items-center gap-1 whitespace-nowrap ${isRtl ? "justify-start" : "justify-end"}`}>
                           <button
                             onClick={() => setPrintOrder(order)}
@@ -3054,7 +3264,50 @@ export default function AdminPage() {
         exit={{ opacity: 0, y: -10 }}
         className="space-y-6 animate-fade-in"
       >
-        {(() => {
+        {/* Analytics Sub-tabs */}
+        <div className={`flex items-center gap-2 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/80 w-fit ${isRtl ? "mr-auto md:mr-0 md:ml-auto flex-row-reverse" : ""}`}>
+          <button
+            onClick={() => setAnalyticsSubTab("orders")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              analyticsSubTab === "orders"
+                ? "bg-white text-navy-950 shadow-sm border border-slate-200/70"
+                : "text-slate-600 hover:text-navy-900 hover:bg-slate-200/50"
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 text-amber-500" />
+            <span>{isRtl ? "מגמות והזמנות" : "Order Trends & Flow"}</span>
+          </button>
+          <button
+            onClick={() => setAnalyticsSubTab("calls")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              analyticsSubTab === "calls"
+                ? "bg-white text-navy-950 shadow-sm border border-slate-200/70"
+                : "text-slate-600 hover:text-navy-900 hover:bg-slate-200/50"
+            }`}
+          >
+            <Phone className="w-4 h-4 text-sky-500" />
+            <span>{isRtl ? "שיחות ומרכזיית IVR" : "Calls & IVR System"}</span>
+          </button>
+          <button
+            onClick={() => setAnalyticsSubTab("all")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              analyticsSubTab === "all"
+                ? "bg-white text-navy-950 shadow-sm border border-slate-200/70"
+                : "text-slate-600 hover:text-navy-900 hover:bg-slate-200/50"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-indigo-500" />
+            <span>{isRtl ? "מבט משולב (הכל)" : "Combined View"}</span>
+          </button>
+        </div>
+
+        {/* Order Analytics Section */}
+        {(analyticsSubTab === "orders" || analyticsSubTab === "all") && (
+          <OrderAnalytics orders={orders} isRtl={isRtl} />
+        )}
+
+        {/* Call Analytics Section */}
+        {(analyticsSubTab === "calls" || analyticsSubTab === "all") && (() => {
           const stats = getCallAnalytics();
           return (
             <>
@@ -3242,17 +3495,17 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="card overflow-hidden">
+        <div className="card overflow-hidden shadow-sm border border-primary-150">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[950px]">
+            <table className="w-full min-w-[1050px]">
               <thead>
-                <tr className={`bg-primary-50 border-b border-primary-100 ${isRtl ? "text-right" : "text-left"}`}>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("status")}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תאריכים" : "Dates"}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תוצאה" : "Result"}</th>
-                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
+                <tr className={`bg-primary-50/80 border-b border-primary-100 text-xs uppercase tracking-wider font-semibold text-navy-800 ${isRtl ? "text-right" : "text-left"}`}>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>Order ID</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 min-w-[200px] ${isRtl ? "text-right" : "text-left"}`}>{t("customer")}</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap text-center">{t("status")}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 hidden sm:table-cell whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{isRtl ? "תאריכים" : "Dates"}</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap text-center">{isRtl ? "תוצאה" : "Result"}</th>
+                  <th className={`px-4 py-4 text-sm font-semibold text-navy-800 whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("actions")}</th>
                 </tr>
               </thead>
               <tbody className={isRtl ? "text-right" : "text-left"}>
@@ -3267,7 +3520,7 @@ export default function AdminPage() {
                 ) : (
                   archivedOrders.map((order) => (
                     <tr key={order.id} className="border-b border-primary-50 hover:bg-primary-50/50 transition-colors">
-                      <td className="px-4 py-4 font-bold text-navy-900">
+                      <td className="px-4 py-4 font-bold text-navy-900 whitespace-nowrap">
                         <button
                           onClick={() => openCustomerModal(order.phone || "", order.customerName)}
                           className="hover:text-gold-600 hover:underline font-bold text-left focus:outline-none"
@@ -3276,7 +3529,7 @@ export default function AdminPage() {
                           {order.id}
                         </button>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 min-w-[200px]">
                         <button
                           onClick={() => openCustomerModal(order.phone || "", order.customerName)}
                           className="font-semibold text-navy-800 hover:text-gold-600 hover:underline text-left focus:outline-none block animate-none"
@@ -3284,7 +3537,7 @@ export default function AdminPage() {
                         >
                           {order.customerName}
                         </button>
-                        <div className="text-sm text-primary-500 mt-1" dir="ltr">
+                        <div className="text-sm text-primary-500 mt-1 font-mono" dir="ltr">
                           {order.phone ? (
                             <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
                               {order.phone}
@@ -3292,7 +3545,7 @@ export default function AdminPage() {
                           ) : "—"}
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap text-center">
                         {editingCell?.orderId === order.id && editingCell?.field === 'status' ? (
                           <select
                             autoFocus
@@ -3310,27 +3563,27 @@ export default function AdminPage() {
                         ) : (
                           <button
                             onClick={() => setEditingCell({orderId: order.id, field: 'status'})}
-                            className={`inline-badge ${getStatusBadgeClasses(order.status)}`}
+                            className={`inline-badge whitespace-nowrap justify-center min-w-[130px] ${getStatusBadgeClasses(order.status)}`}
                           >
                             {statusOptions.find(o => o.value === order.status)?.label || order.status}
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-sm hidden sm:table-cell">
+                      <td className="px-4 py-4 text-sm hidden sm:table-cell whitespace-nowrap">
                         <div className="space-y-1.5">
-                          <div className="text-navy-700 flex items-center gap-1.5">
+                          <div className="text-navy-700 flex items-center gap-1.5 whitespace-nowrap">
                             <span className="text-primary-400 text-xs uppercase tracking-wider font-medium">{isRtl ? "קבל:" : "In:"}</span>
-                            <span>{order.dateReceived}</span>
+                            <span className="font-mono text-xs">{order.dateReceived}</span>
                           </div>
                           {order.estimatedCompletion && (
-                            <div className="text-primary-600 flex items-center gap-1.5">
+                            <div className="text-primary-600 flex items-center gap-1.5 whitespace-nowrap">
                               <span className="text-primary-400 text-xs uppercase tracking-wider font-medium">{isRtl ? "צפי:" : "Est:"}</span>
-                              <span>{order.estimatedCompletion}</span>
+                              <span className="font-mono text-xs">{order.estimatedCompletion}</span>
                             </div>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap text-center">
                         {editingCell?.orderId === order.id && editingCell?.field === 'result' ? (
                           <select
                             autoFocus
@@ -3348,13 +3601,13 @@ export default function AdminPage() {
                         ) : (
                           <button
                             onClick={() => setEditingCell({orderId: order.id, field: 'result'})}
-                            className={`inline-badge ${getResultBadgeClasses(order.result || "")}`}
+                            className={`inline-badge whitespace-nowrap justify-center min-w-[135px] ${getResultBadgeClasses(order.result || "")}`}
                           >
                             {order.result ? (resultOptions.find(o => o.value === order.result)?.label || order.result) : (isRtl ? "אין תוצאה" : "No result")}
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 whitespace-nowrap">
                         <div className={`flex items-center gap-1 whitespace-nowrap ${isRtl ? "justify-start" : "justify-end"}`}>
                           <button
                             onClick={() => handleUnarchive(order)}
@@ -3476,7 +3729,13 @@ export default function AdminPage() {
                   {isRtl ? "ציר זמן שיחות" : "Call Timeline"}
                 </button>
                 <button
-                  onClick={() => setCallLogSubTab("sms")}
+                  type="button"
+                  onClick={() => {
+                    setCallLogSubTab("sms");
+                    if (smsThreads.length > 0) {
+                      setSelectedSmsPhone(smsThreads[0].phone);
+                    }
+                  }}
                   className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
                     callLogSubTab === "sms" 
                       ? "bg-white text-navy-950 shadow" 
@@ -3710,6 +3969,7 @@ export default function AdminPage() {
                       const isActive = selectedSmsPhone === thread.phone;
                       return (
                         <button
+                          type="button"
                           key={thread.phone}
                           onClick={() => {
                             setSelectedSmsPhone(thread.phone);
@@ -3736,15 +3996,12 @@ export default function AdminPage() {
                             {thread.customerName && (
                               <div className="text-[10px] text-primary-400 font-medium font-mono" dir="ltr">{thread.phone}</div>
                             )}
-                            {(() => {
-                              const matchedOrder = orders.find(o => o.phone && o.phone.replace(/\D/g, "") === thread.phone.replace(/\D/g, ""));
-                              return matchedOrder?.location ? (
-                                <div className="text-[9px] text-gold-650 font-bold mt-0.5 flex items-center gap-0.5 text-left" dir="ltr">
-                                  <MapPin className="w-2.5 h-2.5 text-gold-500 shrink-0" />
-                                  {matchedOrder.location}
-                                </div>
-                              ) : null;
-                            })()}
+                            {thread.location && (
+                              <div className="text-[9px] text-gold-650 font-bold mt-0.5 flex items-center gap-0.5 text-left" dir="ltr">
+                                <MapPin className="w-2.5 h-2.5 text-gold-500 shrink-0" />
+                                {thread.location}
+                              </div>
+                            )}
                             <p className="text-[11px] text-primary-600 truncate mt-1 text-left">
                               {thread.lastMessage.body}
                             </p>
@@ -3819,53 +4076,163 @@ export default function AdminPage() {
                         </div>
 
                         {/* Message Bubble Container */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50 min-h-0 flex flex-col justify-end">
-                          <div className="space-y-3.5 overflow-y-auto flex-1 flex flex-col min-h-0">
-                            {thread?.messages.map((msg) => {
-                              const isInbound = msg.direction === "inbound";
-                              return (
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/50 min-h-0">
+                          {thread?.messages.map((msg) => {
+                            const isInbound = msg.direction === "inbound";
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`flex w-full ${isInbound ? "justify-start" : "justify-end"}`}
+                              >
                                 <div
-                                  key={msg.id}
-                                  className={`flex w-full ${isInbound ? "justify-start" : "justify-end"}`}
+                                  className={`max-w-[75%] rounded-2xl p-3 shadow-sm text-xs font-medium ${
+                                    isInbound
+                                      ? "bg-white text-navy-900 rounded-tl-none border border-primary-100"
+                                      : "bg-navy-900 text-white rounded-tr-none"
+                                  }`}
                                 >
-                                  <div
-                                    className={`max-w-[70%] rounded-2xl p-3 shadow-sm text-xs font-medium ${
-                                      isInbound
-                                        ? "bg-white text-navy-900 rounded-tl-none border border-primary-100"
-                                        : "bg-navy-900 text-white rounded-tr-none"
-                                    }`}
-                                  >
+                                  {/* Render Media Attachments if present */}
+                                  {msg.mediaUrls && msg.mediaUrls.length > 0 && (
+                                    <div className="mb-2 space-y-1.5">
+                                      {msg.mediaUrls.map((url, uIdx) => {
+                                        const isPdf = url.toLowerCase().includes(".pdf") || (msg.body && msg.body.toLowerCase().includes(".pdf"));
+                                        return !isPdf ? (
+                                          <a key={uIdx} href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl border border-black/10">
+                                            <img
+                                              src={url}
+                                              alt="Attachment"
+                                              className="max-h-60 max-w-full rounded-xl object-cover hover:opacity-90 transition-opacity bg-black/5"
+                                              onError={(e) => {
+                                                const target = e.currentTarget;
+                                                target.style.display = "none";
+                                                const parent = target.parentElement;
+                                                if (parent && !parent.querySelector(".fallback-doc")) {
+                                                  const div = document.createElement("div");
+                                                  div.className = "fallback-doc flex items-center gap-2 p-2 rounded-xl bg-white/20 text-xs font-semibold underline";
+                                                  div.innerHTML = `<span>📄 View Attached Document</span>`;
+                                                  parent.appendChild(div);
+                                                }
+                                              }}
+                                            />
+                                          </a>
+                                        ) : (
+                                          <a
+                                            key={uIdx}
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold underline ${
+                                              isInbound ? "bg-primary-100 text-navy-900" : "bg-white/20 text-white"
+                                            }`}
+                                          >
+                                            <FileText className="w-4 h-4" />
+                                            <span>{isRtl ? "צפה במסמך המצורף (PDF)" : "View Attached PDF"}</span>
+                                          </a>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {msg.body && (
                                     <p className="leading-relaxed whitespace-pre-wrap text-left">{msg.body}</p>
-                                    <span className={`block text-[9px] mt-1.5 text-right ${
-                                      isInbound ? "text-primary-400" : "text-navy-300"
-                                    }`}>
-                                      {formatDateTime(msg.timestamp)}
-                                    </span>
-                                  </div>
+                                  )}
+
+                                  <span className={`block text-[9px] mt-1.5 text-right ${
+                                    isInbound ? "text-primary-400" : "text-navy-300"
+                                  }`}>
+                                    {formatDateTime(msg.timestamp)}
+                                  </span>
                                 </div>
-                              );
-                            })}
-                          </div>
+                              </div>
+                            );
+                          })}
+                          <div ref={smsChatEndRef} />
                         </div>
 
+                        {/* Attachment Preview Banner if file selected */}
+                        {smsAttachment && (
+                          <div className={`px-4 py-2 bg-gold-50/90 border-t border-gold-200 flex items-center justify-between gap-3 text-xs ${isRtl ? "flex-row-reverse" : ""}`}>
+                            <div className={`flex items-center gap-2.5 min-w-0 ${isRtl ? "flex-row-reverse" : ""}`}>
+                              {smsAttachment.previewUrl ? (
+                                <img
+                                  src={smsAttachment.previewUrl}
+                                  alt="Preview"
+                                  className="w-10 h-10 object-cover rounded-lg border border-gold-300 shadow-sm shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-gold-100 rounded-lg flex items-center justify-center text-gold-700 shrink-0 border border-gold-300">
+                                  <FileText className="w-5 h-5" />
+                                </div>
+                              )}
+                              <div className={`min-w-0 ${isRtl ? "text-right" : "text-left"}`}>
+                                <p className="font-semibold text-navy-900 truncate text-[11px]">{smsAttachment.filename}</p>
+                                <p className="text-[10px] text-primary-500 font-mono">
+                                  {smsAttachment.size > 1024 * 1024
+                                    ? `${(smsAttachment.size / (1024 * 1024)).toFixed(1)} MB`
+                                    : `${Math.round(smsAttachment.size / 1024)} KB`}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSmsAttachment(null)}
+                              className="p-1 hover:bg-gold-200 text-gold-700 rounded-full transition-colors"
+                              title={isRtl ? "הסר קובץ" : "Remove file"}
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+
                         {/* Chat Input Area */}
-                        <form onSubmit={handleSendSms} className={`p-3.5 border-t border-primary-150 bg-white flex gap-2.5 shrink-0 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <form onSubmit={handleSendSms} className={`p-3 border-t border-primary-150 bg-white flex items-center gap-2 shrink-0 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          {/* Hidden File Input */}
+                          <input
+                            type="file"
+                            ref={smsFileInputRef}
+                            className="hidden"
+                            accept="image/*,.pdf"
+                            onChange={handleAttachmentChange}
+                          />
+
+                          {/* Paperclip Attach Button */}
+                          <button
+                            type="button"
+                            onClick={() => smsFileInputRef.current?.click()}
+                            disabled={sendingSms}
+                            className="p-2.5 text-primary-500 hover:text-navy-900 hover:bg-primary-100 rounded-xl transition-colors shrink-0 disabled:opacity-50"
+                            title={isRtl ? "צרף תמונה או מסמך (או הדבק מהלוח)" : "Attach photo or document (or paste from clipboard)"}
+                          >
+                            <Paperclip className="w-4 h-4" />
+                          </button>
+
                           <input
                             type="text"
                             value={smsInput}
                             onChange={(e) => setSmsInput(e.target.value)}
-                            placeholder={isRtl ? "הקלד הודעת SMS להשבה..." : "Type SMS reply..."}
-                            className={`flex-1 px-4 py-2.5 rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-xs bg-primary-50/20 ${
+                            onPaste={handlePasteSms}
+                            disabled={sendingSms}
+                            placeholder={
+                              smsAttachment
+                                ? (isRtl ? "הוסף הודעה לקובץ המצורף (אופציונלי)..." : "Add caption (optional)...")
+                                : (isRtl ? "הקלד הודעת SMS להשבה (או הדבק תמונה)..." : "Type SMS reply (or paste screenshot)...")
+                            }
+                            className={`flex-1 px-4 py-2.5 rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none text-xs bg-primary-50/20 disabled:bg-primary-100/50 ${
                               isRtl ? "text-right" : ""
                             }`}
                           />
+
                           <button
                             type="submit"
-                            disabled={sendingSms || !smsInput.trim()}
-                            className="btn-primary py-2.5 px-4 rounded-xl flex items-center justify-center gap-1.5 shadow shrink-0"
+                            disabled={sendingSms || (!smsInput.trim() && !smsAttachment)}
+                            className="btn-primary py-2.5 px-4 rounded-xl flex items-center justify-center gap-1.5 shadow shrink-0 disabled:opacity-50"
                           >
-                            <Send className="w-4 h-4" />
-                            <span>{isRtl ? "שלח" : "Send"}</span>
+                            {sendingSms ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                            <span>{sendingSms ? (isRtl ? "שולח..." : "Sending...") : (isRtl ? "שלח" : "Send")}</span>
                           </button>
                         </form>
                       </div>

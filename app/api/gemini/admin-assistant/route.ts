@@ -282,7 +282,8 @@ INSTRUCTIONS FOR ASSISTANT:
 4. When asked questions like "how many calls today?", "which orders are ready?", "did customer X call?", "summary of today", look through the real-time data provided above and give exact figures, names, and details.
 5. If the user asks you to write a message, create an order summary, or analyze trends, do so constructively based on the real lab details.
 6. When mentioning phone numbers, format them clearly with dashes (e.g. 845-552-4744).
-7. If data is zero or none exists for a query, state it clearly and politely.`;
+7. If data is zero or none exists for a query, state it clearly and politely.
+8. Note: The lab telephony system automatically triggers customer robocalls when orders are marked as 'ready' (and the SMS assistant can trigger them via the Twilio integration).`;
 
     // Prepare contents for Gemini API (include history)
     const contents: any[] = [];

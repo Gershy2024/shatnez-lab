@@ -852,6 +852,7 @@ export interface SmsMessage {
   read?: boolean;
   price?: string;
   priceUnit?: string;
+  mediaUrls?: string[];
 }
 
 const SMS_COLLECTION = "sms_messages";
@@ -917,7 +918,8 @@ export async function logSmsMessage(
   body: string,
   direction: "inbound" | "outbound",
   msgSid?: string,
-  orderId?: string
+  orderId?: string,
+  mediaUrls?: string[]
 ): Promise<void> {
   const cleanPhone = phone.replace(/\D/g, "");
   const id = msgSid || `${cleanPhone}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -929,7 +931,8 @@ export async function logSmsMessage(
     body,
     direction,
     orderId: orderId || "",
-    read: direction === "outbound"
+    read: direction === "outbound",
+    ...(mediaUrls && mediaUrls.length > 0 ? { mediaUrls } : {})
   };
 
   if (isConfigured && db) {
@@ -951,6 +954,55 @@ export async function logSmsMessage(
   } catch (e) {
     console.error("LocalStorage logSmsMessage failed:", e);
   }
+}
+
+export interface MediaFileRecord {
+  id: string;
+  filename: string;
+  contentType: string;
+  base64: string;
+  size: number;
+  createdAt: string;
+}
+
+export async function saveMediaFile(
+  id: string,
+  filename: string,
+  contentType: string,
+  base64: string,
+  size: number
+): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docId = id.startsWith("media_") ? id : `media_${id}`;
+      await setDoc(doc(db, "settings", docId), {
+        id,
+        filename,
+        contentType,
+        base64,
+        size,
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Firestore saveMediaFile failed:", e);
+      throw e;
+    }
+  }
+}
+
+export async function getMediaFile(id: string): Promise<MediaFileRecord | null> {
+  if (isConfigured && db) {
+    try {
+      const docId = id.startsWith("media_") ? id : `media_${id}`;
+      const snap = await getDoc(doc(db, "settings", docId));
+      if (snap.exists()) {
+        return snap.data() as MediaFileRecord;
+      }
+    } catch (e) {
+      console.error("Firestore getMediaFile failed:", e);
+    }
+  }
+  return null;
 }
 
 export async function associateCallWithOrder(callId: string, orderId: string): Promise<void> {

@@ -167,7 +167,7 @@ export async function triggerCallBridge(
   }
 }
 
-export async function sendSms(customerPhone: string, message: string) {
+export async function sendSms(customerPhone: string, message: string, mediaUrl?: string | string[]) {
   try {
     const settings = await getAdminSettings();
     if (!settings.twilioAccountSid || !settings.twilioAuthToken || !settings.twilioPhoneNumber) {
@@ -175,8 +175,8 @@ export async function sendSms(customerPhone: string, message: string) {
       return { success: false, error: "Missing Twilio configuration settings" };
     }
 
-    if (!customerPhone || !message) {
-      return { success: false, error: "Missing customer phone or message body" };
+    if (!customerPhone || (!message && !mediaUrl)) {
+      return { success: false, error: "Missing customer phone or message/media body" };
     }
 
     let cleanCustomer = customerPhone.replace(/\D/g, "");
@@ -195,9 +195,20 @@ export async function sendSms(customerPhone: string, message: string) {
     const body = new URLSearchParams();
     body.append("To", cleanCustomer);
     body.append("From", fromPhone);
-    body.append("Body", message);
+    if (message) {
+      body.append("Body", message);
+    }
+    if (mediaUrl) {
+      if (Array.isArray(mediaUrl)) {
+        mediaUrl.forEach(u => {
+          if (u) body.append("MediaUrl", u);
+        });
+      } else {
+        body.append("MediaUrl", mediaUrl);
+      }
+    }
 
-    console.log(`[Twilio SMS] Sending SMS to ${cleanCustomer} from ${fromPhone}`);
+    console.log(`[Twilio SMS] Sending SMS/MMS to ${cleanCustomer} from ${fromPhone}${mediaUrl ? ` with media` : ""}`);
 
     const res = await fetch(twilioUrl, {
       method: "POST",

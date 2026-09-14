@@ -5,14 +5,16 @@ export async function sendEmailNotification({
   subject,
   html,
   text,
+  to,
 }: {
   subject: string;
   html: string;
   text: string;
+  to?: string;
 }): Promise<boolean> {
   try {
     const settings = await getAdminSettings();
-    const recipient = settings.adminEmail || settings.voicemailEmail || process.env.ADMIN_EMAIL || "shatnezlab@gmail.com";
+    const recipient = to || settings.adminEmail || settings.voicemailEmail || process.env.ADMIN_EMAIL || "gershybraun@gmail.com";
     const host = settings.smtpHost || process.env.SMTP_HOST || "smtp.gmail.com";
     const port = parseInt(settings.smtpPort || process.env.SMTP_PORT || "587", 10);
     const user = settings.smtpUser || process.env.SMTP_USER || settings.adminEmail || "shatnezlab@gmail.com";
