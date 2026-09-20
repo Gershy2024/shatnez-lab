@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, getAllVoicemails, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest } from "@/lib/db";
 import { triggerOutboundCall, sendSms, triggerCallBridge } from "@/lib/twilioCall";
 import { findChatSessionByShortId, addChatMessage } from "@/lib/liveChat";
 import nodemailer from "nodemailer";
@@ -1557,8 +1557,27 @@ async function handleRequest(req: NextRequest) {
             const activeOrders = ordersList.filter(o => !o.archived);
             const callsList = await getRecentCalls(30);
             const smsList = await getRecentSmsMessages(20);
+            const voicemailsList = await getAllVoicemails();
             const balanceData = await getTwilioBalance();
             const balanceStr = balanceData ? `${balanceData.balance} ${balanceData.currency}` : "Unavailable";
+
+            // Format recent voicemails (first 10)
+            const recentVoicemails = voicemailsList.slice(0, 10).map(v => {
+              let timeStr = "";
+              try {
+                timeStr = new Intl.DateTimeFormat("en-US", {
+                  timeZone: "America/New_York",
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true
+                }).format(new Date(v.timestamp));
+              } catch {
+                timeStr = new Date(v.timestamp).toLocaleString();
+              }
+              return { id: v.id, phone: v.phone, duration: v.duration, timestamp: timeStr, url: v.url, read: v.read };
+            });
 
             // Format recent calls context (first 10 unique callers with actions)
             const uniqueCallers: { phone: string; timestamp: string; isSms: boolean; direction: string; actions: string[] }[] = [];
@@ -1621,6 +1640,9 @@ ${JSON.stringify(smsList.map(s => {
   return { phone: s.phone, direction: s.direction, body: s.body, time: timeStr };
 }))}
 
+Here is the list of actual recorded voicemails in the system (most recent first):
+${JSON.stringify(recentVoicemails)}
+
 The admin's message: "${inputMsg}"
 
 You must respond with a JSON object ONLY, matching this schema:
@@ -1662,7 +1684,8 @@ Guidelines:
 9. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
 10. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
 11. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
-12. CRITICAL - CALL TRIGGERING CAPABILITY: You HAVE full capability to trigger automated customer notification calls / robocalls through the backend system. Whenever an order is updated to "ready", or whenever the admin mentions triggering a call (e.g., "trigger outgoing call yes", "trigger call", "הפעל שיחה יוצאת", "תתקשר ללקוח"), you MUST set "triggerCall": true. In your "adminReply", confirm that the order has been updated and that the automated customer call has been triggered! NEVER state that you cannot trigger calls or that calls only happen automatically.`;
+12. CRITICAL - CALL TRIGGERING CAPABILITY: You HAVE full capability to trigger automated customer notification calls / robocalls through the backend system. Whenever an order is updated to "ready", or whenever the admin mentions triggering a call (e.g., "trigger outgoing call yes", "trigger call", "הפעל שיחה יוצאת", "תתקשר ללקוח"), you MUST set "triggerCall": true. In your "adminReply", confirm that the order has been updated and that the automated customer call has been triggered! NEVER state that you cannot trigger calls or that calls only happen automatically.
+13. CRITICAL - VOICEMAILS VS REDIRECTS: Look at the "Recent Recorded Voicemails" list. An actual recorded voicemail ONLY exists if it is present in that list! A call log action like "Representative Unavailable - Redirected to Company Voicemail" or "Redirected to Voicemail" ONLY means the caller was redirected to the voicemail greeting/beep — it does NOT mean they left or recorded an audio message. If a caller was redirected to voicemail but does not appear in "Recent Recorded Voicemails", tell the admin that the caller was redirected to voicemail but hung up without leaving a recorded message. Never claim a voicemail exists unless it is in the Recorded Voicemails list!`;
 
             const modelsToTry = [
               "gemini-2.5-flash",

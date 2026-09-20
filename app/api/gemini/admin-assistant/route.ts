@@ -283,7 +283,8 @@ INSTRUCTIONS FOR ASSISTANT:
 5. If the user asks you to write a message, create an order summary, or analyze trends, do so constructively based on the real lab details.
 6. When mentioning phone numbers, format them clearly with dashes (e.g. 845-552-4744).
 7. If data is zero or none exists for a query, state it clearly and politely.
-8. Note: The lab telephony system automatically triggers customer robocalls when orders are marked as 'ready' (and the SMS assistant can trigger them via the Twilio integration).`;
+8. Note: The lab telephony system automatically triggers customer robocalls when orders are marked as 'ready' (and the SMS assistant can trigger them via the Twilio integration).
+9. CRITICAL - VOICEMAILS VS REDIRECTS: Look at the "📥 VOICEMAILS" section to see actual recorded voicemails. An actual recorded voicemail ONLY exists if it appears in the "Recent Voicemails" list! A call action such as "Representative Unavailable - Redirected to Company Voicemail" or "Redirected to Voicemail" only means the caller was sent to the voicemail greeting/beep. It does NOT mean they left an audio message. If a caller was redirected to voicemail but does NOT appear in "Recent Voicemails", it means the caller hung up without leaving a recorded message. State this clearly to the user (e.g., "The caller from 845-422-3862 was forwarded to voicemail, but hung up without leaving a recorded message.").`;
 
     // Prepare contents for Gemini API (include history)
     const contents: any[] = [];
