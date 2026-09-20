@@ -1050,6 +1050,39 @@ async function handleRequest(req: NextRequest) {
       }
 
       const settings = await getAdminSettings();
+
+      // ── DISPATCH REAL-TIME MMS WITH ACTUAL AUDIO FILE TO ADMIN ──
+      try {
+        const proto = req.headers.get("x-forwarded-proto") || "https";
+        const hostHeader = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
+        const origin = `${proto}://${hostHeader}`;
+        const mediaAudioUrl = `${origin}/api/audio?url=${encodeURIComponent(recordingUrl)}`;
+        const formattedCaller = callerPhone ? formatPhoneForDisplay(callerPhone) : "Unknown Caller";
+        const mmsBody = `🎙️ New Voicemail from ${formattedCaller} (${recordingDuration || "0"}s)`;
+
+        const targetAdminPhones = Array.from(new Set([
+          settings.forwardingNumber,
+          "8457092022"
+        ].filter(Boolean)));
+
+        for (const adminPhone of targetAdminPhones) {
+          console.log(`[Twilio Studio Voicemail MMS] Sending audio MMS to admin ${adminPhone}...`);
+          sendSms(adminPhone, mmsBody, mediaAudioUrl).then(async (mmsRes) => {
+            if (mmsRes.success) {
+              console.log(`[Twilio Studio Voicemail MMS] Audio MMS successfully sent to ${adminPhone} (SID: ${mmsRes.sid})`);
+              await logSmsMessage(adminPhone, mmsBody, "outbound", mmsRes.sid);
+            } else {
+              console.warn(`[Twilio Studio Voicemail MMS] MMS failed for ${adminPhone} (${mmsRes.error}), falling back to SMS with playable link`);
+              await sendSms(adminPhone, `${mmsBody}\nListen: ${mediaAudioUrl}`);
+            }
+          }).catch((err) => {
+            console.error(`[Twilio Studio Voicemail MMS] Error sending MMS to ${adminPhone}:`, err);
+          });
+        }
+      } catch (mmsDispatchErr) {
+        console.error("[Twilio Studio Voicemail MMS] Dispatch error:", mmsDispatchErr);
+      }
+
       const toEmail = settings.voicemailEmail;
       
       if (!toEmail) {
@@ -1204,8 +1237,8 @@ async function handleRequest(req: NextRequest) {
           if (cleanText) {
             console.log(`[Twilio Studio SMS Admin Cleaned Reply]: "${cleanText}"`);
             
-            // Actively send the SMS message back to the phone handset via Twilio API
-            const smsRes = await sendSms(fromPhone, cleanText);
+            // Actively send the SMS/MMS message back to the phone handset via Twilio API
+            const smsRes = await sendSms(fromPhone, cleanText, data.mediaUrl);
             const msgSid = smsRes.success ? smsRes.sid : undefined;
             console.log(`[Twilio Studio SMS Send Status]: success=${smsRes.success}, sid=${msgSid || "N/A"}${smsRes.error ? `, error=${smsRes.error}` : ""}`);
 
@@ -1657,6 +1690,7 @@ You must respond with a JSON object ONLY, matching this schema:
   "notes": string (optional notes if updating/adding),
   "triggerCall": boolean (true if the order is ready and an automated customer call should be triggered),
   "message": string (message body to send to customer if action is send_sms),
+  "mediaUrl": string (optional URL of media/audio file to attach to the SMS for MMS),
   "adminReply": string (friendly response back to the admin via SMS in Hebrew or English depending on their language choice. If the action is none, answer their question or explain why you couldn't process it. If performing an action, describe what you did)
 }
 
@@ -1685,7 +1719,11 @@ Guidelines:
 10. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
 11. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
 12. CRITICAL - CALL TRIGGERING CAPABILITY: You HAVE full capability to trigger automated customer notification calls / robocalls through the backend system. Whenever an order is updated to "ready", or whenever the admin mentions triggering a call (e.g., "trigger outgoing call yes", "trigger call", "הפעל שיחה יוצאת", "תתקשר ללקוח"), you MUST set "triggerCall": true. In your "adminReply", confirm that the order has been updated and that the automated customer call has been triggered! NEVER state that you cannot trigger calls or that calls only happen automatically.
-13. CRITICAL - VOICEMAILS VS REDIRECTS: Look at the "Recent Recorded Voicemails" list. An actual recorded voicemail ONLY exists if it is present in that list! A call log action like "Representative Unavailable - Redirected to Company Voicemail" or "Redirected to Voicemail" ONLY means the caller was redirected to the voicemail greeting/beep — it does NOT mean they left or recorded an audio message. If a caller was redirected to voicemail but does not appear in "Recent Recorded Voicemails", tell the admin that the caller was redirected to voicemail but hung up without leaving a recorded message. Never claim a voicemail exists unless it is in the Recorded Voicemails list!`;
+13. CRITICAL - VOICEMAILS VS REDIRECTS: Look at the "Recent Recorded Voicemails" list. An actual recorded voicemail ONLY exists if it is present in that list! A call log action like "Representative Unavailable - Redirected to Company Voicemail" or "Redirected to Voicemail" ONLY means the caller was redirected to the voicemail greeting/beep — it does NOT mean they left or recorded an audio message. If a caller was redirected to voicemail but does not appear in "Recent Recorded Voicemails", tell the admin that the caller was redirected to voicemail but hung up without leaving a recorded message. Never claim a voicemail exists unless it is in the Recorded Voicemails list!
+14. SENDING VOICEMAILS / AUDIO FILES: If the admin asks you to send them a voicemail or audio file (e.g. "send me the voicemail", "send me the audio", "שלח לי את ההודעה הקולית ב-SMS", "send recording"):
+- Look at the "Recent Recorded Voicemails" list.
+- If no recorded voicemail exists (or none for the requested date/caller), explain to the admin that no recorded voicemail exists to send (explain that the caller hung up without leaving an audio message).
+- If an actual recorded voicemail exists, you can set action="send_sms", customerPhone=fromPhone, message="Voicemail from " + vm.phone + " (" + vm.duration + "s):", and mediaUrl="${origin}/api/audio?url=" + encodeURIComponent(vm.url). This sends the actual audio file directly into their SMS thread as an MMS!`;
 
             const modelsToTry = [
               "gemini-2.5-flash",
@@ -1904,13 +1942,15 @@ Guidelines:
                   replyMessage: aiJson.adminReply || `Order ${newId} created! Customer: ${customerName}, Loc: ${orderLoc}, Status: ${orderStatus}${callTriggered ? ' (Robocall triggered)' : ''}`
                 });
               } else if (aiJson.action === "send_sms" && aiJson.customerPhone && aiJson.message) {
-                const smsResult = await sendSms(aiJson.customerPhone, aiJson.message);
+                const targetMediaUrl = aiJson.mediaUrl || (aiJson.voicemailUrl ? `${origin}/api/audio?url=${encodeURIComponent(aiJson.voicemailUrl)}` : undefined);
+                const smsResult = await sendSms(aiJson.customerPhone, aiJson.message, targetMediaUrl);
                 if (smsResult.success) {
                   await logSmsMessage(aiJson.customerPhone, aiJson.message, "outbound", smsResult.sid);
                   await logCallEvent(undefined, aiJson.customerPhone, `SMS Outbound (via AI): "${aiJson.message}"`, "completed");
                   return jsonResponse({
                     success: true,
-                    replyMessage: aiJson.adminReply || `SMS sent to ${aiJson.customerPhone}: "${aiJson.message}"`
+                    replyMessage: aiJson.adminReply || `SMS sent to ${aiJson.customerPhone}: "${aiJson.message}"`,
+                    mediaUrl: targetMediaUrl
                   });
                 } else {
                   return jsonResponse({
