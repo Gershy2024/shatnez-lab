@@ -1261,9 +1261,14 @@ async function handleRequest(req: NextRequest) {
         const inputMsg = parts.join(" ").trim();
         const inputWord = parts[0]?.toLowerCase() || "";
 
-        // If user entered a fresh command word, clear any active state to let it fall through
-        const overrideCommands = ["add", "הוסף", "הזן", "חדש", "update", "עדכן", "ערוך", "recent", "אחרונים", "אחרונות", "sms", "send", "text", "שלח", "מסרון", "cancel", "ביטול", "exit", "help", "עזרה", "call", "dial", "חייג", "התקשר", "צלצל"];
-        if (activeState && overrideCommands.includes(inputWord)) {
+        // If user entered a fresh command word or sent a full sentence, clear any active state to let it fall through
+        const overrideCommands = [
+          "add", "הוסף", "הזן", "חדש", "update", "עדכן", "ערוך", "recent", "אחרונים", "אחרונות",
+          "sms", "send", "text", "שלח", "מסרון", "cancel", "ביטול", "exit", "help", "עזרה",
+          "call", "dial", "חייג", "התקשר", "צלצל", "trigger", "robocall", "הפעל",
+          "what", "who", "where", "how", "מה", "מי", "איפה", "סטטוס"
+        ];
+        if (activeState && (overrideCommands.includes(inputWord) || parts.length > 2 || inputMsg.length > 25)) {
           await clearAdminState(fromPhone);
           activeState = null;
         }
@@ -1542,604 +1547,19 @@ async function handleRequest(req: NextRequest) {
           }
         }
 
-        // Process top-level commands (not in activeState)
-        let cmd = inputWord;
-        if (["אחרונים", "אחרונות"].includes(cmd)) cmd = "recent";
-        else if (["הוסף", "הזן", "חדש"].includes(cmd)) cmd = "add";
-        else if (["עדכן", "ערוך"].includes(cmd)) cmd = "update";
-        else if (["send", "text", "שלח", "מסרון"].includes(cmd)) cmd = "sms";
-        else if (["עזרה", "מנהל", "היי", "hi"].includes(cmd)) cmd = "help";
-
-        if (cmd === "recent") {
-          const secondWord = parts[1]?.toLowerCase() || "";
-          if (secondWord === "orders" || secondWord === "הזמנות") {
-            const orders = await getAllOrders();
-            // Sort by createdAt descending, fallback to dateReceived
-            orders.sort((a, b) => {
-              if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
-              if (a.createdAt) return -1;
-              if (b.createdAt) return 1;
-              return new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime();
-            });
-            const recent = orders.slice(0, 5);
-            if (recent.length === 0) {
-              adminReply += "No recent orders found.";
-            } else {
-              adminReply += "Recent Orders:\n";
-              for (let i = 0; i < recent.length; i++) {
-                const o = recent[i];
-                const customer = o.customerName || "No name";
-                const status = translateStatusEn(o.status || "received");
-                adminReply += `${i + 1}. ID: ${o.id} | ${customer} | Status: ${status} | Date: ${o.dateReceived}\n`;
-              }
-            }
-          } else {
-            const calls = await getAllCalls();
-            const uniqueCallers: { phone: string; timestamp: number; isSms: boolean }[] = [];
-            const seen = new Set<string>();
-            for (const c of calls) {
-              if (c.phone) {
-                const cleanPhone = c.phone.trim();
-                if (cleanPhone && !seen.has(cleanPhone)) {
-                  seen.add(cleanPhone);
-                  const isSms = c.actions.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:"));
-                  uniqueCallers.push({ phone: cleanPhone, timestamp: c.timestamp, isSms });
-                  if (uniqueCallers.length >= 5) break;
-                }
-              }
-            }
-
-            if (uniqueCallers.length === 0) {
-              adminReply += "No recent callers found.";
-            } else {
-              adminReply += "Recent Callers:\n";
-              for (let i = 0; i < uniqueCallers.length; i++) {
-                const item = uniqueCallers[i];
-                let formattedTime = "";
-                try {
-                  formattedTime = new Intl.DateTimeFormat("en-US", {
-                    timeZone: "America/New_York",
-                    month: "numeric",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                    hour12: true
-                  }).format(new Date(item.timestamp));
-                } catch (e) {
-                  formattedTime = new Date(item.timestamp).toLocaleString();
-                }
-                const typeTag = item.isSms ? "[💬 SMS]" : "[📞 Call]";
-                adminReply += `${i + 1}. ${item.phone} (${formattedTime}) ${typeTag}\n`;
-              }
-            }
-          }
-          return jsonResponse({ success: true, replyMessage: adminReply });
-        }
-
-        if (cmd === "trigger" || cmd === "robocall" || cmd === "הפעל") {
-          // Syntax: trigger [orderId]
-          const targetArg = parts[1] || "";
-          let order = targetArg ? await getOrderById(targetArg) : null;
-          if (!order && targetArg.replace(/\D/g, "").length >= 7) {
-            const byPhone = await getOrdersByPhone(targetArg.replace(/\D/g, ""));
-            if (byPhone.length > 0) order = byPhone[0];
-          }
-          if (!order && targetArg) {
-            const allActive = (await getAllOrders()).filter(o => !o.archived);
-            const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(targetArg.toLowerCase()));
-            if (matchByName) order = matchByName;
-          }
-          if (!order) {
-            const allActive = (await getAllOrders()).filter(o => !o.archived && o.status === "ready");
-            allActive.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            if (allActive.length > 0) order = allActive[0];
-          }
-
-          if (order && order.phone) {
-            const proto = req.headers.get("x-forwarded-proto") || "https";
-            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
-            const origin = `${proto}://${host}`;
-            const callSuccess = await triggerOutboundCall(order.phone, order.id, origin);
-            if (callSuccess) {
-              return jsonResponse({
-                success: true,
-                replyMessage: `Automated order ready call initiated for Order #${order.id} (${order.customerName || order.phone})!`
-              });
-            } else {
-              return jsonResponse({
-                success: true,
-                replyMessage: `Failed to trigger call for Order #${order.id}. Check phone number: ${order.phone}`
-              });
-            }
-          } else {
-            return jsonResponse({
-              success: true,
-              replyMessage: `Order not found or missing phone number. Usage: trigger [orderId]`
-            });
-          }
-        }
-
-        if (cmd === "sms") {
-          // Syntax: sms [phone] [message...]
-          let args = parts.slice(1);
-          const targetPhone = args[0];
-          const smsBody = args.slice(1).join(" ").trim();
-
-          if (!targetPhone || !smsBody) {
-            return jsonResponse({
-              success: true,
-              replyMessage: "Syntax: sms [phone] [message]\nExample: sms 8455551234 Hello customer!"
-            });
-          }
-
-          // Clean phone number
-          const cleanPhone = targetPhone.replace(/\D/g, "");
-          if (cleanPhone.length < 7) {
-            return jsonResponse({
-              success: true,
-              replyMessage: `Invalid phone number: ${targetPhone}`
-            });
-          }
-
-          // Call sendSms
-          const result = await sendSms(targetPhone, smsBody);
-          if (result.success) {
-            // Log it in database
-            await logSmsMessage(targetPhone, smsBody, "outbound", result.sid);
-            await logCallEvent(undefined, targetPhone, `SMS Outbound (via Admin command): "${smsBody}"`, "completed");
-            return jsonResponse({
-              success: true,
-              replyMessage: `SMS sent successfully to ${targetPhone}!`
-            });
-          } else {
-            return jsonResponse({
-              success: true,
-              replyMessage: `Failed to send SMS: ${result.error || "Unknown error"}`
-            });
-          }
-        }
-        
-        if (cmd === "add") {
-          // Check if Gemini AI is available and if this message has natural language keywords or phrasing
-          // (e.g. "Add new order for 8453541908 location 166 Clinton Lane", "הוסף הזמנה חדשה עבור...")
-          const apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
-          const hasNaturalLanguage =
-            /(order|location|loc|at|for|clinton|buchanan|קלינטון|בוכנן|מיקום|חדש|חדשה|לכבוד|עבור|הזמנה)/i.test(inputMsg) ||
-            parts.length > 4;
-
-          if (apiKey && hasNaturalLanguage) {
-            console.log(`[Twilio Studio SMS] "add" command contains natural phrasing and Gemini is configured. Falling through to Gemini AI.`);
-          } else {
-            // Syntax: 
-            // - add -> guided flow (Step 1: Phone)
-            // - add [Phone] -> guided flow (Step 2: Name)
-            // - add [Name] [Phone] -> guided flow (Step 3: Location)
-            // - add [Phone] [Name] -> guided flow (Step 3: Location)
-            // - add [Phone] [LocationDigit] -> one-shot
-            // - add [Name] [Phone] [LocationDigit] -> one-shot
-            // - add [Phone] [Name] [LocationDigit] -> one-shot
-            
-            let args = parts.slice(1);
-            const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
-            if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
-              args = args.slice(1);
-            }
-
-            if (args.length === 0) {
-              // Interactive ADD start - Enter customer phone
-              await saveAdminState(fromPhone, {
-                action: "add",
-                step: 1,
-                tempData: {},
-                lastUpdated: Date.now()
-              });
-              return jsonResponse({
-                success: true,
-                replyMessage: "Enter customer phone number:"
-              });
-            }
-
-            // Check if location is specified anywhere in the input message or args
-            let detectedLocation: string | undefined = undefined;
-            if (/(166\s*clinton(\s*lane)?|clinton|קלינטון)/i.test(inputMsg)) {
-              detectedLocation = "166 Clinton Lane";
-            } else if (/(14\s*buchanan(\s*rd)?|buchanan|בוכנן)/i.test(inputMsg)) {
-              detectedLocation = "14 Buchanan Rd";
-            }
-
-            // Check if last word is a valid location digit
-            const lastWord = args[args.length - 1];
-            if (args.length > 1 && (lastWord === "1" || lastWord === "2")) {
-              detectedLocation = lastWord === "1" ? "14 Buchanan Rd" : "166 Clinton Lane";
-              args = args.slice(0, args.length - 1);
-            }
-
-            const hasLocation = !!detectedLocation;
-            const remainingArgs = args;
-
-            // Find phone number among remaining arguments
-            // A phone number has at least 7 digits when non-digits are removed
-            const phoneIdx = remainingArgs.findIndex(word => word.replace(/\D/g, "").length >= 7);
-            
-            if (phoneIdx === -1) {
-              // No phone number found in input. Start at Step 1.
-              await saveAdminState(fromPhone, {
-                action: "add",
-                step: 1,
-                tempData: {},
-                lastUpdated: Date.now()
-              });
-              return jsonResponse({
-                success: true,
-                replyMessage: "Enter customer phone number:"
-              });
-            }
-
-            const customerPhone = remainingArgs[phoneIdx];
-            
-            // Clean phone and check if customer already exists to reuse name
-            const cleanPhone = customerPhone.replace(/\D/g, "");
-            const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
-            const existingOrders = await getOrdersByPhone(searchPhone);
-            
-            // Filter noise tokens out of name parts so command phrases aren't stored as customer names
-            const noiseTokens = new Set([
-              "order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה",
-              "location", "loc", "at", "for", "in", "מיקום", "במיקום", "166", "14", "clinton",
-              "lane", "buchanan", "rd", "road", "קלינטון", "בוכנן"
-            ]);
-
-            const rawNameParts = [
-              ...remainingArgs.slice(0, phoneIdx),
-              ...remainingArgs.slice(phoneIdx + 1)
-            ];
-            const filteredNameParts = rawNameParts.filter(
-              w => !noiseTokens.has(w.toLowerCase().replace(/[^a-z0-9\u0590-\u05FF]/gi, ""))
-            );
-            const customerName = filteredNameParts.length > 0 ? filteredNameParts.join(" ") : "";
-            
-            let resolvedName = customerName;
-            let isReusedName = false;
-            if (existingOrders.length > 0 && !resolvedName) {
-              resolvedName = existingOrders[0].customerName || "";
-              if (resolvedName) isReusedName = true;
-            }
-
-            const finalId = await getNextOrderId();
-
-            if (hasLocation) {
-              // One-shot ADD
-              const selectedLoc = detectedLocation || "14 Buchanan Rd";
-              const finalName = resolvedName || (searchPhone ? `Customer (${searchPhone.slice(-4)})` : "Guest");
-              
-              const today = new Date().toISOString().split("T")[0];
-              await saveOrder({
-                id: finalId,
-                customerName: finalName,
-                phone: customerPhone,
-                status: "received",
-                dateReceived: today,
-                estimatedCompletion: "",
-                notes: "Created via SMS Admin (One-shot)",
-                result: "",
-                location: selectedLoc,
-                createdAt: Date.now()
-              });
-
-              const nameMessage = finalName && finalName !== "Guest" ? `, Name: ${finalName}` : "";
-              adminReply += `Order added! ID: ${finalId}${nameMessage}, Location: ${selectedLoc}`;
-              return jsonResponse({ success: true, replyMessage: adminReply });
-            } else {
-              // Guided flow / shortcut
-              if (!resolvedName) {
-                // Only phone provided -> guide to Step 2 (Optional Name)
-                await saveAdminState(fromPhone, {
-                  action: "add",
-                  step: 2,
-                  tempData: { orderId: finalId, customerPhone },
-                  lastUpdated: Date.now()
-                });
-                return jsonResponse({
-                  success: true,
-                  replyMessage: `Enter customer name (optional - reply 'no', 'skip', or '0' to skip):`
-                });
-              } else {
-                // Phone and Name provided (or name resolved from DB), missing Location -> guide to Step 3
-                await saveAdminState(fromPhone, {
-                  action: "add",
-                  step: 3,
-                  tempData: { orderId: finalId, customerPhone, customerName: resolvedName },
-                  lastUpdated: Date.now()
-                });
-                return jsonResponse({
-                  success: true,
-                  replyMessage: isReusedName 
-                    ? `Customer "${resolvedName}" found. Select pickup location:\n1: 14 Buchanan Rd\n2: 166 Clinton Lane`
-                    : `Select pickup location:\n1: 14 Buchanan Rd\n2: 166 Clinton Lane`
-                });
-              }
-            }
-          }
-        }
-        
-        if (cmd === "update") {
-          // Syntax: update [orderId] [statusDigit] [resultDigit] [locationDigit] [notifyDigit]
-          let args = parts.slice(1);
-          const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
-          if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
-            args = args.slice(1);
-          }
-
-          const orderId = args[0];
-          const statusDigit = args[1];
-          const resultDigit = args[2];
-          const locationDigit = args[3];
-          const notifyDigit = args[4];
-
-          if (!orderId) {
-            // Interactive UPDATE start from beginning
-            await saveAdminState(fromPhone, {
-              action: "update",
-              step: 1,
-              tempData: {},
-              lastUpdated: Date.now()
-            });
-            return jsonResponse({
-              success: true,
-              replyMessage: "Enter Order ID to update:"
-            });
-          }
-
-          // We have orderId, let's lookup the order
-          let order = await getOrderById(orderId);
-          if (!order && orderId.replace(/\D/g, "").length >= 7) {
-            const byPhone = await getOrdersByPhone(orderId);
-            if (byPhone.length === 1) {
-              order = byPhone[0];
-            } else if (byPhone.length > 1) {
-              let reply = "Multiple found. Reply exact ID:\n";
-              for (const o of byPhone) {
-                reply += `- ${o.id} (${o.status})\n`;
-              }
-              await saveAdminState(fromPhone, {
-                action: "update",
-                step: 1,
-                tempData: {},
-                lastUpdated: Date.now()
-              });
-              return jsonResponse({ success: true, replyMessage: reply });
-            }
-          }
-
-          // Check for natural language words in the input message
-          let detectedStatus: "received" | "testing" | "review" | "ready" | "delivered" | "issue" | null = null;
-          if (/(ready|pickup|מוכן|איסוף)/i.test(inputMsg)) detectedStatus = "ready";
-          else if (/(received|התקבל|קיבלנו)/i.test(inputMsg)) detectedStatus = "received";
-          else if (/(testing|בבדיקה|נבדק)/i.test(inputMsg)) detectedStatus = "testing";
-          else if (/(review|עיון)/i.test(inputMsg)) detectedStatus = "review";
-          else if (/(delivered|נמסר|נלקח)/i.test(inputMsg)) detectedStatus = "delivered";
-          else if (/(issue|בעיה|תקלה)/i.test(inputMsg)) detectedStatus = "issue";
-
-          let detectedResult: string | null = null;
-          if (/(clean|נקי|no\s*shatnez|resolts|results)/i.test(inputMsg) && !/(shatnez\s*found|found\s*shatnez|נמצא\s*שעטנז)/i.test(inputMsg)) {
-            detectedResult = "Clean / No Shatnez";
-          } else if (/(shatnez|found|שעטנז|נמצא)/i.test(inputMsg)) {
-            detectedResult = "Shatnez Found";
-          } else if (/(discuss|call\s*to\s*discuss|לדבר|להתקשר)/i.test(inputMsg)) {
-            detectedResult = "Call to Discuss";
-          }
-
-          let detectedLocation: string | null = null;
-          if (/(buchanan|בוכנן)/i.test(inputMsg)) detectedLocation = "14 Buchanan Rd";
-          else if (/(clinton|קלינטון)/i.test(inputMsg)) detectedLocation = "166 Clinton Lane";
-
-          let detectedPhone: string | null = null;
-          const phonePatternMatch = inputMsg.match(/(?:phone|טלפון|מספר|number)[\s:]*([0-9\-+()]{7,15})/i) || inputMsg.match(/\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b/);
-          if (phonePatternMatch) {
-            detectedPhone = phonePatternMatch[1].trim();
-          }
-
-          if (order && (detectedStatus || detectedResult || detectedLocation || detectedPhone)) {
-            const oldStatus = order.status;
-            if (detectedStatus) order.status = detectedStatus;
-            if (detectedResult) order.result = detectedResult;
-            if (detectedLocation) order.location = detectedLocation;
-            if (detectedPhone) order.phone = detectedPhone;
-
-            await saveOrder(order);
-
-            const proto = req.headers.get("x-forwarded-proto") || "https";
-            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
-            const origin = `${proto}://${host}`;
-
-            let callTriggered = false;
-            if (order.status === "ready" && oldStatus !== "ready" && order.phone) {
-              triggerOutboundCall(order.phone, order.id, origin);
-              callTriggered = true;
-            }
-
-            adminReply += `Order ${order.id} updated! Customer: ${order.customerName}, Phone: ${order.phone || "N/A"}, Status: ${order.status}, Result: ${order.result || "N/A"}, Loc: ${order.location || "N/A"}, Call: ${callTriggered ? 'Yes' : 'No'}`;
-            return jsonResponse({ success: true, replyMessage: adminReply });
-          }
-
-          // If Gemini apiKey is configured, and any of the provided parameters are not digit-based,
-          // let's fall through to Gemini instead of failing with "Invalid status/result/etc."
-          const apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
-          const isNumeric = (str: string) => /^\d+$/.test(str);
-          const hasNonDigitArgs = (orderId && !isNumeric(orderId)) ||
-                                  (statusDigit && !isNumeric(statusDigit)) ||
-                                  (resultDigit && !isNumeric(resultDigit)) ||
-                                  (locationDigit && !isNumeric(locationDigit)) ||
-                                  (notifyDigit && !isNumeric(notifyDigit));
-
-          if (apiKey && hasNonDigitArgs) {
-            console.log(`[Twilio Studio SMS] "update" command has non-digit arguments and Gemini is configured. Falling through to Gemini AI.`);
-          } else {
-            if (!order) {
-              // Order not found
-              await saveAdminState(fromPhone, {
-                action: "update",
-                step: 1,
-                tempData: {},
-                lastUpdated: Date.now()
-              });
-              return jsonResponse({
-                success: true,
-                replyMessage: "Order not found. Enter valid ID to update:"
-              });
-            }
-
-            // Order found. Check which arguments are missing.
-            const statusMap: Record<string, "received" | "testing" | "review" | "ready" | "delivered" | "issue"> = {
-              "1": "received", "2": "testing", "3": "review", "4": "ready", "5": "delivered", "6": "issue"
-            };
-
-            if (!statusDigit) {
-              // Missing status -> start guided at Step 2
-              await saveAdminState(fromPhone, {
-                action: "update",
-                step: 2,
-                tempData: { orderId: order.id },
-                lastUpdated: Date.now()
-              });
-
-              return jsonResponse({
-                success: true,
-                replyMessage: `Order ${order.id} found. Continue?\nSelect status:\n1:Received 2:Testing 3:Review 4:Ready 5:Delivered 6:Issue`
-              });
-            }
-
-            // Validate statusDigit
-            const cleanStatus = statusDigit.replace(/[^0-9]/g, "");
-            const mappedStatus = statusMap[cleanStatus];
-            if (!mappedStatus) {
-              return jsonResponse({
-                success: true,
-                replyMessage: `Invalid status (${statusDigit}). Enter 1 to 6.`
-              });
-            }
-
-            if (!resultDigit) {
-              // Missing result -> start guided at Step 3
-              await saveAdminState(fromPhone, {
-                action: "update",
-                step: 3,
-                tempData: { orderId: order.id, statusDigit: cleanStatus },
-                lastUpdated: Date.now()
-              });
-
-              const friendlyStatusEn = translateStatusEn(mappedStatus);
-
-              return jsonResponse({
-                success: true,
-                replyMessage: `Status set to: ${friendlyStatusEn}.\nSelect test result:\n1:Clean 2:Shatnez Found 3:Call to Discuss 4:No Change`
-              });
-            }
-
-            // Validate resultDigit
-            const cleanResult = resultDigit.replace(/[^0-9]/g, "");
-            if (!["1", "2", "3", "4"].includes(cleanResult)) {
-              return jsonResponse({
-                success: true,
-                replyMessage: `Invalid result (${resultDigit}). Enter 1 to 4.`
-              });
-            }
-
-            if (!locationDigit) {
-              // Missing location -> start guided at Step 4
-              await saveAdminState(fromPhone, {
-                action: "update",
-                step: 4,
-                tempData: { orderId: order.id, statusDigit: cleanStatus, resultDigit: cleanResult },
-                lastUpdated: Date.now()
-              });
-
-              const friendlyStatusEn = translateStatusEn(mappedStatus);
-              const resultNamesEn = { "1": "Clean / No Shatnez", "2": "Shatnez Found", "3": "Call to Discuss", "4": "No Change" };
-              const friendlyResultEn = resultNamesEn[cleanResult as keyof typeof resultNamesEn] || "No Change";
-
-              return jsonResponse({
-                success: true,
-                replyMessage: `Status: ${friendlyStatusEn}, Result: ${friendlyResultEn}.\nSelect location:\n1: 14 Buchanan 2: 166 Clinton 3: No Change`
-              });
-            }
-
-            // Validate locationDigit
-            const cleanLoc = locationDigit.replace(/[^0-9]/g, "");
-            if (!["1", "2", "3"].includes(cleanLoc)) {
-              return jsonResponse({
-                success: true,
-                replyMessage: `Invalid location (${locationDigit}). Enter 1 to 3.`
-              });
-            }
-
-            if (!notifyDigit) {
-              // Missing notify -> start guided at Step 5
-              await saveAdminState(fromPhone, {
-                action: "update",
-                step: 5,
-                tempData: { orderId: order.id, statusDigit: cleanStatus, resultDigit: cleanResult, locationDigit: cleanLoc },
-                lastUpdated: Date.now()
-              });
-
-              const friendlyStatusEn = translateStatusEn(mappedStatus);
-              const resultNamesEn = { "1": "Clean / No Shatnez", "2": "Shatnez Found", "3": "Call to Discuss", "4": "No Change" };
-              const friendlyResultEn = resultNamesEn[cleanResult as keyof typeof resultNamesEn] || "No Change";
-              const locNamesEn = { "1": "14 Buchanan Rd", "2": "166 Clinton Lane", "3": "No Change" };
-              const friendlyLocEn = locNamesEn[cleanLoc as keyof typeof locNamesEn] || "No Change";
-
-              return jsonResponse({
-                success: true,
-                replyMessage: `Status: ${friendlyStatusEn}, Result: ${friendlyResultEn}, Location: ${friendlyLocEn}.\nTrigger customer robocall?\n1: Yes\n2: No`
-              });
-            }
-
-            // Validate notifyDigit
-            const cleanNotify = notifyDigit.replace(/[^0-9]/g, "");
-            if (!["1", "2"].includes(cleanNotify)) {
-              return jsonResponse({
-                success: true,
-                replyMessage: `Invalid notify digit (${notifyDigit}). Enter 1 or 2.`
-              });
-            }
-
-            // All 5 provided -> One-shot UPDATE
-            const oldStatus = order.status;
-            order.status = mappedStatus;
-
-            if (cleanResult === "1") order.result = "Clean / No Shatnez";
-            else if (cleanResult === "2") order.result = "Shatnez Found";
-            else if (cleanResult === "3") order.result = "Call to Discuss";
-
-            if (cleanLoc === "1") order.location = "14 Buchanan Rd";
-            else if (cleanLoc === "2") order.location = "166 Clinton Lane";
-
-            await saveOrder(order);
-
-            let callTriggered = false;
-            if (order.status === "ready" && oldStatus !== "ready" && order.phone && cleanNotify !== "2") {
-              const origin = `https://${req.headers.get("host")}`;
-              triggerOutboundCall(order.phone, order.id, origin);
-              callTriggered = true;
-            }
-            
-            adminReply += `Order ${order.id} updated! Status: ${order.status}, Result: ${order.result || "N/A"}, Loc: ${order.location || "N/A"}, Call: ${callTriggered ? 'Yes' : 'No'}`;
-            return jsonResponse({ success: true, replyMessage: adminReply });
-          }
-        }
-
-        // Try Gemini AI if API Key is configured
+        // ─── 1. PRIMARY HANDLER: GOOGLE GEMINI AI ASSISTANT ───
+        // All natural language requests, updates, triggers, and questions go to Gemini AI first.
         const apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
         if (apiKey) {
           try {
-            console.log(`[Twilio Studio SMS AI] Invoking Google Gemini API for message: "${inputMsg}"`);
+            console.log(`[Twilio Studio SMS AI] Invoking Google Gemini API for admin message: "${inputMsg}"`);
             const ordersList = await getAllOrders();
             const activeOrders = ordersList.filter(o => !o.archived);
             const callsList = await getRecentCalls(30);
             const smsList = await getRecentSmsMessages(20);
             const balanceData = await getTwilioBalance();
             const balanceStr = balanceData ? `${balanceData.balance} ${balanceData.currency}` : "Unavailable";
-            
+
             // Format recent calls context (first 10 unique callers with actions)
             const uniqueCallers: { phone: string; timestamp: string; isSms: boolean; direction: string; actions: string[] }[] = [];
             const seenCallers = new Set<string>();
@@ -2219,273 +1639,843 @@ You must respond with a JSON object ONLY, matching this schema:
 }
 
 Guidelines:
-1. If the admin is asking a question (e.g. "who called me?", "how many orders are ready?", "did order 102 get tested?", "Did you trigger automated call for order 100020?"), analyze the data and set action="none" and put the detailed answer in "adminReply" (in the language they asked, Hebrew or English).
-2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "so now trigger", "trigger outgoing call that order is ready for pickup", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"), set action="trigger_call", set orderId (or identify from recent orders/customer name/context), set customerPhone if found, and confirm in adminReply that you are triggering the automated order ready call. You HAVE full capability to trigger automated customer calls.
-3. If they want to update an order (e.g. "set order 102 to ready", "102 clean", "His phone number is 8453620850", "change phone of Swartz to 845-362-0850", "עדכן את 105 לנמסר", "המספר שלו הוא 8453620850"), identify the order ID (or match by customer name / recent order), set action="update_order", and set the relevant fields (including customerPhone, customerName, status, result, location, notes). You HAVE full capability to update customer phone numbers, names, statuses, results, and locations.
-4. If they want to send a direct SMS message to a customer (e.g. "tell 8455551212 that we need the payment", "send text to 8453620850..."), set action="send_sms", set customerPhone, and set message.
-5. If they want to add a new order (e.g. "New order for Swartz 8453620850", "Add new order for 8453541908 location 166 Clinton Lane", "הזמנה חדשה לשוורץ 8453620850"), set action="add_order", customerPhone (e.g. "8453541908"), location ("166 Clinton Lane" if Clinton is mentioned, "14 Buchanan Rd" if Buchanan is mentioned or if not specified), and customerName ONLY if an actual person's name is provided (e.g. "Swartz"). CRITICAL: NEVER include command words or phrases like "order for location 166 Clinton Lane", "new order", "הזמנה חדשה" in the customerName! If no person's name was given in the message, leave customerName empty ("") or null.
-6. If the admin wants to make a live bridge call to talk to a customer (e.g., "call 845-376-6452", "dial 8453766452", "צלצל ל-8453766452", "התקשר לגליק", "חייג אל 845-376-6452"), set action="bridge_call", set customerPhone (find it from orders or recent callers if they specify a customer name like "גליק"), and optionally set customerName and orderId if associated with a matched order.
-7. If the intent is ambiguous, set action="none" and ask clarifying questions in "adminReply".
-8. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
-9. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
-10. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
-11. CRITICAL - CALL TRIGGERING CAPABILITY: You HAVE full capability to trigger automated customer notification calls / robocalls through the backend system. Whenever an order is updated to "ready", or whenever the admin mentions triggering a call (e.g., "trigger outgoing call yes", "trigger call", "הפעל שיחה יוצאת", "תתקשר ללקוח"), you MUST set "triggerCall": true. In your "adminReply", confirm that the order has been updated and that the automated customer call has been triggered! NEVER state that you cannot trigger calls or that calls only happen automatically.`;
+1. If the admin is asking a question (e.g. "who called me?", "how many orders are ready?", "did order 102 get tested?", "what order number is 8459251395?", "Did you trigger automated call for order 100020?"), analyze the data, match orders/callers, set action="none" and put the detailed answer in "adminReply" (in the language they asked, Hebrew or English).
+2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "trigger authoring notification call for costomer 8459251395", "trigger outbound call for 100063", "so now trigger", "trigger outgoing call that order is ready for pickup", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"):
+   - Set action="trigger_call".
+   - Match the target order by orderId, customer phone number (e.g. 8459251395), or customer name from the active orders list.
+   - Set "orderId" to the matched order's ID.
+   - Set "customerPhone" to the matched order's phone number or the phone provided by the admin.
+   - Note that "authoring" is often a speech-to-text / autocorrect typo for "outbound" or "outgoing". "costomer" is a typo for "customer".
+   - Confirm in "adminReply" that you are initiating the automated order ready call.
+   - You HAVE full capability to trigger automated customer calls.
+3. If they want to update an order (e.g. "set order 102 to ready", "102 clean", "His phone number is 8453620850", "change phone of Swartz to 845-362-0850", "עדכן את 105 לנמסר", "המספר שלו הוא 8453620850"):
+   Identify the order ID (or match by customer name / recent order), set action="update_order", and set the relevant fields (including customerPhone, customerName, status, result, location, notes). You HAVE full capability to update customer phone numbers, names, statuses, results, and locations.
+4. If they want to send a direct SMS message to a customer (e.g. "tell 8455551212 that we need the payment", "send text to 8453620850..."):
+   Set action="send_sms", set customerPhone, and set message.
+5. If they want to add a new order (e.g. "New order for Swartz 8453620850", "Add new order for 8453541908 location 166 Clinton Lane", "הזמנה חדשה לשוורץ 8453620850"):
+   Set action="add_order", customerPhone (e.g. "8453541908"), location ("166 Clinton Lane" if Clinton is mentioned, "14 Buchanan Rd" if Buchanan is mentioned or if not specified), and customerName ONLY if an actual person's name is provided (e.g. "Swartz"). CRITICAL: NEVER include command words or phrases like "order for location 166 Clinton Lane", "new order", "הזמנה חדשה" in the customerName! If no person's name was given in the message, leave customerName empty ("") or null.
+6. If the admin wants to make a live bridge call to talk to a customer (e.g. "call 845-376-6452", "dial 8453766452", "צלצל ל-8453766452", "התקשר לגליק", "חייג אל 845-376-6452"):
+   Set action="bridge_call", set customerPhone (find it from orders or recent callers if they specify a customer name like "גליק"), and optionally set customerName and orderId if associated with a matched order.
+7. If the admin sends digits in shortcut update format (e.g. "100063 4 1 1 1" or "102 4 1 1 1"):
+   Interpret as: orderId=first digits, status (1=received, 2=testing, 3=review, 4=ready, 5=delivered, 6=issue), result (1=Clean, 2=Shatnez Found, 3=Call to Discuss), location (1=Buchanan, 2=Clinton), notify (1=triggerCall true, 2=triggerCall false). Set action="update_order".
+8. If the intent is ambiguous, set action="none" and ask clarifying questions in "adminReply".
+9. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
+10. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
+11. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
+12. CRITICAL - CALL TRIGGERING CAPABILITY: You HAVE full capability to trigger automated customer notification calls / robocalls through the backend system. Whenever an order is updated to "ready", or whenever the admin mentions triggering a call (e.g., "trigger outgoing call yes", "trigger call", "הפעל שיחה יוצאת", "תתקשר ללקוח"), you MUST set "triggerCall": true. In your "adminReply", confirm that the order has been updated and that the automated customer call has been triggered! NEVER state that you cannot trigger calls or that calls only happen automatically.`;
 
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-            const geminiResponse = await fetch(geminiUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.1 }
-              })
-            });
+            const modelsToTry = [
+              "gemini-2.5-flash",
+              "gemini-2.0-flash",
+              "gemini-1.5-flash",
+              "gemini-1.5-pro"
+            ];
 
-            if (geminiResponse.ok) {
-              const resData = await geminiResponse.json();
-              let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-              
-              // Clean code blocks
-              aiText = aiText.replace(/```json/i, "").replace(/```/g, "").trim();
-              
+            let aiJson: any = null;
+
+            for (const model of modelsToTry) {
               try {
-                const aiJson = JSON.parse(aiText);
-                console.log(`[Twilio Studio SMS AI] Gemini interpreted action:`, JSON.stringify(aiJson));
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                const geminiResponse = await fetch(geminiUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.1 }
+                  })
+                });
 
-                const proto = req.headers.get("x-forwarded-proto") || "https";
-                const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
-                const origin = `${proto}://${host}`;
+                if (geminiResponse.ok) {
+                  const resData = await geminiResponse.json();
+                  let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                  aiText = aiText.replace(/\`\`\`json/i, "").replace(/\`\`\`/g, "").trim();
+                  aiJson = JSON.parse(aiText);
+                  console.log(`[Twilio Studio SMS AI] Gemini (${model}) interpreted action:`, JSON.stringify(aiJson));
+                  break;
+                } else {
+                  console.warn(`[Twilio Studio SMS AI] Model ${model} returned status: ${geminiResponse.status}`);
+                }
+              } catch (modelErr) {
+                console.warn(`[Twilio Studio SMS AI] Error calling model ${model}:`, modelErr);
+              }
+            }
 
-                if (aiJson.action === "update_order") {
-                  let order = aiJson.orderId ? await getOrderById(aiJson.orderId) : null;
-                  if (!order && aiJson.orderId && aiJson.orderId.replace(/\D/g, "").length >= 7) {
-                    const byPhone = await getOrdersByPhone(aiJson.orderId.replace(/\D/g, ""));
-                    if (byPhone.length > 0) {
-                      byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                      order = byPhone[0];
-                    }
-                  }
-                  if (!order && (aiJson.customerName || aiJson.orderId)) {
-                    const nameToMatch = (aiJson.customerName || aiJson.orderId).toLowerCase().trim();
-                    const allActive = (await getAllOrders()).filter(o => !o.archived);
-                    const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(nameToMatch));
-                    if (matchByName) order = matchByName;
-                  }
-                  if (!order) {
-                    // Fallback to most recent active order if context was "his phone number is..."
-                    const allActive = (await getAllOrders()).filter(o => !o.archived);
-                    allActive.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                    if (allActive.length > 0) order = allActive[0];
-                  }
+            if (aiJson) {
+              const proto = req.headers.get("x-forwarded-proto") || "https";
+              const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
+              const origin = `${proto}://${host}`;
 
-                  if (order) {
-                    const oldStatus = order.status;
-                    if (aiJson.status) order.status = aiJson.status;
-                    if (aiJson.result) order.result = aiJson.result;
-                    if (aiJson.location) order.location = aiJson.location;
-                    if (aiJson.customerPhone || (aiJson as any).phone) {
-                      order.phone = (aiJson.customerPhone || (aiJson as any).phone).trim();
-                    }
-                    if (aiJson.customerName || (aiJson as any).name) {
-                      order.customerName = (aiJson.customerName || (aiJson as any).name).trim();
-                    }
-                    if (aiJson.notes !== undefined) {
-                      order.notes = aiJson.notes;
-                    }
-                    await saveOrder(order);
-                    
-                    const lowerMsg = inputMsg.toLowerCase();
-                    const wantsCall = aiJson.triggerCall === true ||
-                      lowerMsg.includes("trigger outgoing call yes") ||
-                      lowerMsg.includes("trigger outgoing call") ||
-                      lowerMsg.includes("trigger call") ||
-                      lowerMsg.includes("call yes") ||
-                      lowerMsg.includes("הפעל שיחה") ||
-                      lowerMsg.includes("שיחה יוצאת") ||
-                      lowerMsg.includes("תתקשר");
-
-                    let callTriggered = false;
-                    if (((order.status === "ready" && oldStatus !== "ready") || wantsCall || aiJson.triggerCall) && order.phone) {
-                      await triggerOutboundCall(order.phone, order.id, origin);
-                      callTriggered = true;
-                    }
-                    
-                    let reply = aiJson.adminReply || `Order ${order.id} updated! Customer: ${order.customerName}, Phone: ${order.phone || "N/A"}, Status: ${order.status}, Result: ${order.result || "N/A"}${callTriggered ? ' (Robocall triggered)' : ''}`;
-                    if (callTriggered && reply.includes("don't have the ability to manually trigger")) {
-                      reply = reply.replace(/As I've mentioned before, I don't have the ability to manually trigger automated customer calls\.?/gi, "The automated customer call has been triggered successfully.");
-                    }
-                    
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: reply
-                    });
-                  } else {
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: aiJson.adminReply || "Could not find the specified order to update."
-                    });
+              if (aiJson.action === "update_order") {
+                let order = aiJson.orderId ? await getOrderById(aiJson.orderId) : null;
+                if (!order && aiJson.orderId && aiJson.orderId.replace(/\D/g, "").length >= 7) {
+                  const byPhone = await getOrdersByPhone(aiJson.orderId.replace(/\D/g, ""));
+                  if (byPhone.length > 0) {
+                    byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    order = byPhone[0];
                   }
-                } else if (aiJson.action === "trigger_call") {
-                  let order = aiJson.orderId ? await getOrderById(aiJson.orderId) : null;
-                  if (!order && aiJson.orderId && aiJson.orderId.replace(/\D/g, "").length >= 7) {
-                    const byPhone = await getOrdersByPhone(aiJson.orderId.replace(/\D/g, ""));
-                    if (byPhone.length > 0) {
-                      byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                      order = byPhone[0];
-                    }
+                }
+                if (!order && aiJson.customerPhone) {
+                  const cleanP = aiJson.customerPhone.replace(/\D/g, "");
+                  const sPhone = cleanP.length === 11 && cleanP.startsWith("1") ? cleanP.substring(1) : cleanP;
+                  const byPhone = await getOrdersByPhone(sPhone);
+                  if (byPhone.length > 0) {
+                    byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    order = byPhone[0];
                   }
-                  if (!order && (aiJson.customerName || aiJson.orderId)) {
-                    const nameToMatch = (aiJson.customerName || aiJson.orderId).toLowerCase().trim();
-                    const allActive = (await getAllOrders()).filter(o => !o.archived);
-                    const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(nameToMatch));
-                    if (matchByName) order = matchByName;
+                }
+                if (!order && (aiJson.customerName || (aiJson.orderId && isNaN(Number(aiJson.orderId))))) {
+                  const nameToMatch = (aiJson.customerName || aiJson.orderId).toLowerCase().trim();
+                  const allActive = (await getAllOrders()).filter(o => !o.archived);
+                  const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(nameToMatch));
+                  if (matchByName) order = matchByName;
+                }
+
+                if (order) {
+                  const oldStatus = order.status;
+                  if (aiJson.status) order.status = aiJson.status;
+                  if (aiJson.result) order.result = aiJson.result;
+                  if (aiJson.location) order.location = aiJson.location;
+                  if (aiJson.customerPhone || (aiJson as any).phone) {
+                    order.phone = (aiJson.customerPhone || (aiJson as any).phone).trim();
                   }
-                  if (!order) {
-                    const allActive = (await getAllOrders()).filter(o => !o.archived);
-                    allActive.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                    const readyOrder = allActive.find(o => o.status === "ready");
-                    if (readyOrder) order = readyOrder;
+                  if (aiJson.customerName || (aiJson as any).name) {
+                    order.customerName = (aiJson.customerName || (aiJson as any).name).trim();
                   }
-
-                  const targetPhone = aiJson.customerPhone || order?.phone;
-                  const targetOrderId = order?.id || aiJson.orderId || "";
-
-                  if (targetPhone && targetOrderId) {
-                    console.log(`[Twilio Studio SMS AI] Triggering automated outbound call for order ${targetOrderId} to ${targetPhone}`);
-                    const callSuccess = await triggerOutboundCall(targetPhone, targetOrderId, origin);
-                    
-                    if (callSuccess) {
-                      return jsonResponse({
-                        success: true,
-                        replyMessage: aiJson.adminReply || `Automated order ready call initiated for Order #${targetOrderId} (${order?.customerName || targetPhone})!`
-                      });
-                    } else {
-                      return jsonResponse({
-                        success: true,
-                        replyMessage: `Failed to initiate automated call. Please check customer phone number: ${targetPhone}.`
-                      });
-                    }
-                  } else {
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: `Could not trigger call: Order #${targetOrderId || "N/A"} phone number is missing or invalid.`
-                    });
+                  if (aiJson.notes !== undefined) {
+                    order.notes = aiJson.notes;
                   }
-                } else if (aiJson.action === "add_order" && (aiJson.customerPhone || aiJson.customerName)) {
-                  const newId = await getNextOrderId();
-                  const customerPhone = (aiJson.customerPhone || "").trim();
-                  let customerName = (aiJson.customerName || "").trim();
+                  await saveOrder(order);
 
-                  // Filter command phrases accidentally provided as names
-                  if (/^(order\s+(for|at)|new\s+order|location|הזמנה|לקוח)/i.test(customerName)) {
-                    customerName = "";
-                  }
-
-                  // Look up existing orders by phone to reuse real customer name if available
-                  const cleanPhone = customerPhone.replace(/\D/g, "");
-                  const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
-                  if (searchPhone && (!customerName || customerName.toLowerCase() === "phone guest" || customerName.toLowerCase() === "guest")) {
-                    try {
-                      const existingOrders = await getOrdersByPhone(searchPhone);
-                      if (existingOrders.length > 0 && existingOrders[0].customerName && !/^(order|phone guest|guest|לקוח)/i.test(existingOrders[0].customerName)) {
-                        customerName = existingOrders[0].customerName;
-                      }
-                    } catch (lookupErr) {
-                      console.error("[Twilio Studio SMS AI] Error looking up customer by phone:", lookupErr);
-                    }
-                  }
-
-                  if (!customerName || customerName.toLowerCase() === "phone guest") {
-                    customerName = cleanPhone ? `Customer (${cleanPhone.slice(-4)})` : "Guest";
-                  }
-
-                  const orderLoc = aiJson.location || "14 Buchanan Rd";
-                  const orderStatus = aiJson.status || "received";
-                  const orderResult = aiJson.result || "";
-
-                  await saveOrder({
-                    id: newId,
-                    customerName,
-                    phone: customerPhone,
-                    status: orderStatus,
-                    dateReceived: new Date().toISOString().split("T")[0],
-                    estimatedCompletion: "",
-                    notes: aiJson.notes || "Created via Gemini SMS Assistant",
-                    result: orderResult,
-                    location: orderLoc,
-                    createdAt: Date.now()
-                  });
+                  const lowerMsg = inputMsg.toLowerCase();
+                  const wantsCall = aiJson.triggerCall === true ||
+                    lowerMsg.includes("trigger outgoing call yes") ||
+                    lowerMsg.includes("trigger outgoing call") ||
+                    lowerMsg.includes("trigger call") ||
+                    lowerMsg.includes("call yes") ||
+                    lowerMsg.includes("הפעל שיחה") ||
+                    lowerMsg.includes("שיחה יוצאת") ||
+                    lowerMsg.includes("תתקשר");
 
                   let callTriggered = false;
-                  if (orderStatus === "ready" && customerPhone && aiJson.triggerCall) {
-                    await triggerOutboundCall(customerPhone, newId, origin);
+                  if (((order.status === "ready" && oldStatus !== "ready") || wantsCall || aiJson.triggerCall) && order.phone) {
+                    await triggerOutboundCall(order.phone, order.id, origin);
                     callTriggered = true;
                   }
-                  
+
+                  let reply = aiJson.adminReply || `Order ${order.id} updated! Customer: ${order.customerName}, Phone: ${order.phone || "N/A"}, Status: ${order.status}, Result: ${order.result || "N/A"}${callTriggered ? ' (Robocall triggered)' : ''}`;
+                  if (callTriggered && reply.includes("don't have the ability to manually trigger")) {
+                    reply = reply.replace(/As I've mentioned before, I don't have the ability to manually trigger automated customer calls\.?/gi, "The automated customer call has been triggered successfully.");
+                  }
+
                   return jsonResponse({
                     success: true,
-                    replyMessage: aiJson.adminReply || `Order created! ID: ${newId}, Name: ${customerName}, Phone: ${customerPhone}, Location: ${orderLoc}${callTriggered ? ' (Robocall triggered)' : ''}`
+                    replyMessage: reply
                   });
-                } else if (aiJson.action === "send_sms" && aiJson.customerPhone && aiJson.message) {
-                  const smsResult = await sendSms(aiJson.customerPhone, aiJson.message);
-                  if (smsResult.success) {
-                    await logSmsMessage(aiJson.customerPhone, aiJson.message, "outbound", smsResult.sid);
-                    await logCallEvent(undefined, aiJson.customerPhone, `SMS Outbound (via Gemini): "${aiJson.message}"`, "completed");
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: aiJson.adminReply || `SMS sent to ${aiJson.customerPhone}!`
-                    });
-                  } else {
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: `Failed to send SMS: ${smsResult.error || "Unknown error"}`
-                    });
-                  }
-                } else if (aiJson.action === "bridge_call" && aiJson.customerPhone) {
-                  const bridgeResult = await triggerCallBridge(
-                    aiJson.customerPhone,
-                    fromPhone,
-                    origin,
-                    aiJson.customerName,
-                    aiJson.orderId
-                  );
-                  if (bridgeResult.success) {
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: aiJson.adminReply || `Initiating outbound bridge call. We will dial your admin phone number first, and connect you with ${aiJson.customerName || aiJson.customerPhone}.`
-                    });
-                  } else {
-                    return jsonResponse({
-                      success: true,
-                      replyMessage: `Failed to initiate bridge call: ${bridgeResult.error || "Unknown error"}`
-                    });
-                  }
-                } else if (aiJson.adminReply) {
+                } else {
                   return jsonResponse({
                     success: true,
-                    replyMessage: aiJson.adminReply
+                    replyMessage: aiJson.adminReply || "Could not find the specified order to update."
                   });
                 }
-              } catch (parseErr) {
-                console.error("[Twilio Studio SMS AI] JSON parse failed on Gemini response:", parseErr, "Text:", aiText);
+              } else if (aiJson.action === "trigger_call") {
+                let order = aiJson.orderId ? await getOrderById(aiJson.orderId) : null;
+                if (!order && aiJson.orderId && aiJson.orderId.replace(/\D/g, "").length >= 7) {
+                  const byPhone = await getOrdersByPhone(aiJson.orderId.replace(/\D/g, ""));
+                  if (byPhone.length > 0) {
+                    byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    order = byPhone[0];
+                  }
+                }
+                if (!order && aiJson.customerPhone) {
+                  const cleanP = aiJson.customerPhone.replace(/\D/g, "");
+                  const sPhone = cleanP.length === 11 && cleanP.startsWith("1") ? cleanP.substring(1) : cleanP;
+                  const byPhone = await getOrdersByPhone(sPhone);
+                  if (byPhone.length > 0) {
+                    byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    order = byPhone[0];
+                  }
+                }
+                if (!order && (aiJson.customerName || (aiJson.orderId && isNaN(Number(aiJson.orderId))))) {
+                  const nameToMatch = (aiJson.customerName || aiJson.orderId).toLowerCase().trim();
+                  const allActive = (await getAllOrders()).filter(o => !o.archived);
+                  const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(nameToMatch));
+                  if (matchByName) order = matchByName;
+                }
+
+                // CRITICAL SAFETY: Never fallback to random active ready order!
+                const targetPhone = order?.phone || aiJson.customerPhone;
+
+                if (order && targetPhone) {
+                  console.log(`[Twilio Studio SMS AI] Triggering automated outbound call for order ${order.id} to ${targetPhone}`);
+                  const callSuccess = await triggerOutboundCall(targetPhone, order.id, origin);
+
+                  if (callSuccess) {
+                    return jsonResponse({
+                      success: true,
+                      replyMessage: aiJson.adminReply || `Automated order ready call initiated for Order #${order.id} (${order.customerName || targetPhone})!`
+                    });
+                  } else {
+                    return jsonResponse({
+                      success: true,
+                      replyMessage: `Failed to initiate automated call for Order #${order.id}. Please check customer phone number: ${targetPhone}.`
+                    });
+                  }
+                } else {
+                  const targetDesc = aiJson.orderId || aiJson.customerPhone || aiJson.customerName || inputMsg;
+                  return jsonResponse({
+                    success: true,
+                    replyMessage: `Could not find an active order matching "${targetDesc}". Automated call was NOT triggered.`
+                  });
+                }
+              } else if (aiJson.action === "add_order" && (aiJson.customerPhone || aiJson.customerName)) {
+                const newId = await getNextOrderId();
+                const customerPhone = (aiJson.customerPhone || "").trim();
+                let customerName = (aiJson.customerName || "").trim();
+
+                if (/^(order\s+(for|at)|new\s+order|location|הזמנה|לקוח)/i.test(customerName)) {
+                  customerName = "";
+                }
+
+                const cleanPhone = customerPhone.replace(/\D/g, "");
+                const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
+                if (searchPhone && (!customerName || customerName.toLowerCase() === "phone guest" || customerName.toLowerCase() === "guest")) {
+                  try {
+                    const existingOrders = await getOrdersByPhone(searchPhone);
+                    if (existingOrders.length > 0 && existingOrders[0].customerName && !/^(order|phone guest|guest|לקוח)/i.test(existingOrders[0].customerName)) {
+                      customerName = existingOrders[0].customerName;
+                    }
+                  } catch (lookupErr) {
+                    console.error("[Twilio Studio SMS AI] Error looking up customer by phone:", lookupErr);
+                  }
+                }
+
+                if (!customerName || customerName.toLowerCase() === "phone guest") {
+                  customerName = cleanPhone ? `Customer (${cleanPhone.slice(-4)})` : "Guest";
+                }
+
+                const orderLoc = aiJson.location || "14 Buchanan Rd";
+                const orderStatus = aiJson.status || "received";
+                const orderResult = aiJson.result || "";
+
+                await saveOrder({
+                  id: newId,
+                  customerName,
+                  phone: customerPhone,
+                  status: orderStatus,
+                  dateReceived: new Date().toISOString().split("T")[0],
+                  estimatedCompletion: "",
+                  notes: aiJson.notes || "Created via Gemini SMS Assistant",
+                  result: orderResult,
+                  location: orderLoc,
+                  createdAt: Date.now()
+                });
+
+                let callTriggered = false;
+                if (orderStatus === "ready" && customerPhone && aiJson.triggerCall) {
+                  await triggerOutboundCall(customerPhone, newId, origin);
+                  callTriggered = true;
+                }
+
+                return jsonResponse({
+                  success: true,
+                  replyMessage: aiJson.adminReply || `Order ${newId} created! Customer: ${customerName}, Loc: ${orderLoc}, Status: ${orderStatus}${callTriggered ? ' (Robocall triggered)' : ''}`
+                });
+              } else if (aiJson.action === "send_sms" && aiJson.customerPhone && aiJson.message) {
+                const smsResult = await sendSms(aiJson.customerPhone, aiJson.message);
+                if (smsResult.success) {
+                  await logSmsMessage(aiJson.customerPhone, aiJson.message, "outbound", smsResult.sid);
+                  await logCallEvent(undefined, aiJson.customerPhone, `SMS Outbound (via AI): "${aiJson.message}"`, "completed");
+                  return jsonResponse({
+                    success: true,
+                    replyMessage: aiJson.adminReply || `SMS sent to ${aiJson.customerPhone}: "${aiJson.message}"`
+                  });
+                } else {
+                  return jsonResponse({
+                    success: true,
+                    replyMessage: `Failed to send SMS: ${smsResult.error || "Unknown error"}`
+                  });
+                }
+              } else if (aiJson.action === "bridge_call" && aiJson.customerPhone) {
+                const bridgeResult = await triggerCallBridge(
+                  aiJson.customerPhone,
+                  fromPhone,
+                  origin,
+                  aiJson.customerName,
+                  aiJson.orderId
+                );
+                if (bridgeResult.success) {
+                  return jsonResponse({
+                    success: true,
+                    replyMessage: aiJson.adminReply || `Initiating outbound bridge call. We will dial your admin phone number first, and connect you with ${aiJson.customerName || aiJson.customerPhone}.`
+                  });
+                } else {
+                  return jsonResponse({
+                    success: true,
+                    replyMessage: `Failed to initiate bridge call: ${bridgeResult.error || "Unknown error"}`
+                  });
+                }
+              } else if (aiJson.adminReply) {
+                return jsonResponse({
+                  success: true,
+                  replyMessage: aiJson.adminReply
+                });
               }
-            } else {
-              console.error("[Twilio Studio SMS AI] Gemini API call failed:", geminiResponse.status, await geminiResponse.text());
             }
           } catch (geminiErr) {
-            console.error("[Twilio Studio SMS AI] Error calling Gemini API:", geminiErr);
+            console.error("[Twilio Studio SMS AI] Error in Gemini processing, falling back to CLI parser:", geminiErr);
           }
         }
 
-        // Help menu response (fallback)
+        // ─── 2. FALLBACK HANDLER: BASIC CLI COMMANDS ───
+        // Reached ONLY if Gemini AI key is missing, or Gemini API credits/quota ran out, or network error.
+        console.warn(`[Twilio Studio SMS] AI assistant unavailable. Running fallback CLI command parser for: "${inputMsg}"`);
+
+        let cmd = inputWord;
+        if (["אחרונים", "אחרונות"].includes(cmd)) cmd = "recent";
+        else if (["הוסף", "הזן", "חדש"].includes(cmd)) cmd = "add";
+        else if (["עדכן", "ערוך"].includes(cmd)) cmd = "update";
+        else if (["send", "text", "שלח", "מסרון"].includes(cmd)) cmd = "sms";
+        else if (["עזרה", "מנהל", "היי", "hi"].includes(cmd)) cmd = "help";
+
+        if (cmd === "recent") {
+          const secondWord = parts[1]?.toLowerCase() || "";
+          if (secondWord === "orders" || secondWord === "הזמנות") {
+            const orders = await getAllOrders();
+            orders.sort((a, b) => {
+              if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+              if (a.createdAt) return -1;
+              if (b.createdAt) return 1;
+              return new Date(b.dateReceived || 0).getTime() - new Date(a.dateReceived || 0).getTime();
+            });
+            const recent = orders.slice(0, 5);
+            if (recent.length === 0) {
+              adminReply += "No recent orders found.";
+            } else {
+              adminReply += "Recent Orders:\n";
+              for (let i = 0; i < recent.length; i++) {
+                const o = recent[i];
+                const customer = o.customerName || "No name";
+                const status = translateStatusEn(o.status || "received");
+                adminReply += `${i + 1}. ID: ${o.id} | ${customer} | Status: ${status} | Date: ${o.dateReceived}\n`;
+              }
+            }
+          } else {
+            const calls = await getAllCalls();
+            const uniqueCallers: { phone: string; timestamp: number; isSms: boolean }[] = [];
+            const seen = new Set<string>();
+            for (const c of calls) {
+              if (c.phone) {
+                const cleanPhone = c.phone.trim();
+                if (!seen.has(cleanPhone)) {
+                  seen.add(cleanPhone);
+                  const isSms = c.actions.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:"));
+                  uniqueCallers.push({ phone: cleanPhone, timestamp: c.timestamp, isSms });
+                  if (uniqueCallers.length >= 5) break;
+                }
+              }
+            }
+
+            if (uniqueCallers.length === 0) {
+              adminReply += "No recent callers found.";
+            } else {
+              adminReply += "Recent Callers:\n";
+              for (let i = 0; i < uniqueCallers.length; i++) {
+                const item = uniqueCallers[i];
+                let formattedTime = "";
+                try {
+                  formattedTime = new Intl.DateTimeFormat("en-US", {
+                    timeZone: "America/New_York",
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true
+                  }).format(new Date(item.timestamp));
+                } catch (e) {
+                  formattedTime = new Date(item.timestamp).toLocaleString();
+                }
+                const typeTag = item.isSms ? "[💬 SMS]" : "[📞 Call]";
+                adminReply += `${i + 1}. ${item.phone} (${formattedTime}) ${typeTag}\n`;
+              }
+            }
+          }
+          return jsonResponse({ success: true, replyMessage: adminReply });
+        }
+
+        if (cmd === "trigger" || cmd === "robocall" || cmd === "הפעל") {
+          // Syntax: trigger [orderId or phone]
+          // Extract order ID or phone number from message
+          const phoneMatch = inputMsg.match(/\b\d{10,11}\b/) || inputMsg.match(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/);
+          const orderIdMatch = inputMsg.match(/\b\d{4,6}\b/);
+          const targetArg = parts[1] || "";
+          let order: any = null;
+
+          if (orderIdMatch) {
+            order = await getOrderById(orderIdMatch[0]);
+          }
+          if (!order && phoneMatch) {
+            const cleanPhone = phoneMatch[0].replace(/\D/g, "");
+            const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
+            const byPhone = await getOrdersByPhone(searchPhone);
+            if (byPhone.length > 0) {
+              byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+              order = byPhone[0];
+            }
+          }
+          if (!order && targetArg) {
+            order = await getOrderById(targetArg);
+            if (!order && targetArg.replace(/\D/g, "").length >= 7) {
+              const byPhone = await getOrdersByPhone(targetArg.replace(/\D/g, ""));
+              if (byPhone.length > 0) order = byPhone[0];
+            }
+            if (!order) {
+              const allActive = (await getAllOrders()).filter(o => !o.archived);
+              const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(targetArg.toLowerCase()));
+              if (matchByName) order = matchByName;
+            }
+          }
+
+          // CRITICAL FIX: Never fallback to a random ready order!
+          if (order && order.phone) {
+            const proto = req.headers.get("x-forwarded-proto") || "https";
+            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
+            const origin = `${proto}://${host}`;
+            const callSuccess = await triggerOutboundCall(order.phone, order.id, origin);
+            if (callSuccess) {
+              return jsonResponse({
+                success: true,
+                replyMessage: `Automated order ready call initiated for Order #${order.id} (${order.customerName || order.phone})!`
+              });
+            } else {
+              return jsonResponse({
+                success: true,
+                replyMessage: `Failed to trigger call for Order #${order.id}. Check phone number: ${order.phone}`
+              });
+            }
+          } else {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Order not found or missing phone number. Usage: trigger [orderId] or trigger [phone]`
+            });
+          }
+        }
+
+        if (cmd === "sms") {
+          // Syntax: sms [phone] [message...]
+          let args = parts.slice(1);
+          const targetPhone = args[0];
+          const smsBody = args.slice(1).join(" ").trim();
+
+          if (!targetPhone || !smsBody) {
+            return jsonResponse({
+              success: true,
+              replyMessage: "Syntax: sms [phone] [message]\nExample: sms 8455551234 Hello customer!"
+            });
+          }
+
+          const cleanPhone = targetPhone.replace(/\D/g, "");
+          if (cleanPhone.length < 7) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid phone number: ${targetPhone}`
+            });
+          }
+
+          const result = await sendSms(targetPhone, smsBody);
+          if (result.success) {
+            await logSmsMessage(targetPhone, smsBody, "outbound", result.sid);
+            await logCallEvent(undefined, targetPhone, `SMS Outbound (via Admin command): "${smsBody}"`, "completed");
+            return jsonResponse({
+              success: true,
+              replyMessage: `SMS sent successfully to ${targetPhone}!`
+            });
+          } else {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Failed to send SMS: ${result.error || "Unknown error"}`
+            });
+          }
+        }
+
+        if (cmd === "add") {
+          let args = parts.slice(1);
+          const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
+          if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
+            args = args.slice(1);
+          }
+
+          if (args.length === 0) {
+            await saveAdminState(fromPhone, {
+              action: "add",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Enter customer phone number:"
+            });
+          }
+
+          let detectedLocation: string | undefined = undefined;
+          if (/(166\s*clinton(\s*lane)?|clinton|קלינטון)/i.test(inputMsg)) {
+            detectedLocation = "166 Clinton Lane";
+          } else if (/(14\s*buchanan(\s*rd)?|buchanan|בוכנן)/i.test(inputMsg)) {
+            detectedLocation = "14 Buchanan Rd";
+          }
+
+          const lastWord = args[args.length - 1];
+          if (args.length > 1 && (lastWord === "1" || lastWord === "2")) {
+            detectedLocation = lastWord === "1" ? "14 Buchanan Rd" : "166 Clinton Lane";
+            args = args.slice(0, args.length - 1);
+          }
+
+          let phoneIdx = args.findIndex(arg => arg.replace(/\D/g, "").length >= 7);
+          let customerPhone = "";
+          let hasLocation = !!detectedLocation;
+
+          if (phoneIdx !== -1) {
+            customerPhone = args[phoneIdx];
+          }
+
+          if (!customerPhone) {
+            await saveAdminState(fromPhone, {
+              action: "add",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Enter customer phone number:"
+            });
+          }
+
+          let remainingArgs = [...args];
+          const cleanPhone = customerPhone.replace(/\D/g, "");
+          const searchPhone = cleanPhone.length === 11 && cleanPhone.startsWith("1") ? cleanPhone.substring(1) : cleanPhone;
+          const existingOrders = await getOrdersByPhone(searchPhone);
+
+          const noiseTokens = new Set([
+            "order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה",
+            "location", "loc", "at", "for", "in", "מיקום", "במיקום", "166", "14", "clinton",
+            "lane", "buchanan", "rd", "road", "קלינטון", "בוכנן"
+          ]);
+
+          const rawNameParts = [
+            ...remainingArgs.slice(0, phoneIdx),
+            ...remainingArgs.slice(phoneIdx + 1)
+          ];
+          const filteredNameParts = rawNameParts.filter(
+            w => !noiseTokens.has(w.toLowerCase().replace(/[^a-z0-9\u0590-\u05FF]/gi, ""))
+          );
+          const customerName = filteredNameParts.length > 0 ? filteredNameParts.join(" ") : "";
+
+          let resolvedName = customerName;
+          let isReusedName = false;
+          if (existingOrders.length > 0 && !resolvedName) {
+            resolvedName = existingOrders[0].customerName || "";
+            if (resolvedName) isReusedName = true;
+          }
+
+          const finalId = await getNextOrderId();
+
+          if (hasLocation) {
+            const selectedLoc = detectedLocation || "14 Buchanan Rd";
+            const finalName = resolvedName || (searchPhone ? `Customer (${searchPhone.slice(-4)})` : "Guest");
+            const today = new Date().toISOString().split("T")[0];
+            await saveOrder({
+              id: finalId,
+              customerName: finalName,
+              phone: customerPhone,
+              status: "received",
+              dateReceived: today,
+              estimatedCompletion: "",
+              notes: "Created via SMS Admin (One-shot)",
+              result: "",
+              location: selectedLoc,
+              createdAt: Date.now()
+            });
+
+            const nameMessage = finalName && finalName !== "Guest" ? `, Name: ${finalName}` : "";
+            adminReply += `Order added! ID: ${finalId}${nameMessage}, Location: ${selectedLoc}`;
+            return jsonResponse({ success: true, replyMessage: adminReply });
+          } else {
+            if (!resolvedName) {
+              await saveAdminState(fromPhone, {
+                action: "add",
+                step: 2,
+                tempData: { orderId: finalId, customerPhone },
+                lastUpdated: Date.now()
+              });
+              return jsonResponse({
+                success: true,
+                replyMessage: "Enter customer name (optional - reply 'no', 'skip', or '0' to skip):"
+              });
+            } else {
+              await saveAdminState(fromPhone, {
+                action: "add",
+                step: 3,
+                tempData: { orderId: finalId, customerPhone, customerName: resolvedName },
+                lastUpdated: Date.now()
+              });
+              return jsonResponse({
+                success: true,
+                replyMessage: isReusedName 
+                  ? `Customer "${resolvedName}" found. Select pickup location:\n1: 14 Buchanan Rd\n2: 166 Clinton Lane`
+                  : `Select pickup location:\n1: 14 Buchanan Rd\n2: 166 Clinton Lane`
+              });
+            }
+          }
+        }
+
+        if (cmd === "update") {
+          let args = parts.slice(1);
+          const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
+          if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
+            args = args.slice(1);
+          }
+
+          const orderId = args[0];
+          const statusDigit = args[1];
+          const resultDigit = args[2];
+          const locationDigit = args[3];
+          const notifyDigit = args[4];
+
+          if (!orderId) {
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Enter Order ID to update:"
+            });
+          }
+
+          let order = await getOrderById(orderId);
+          if (!order && orderId.replace(/\D/g, "").length >= 7) {
+            const byPhone = await getOrdersByPhone(orderId);
+            if (byPhone.length === 1) {
+              order = byPhone[0];
+            } else if (byPhone.length > 1) {
+              let reply = "Multiple found. Reply exact ID:\n";
+              for (const o of byPhone) {
+                reply += `- ${o.id} (${o.status})\n`;
+              }
+              await saveAdminState(fromPhone, {
+                action: "update",
+                step: 1,
+                tempData: {},
+                lastUpdated: Date.now()
+              });
+              return jsonResponse({ success: true, replyMessage: reply });
+            }
+          }
+
+          let detectedStatus: "received" | "testing" | "review" | "ready" | "delivered" | "issue" | null = null;
+          if (/(ready|pickup|מוכן|איסוף)/i.test(inputMsg)) detectedStatus = "ready";
+          else if (/(received|התקבל|קיבלנו)/i.test(inputMsg)) detectedStatus = "received";
+          else if (/(testing|בבדיקה|נבדק)/i.test(inputMsg)) detectedStatus = "testing";
+          else if (/(review|עיון)/i.test(inputMsg)) detectedStatus = "review";
+          else if (/(delivered|נמסר|נלקח)/i.test(inputMsg)) detectedStatus = "delivered";
+          else if (/(issue|בעיה|תקלה)/i.test(inputMsg)) detectedStatus = "issue";
+
+          let detectedResult: string | null = null;
+          if (/(clean|נקי|no\s*shatnez|resolts|results)/i.test(inputMsg) && !/(shatnez\s*found|found\s*shatnez|נמצא\s*שעטנז)/i.test(inputMsg)) {
+            detectedResult = "Clean / No Shatnez";
+          } else if (/(shatnez|found|שעטנז|נמצא)/i.test(inputMsg)) {
+            detectedResult = "Shatnez Found";
+          } else if (/(discuss|call\s*to\s*discuss|לדבר|להתקשר)/i.test(inputMsg)) {
+            detectedResult = "Call to Discuss";
+          }
+
+          let detectedLocation: string | null = null;
+          if (/(buchanan|בוכנן)/i.test(inputMsg)) detectedLocation = "14 Buchanan Rd";
+          else if (/(clinton|קלינטון)/i.test(inputMsg)) detectedLocation = "166 Clinton Lane";
+
+          let detectedPhone: string | null = null;
+          const phonePatternMatch = inputMsg.match(/(?:phone|טלפון|מספר|number)[\s:]*([0-9\-+()]{7,15})/i) || inputMsg.match(/\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b/);
+          if (phonePatternMatch) {
+            detectedPhone = phonePatternMatch[1].trim();
+          }
+
+          if (order && (detectedStatus || detectedResult || detectedLocation || detectedPhone)) {
+            const oldStatus = order.status;
+            if (detectedStatus) order.status = detectedStatus;
+            if (detectedResult) order.result = detectedResult;
+            if (detectedLocation) order.location = detectedLocation;
+            if (detectedPhone) order.phone = detectedPhone;
+
+            await saveOrder(order);
+
+            const proto = req.headers.get("x-forwarded-proto") || "https";
+            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
+            const origin = `${proto}://${host}`;
+
+            let callTriggered = false;
+            if (order.status === "ready" && oldStatus !== "ready" && order.phone) {
+              triggerOutboundCall(order.phone, order.id, origin);
+              callTriggered = true;
+            }
+
+            adminReply += `Order ${order.id} updated! Customer: ${order.customerName}, Phone: ${order.phone || "N/A"}, Status: ${order.status}, Result: ${order.result || "N/A"}, Loc: ${order.location || "N/A"}, Call: ${callTriggered ? 'Yes' : 'No'}`;
+            return jsonResponse({ success: true, replyMessage: adminReply });
+          }
+
+          if (!order) {
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 1,
+              tempData: {},
+              lastUpdated: Date.now()
+            });
+            return jsonResponse({
+              success: true,
+              replyMessage: "Order not found. Enter valid ID to update:"
+            });
+          }
+
+          const statusMap: Record<string, "received" | "testing" | "review" | "ready" | "delivered" | "issue"> = {
+            "1": "received", "2": "testing", "3": "review", "4": "ready", "5": "delivered", "6": "issue"
+          };
+
+          if (!statusDigit) {
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 2,
+              tempData: { orderId: order.id },
+              lastUpdated: Date.now()
+            });
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Order ${order.id} found. Continue?\nSelect status:\n1:Received 2:Testing 3:Review 4:Ready 5:Delivered 6:Issue`
+            });
+          }
+
+          const cleanStatus = statusDigit.replace(/[^0-9]/g, "");
+          const mappedStatus = statusMap[cleanStatus];
+          if (!mappedStatus) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid status (${statusDigit}). Enter 1 to 6.`
+            });
+          }
+
+          if (!resultDigit) {
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 3,
+              tempData: { orderId: order.id, statusDigit: cleanStatus },
+              lastUpdated: Date.now()
+            });
+
+            const friendlyStatusEn = translateStatusEn(mappedStatus);
+            return jsonResponse({
+              success: true,
+              replyMessage: `Status set to: ${friendlyStatusEn}.\nSelect test result:\n1:Clean 2:Shatnez Found 3:Call to Discuss 4:No Change`
+            });
+          }
+
+          const cleanResult = resultDigit.replace(/[^0-9]/g, "");
+          if (!["1", "2", "3", "4"].includes(cleanResult)) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid result choice (${resultDigit}). Enter 1 to 4.`
+            });
+          }
+
+          if (!locationDigit) {
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 4,
+              tempData: { orderId: order.id, statusDigit: cleanStatus, resultDigit: cleanResult },
+              lastUpdated: Date.now()
+            });
+
+            const friendlyStatusEn = translateStatusEn(mappedStatus);
+            const resultNamesEn = { "1": "Clean / No Shatnez", "2": "Shatnez Found", "3": "Call to Discuss", "4": "No Change" };
+            const friendlyResultEn = resultNamesEn[cleanResult as keyof typeof resultNamesEn] || "No Change";
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Status: ${friendlyStatusEn}, Result: ${friendlyResultEn}.\nSelect location:\n1: 14 Buchanan 2: 166 Clinton 3: No Change`
+            });
+          }
+
+          const cleanLoc = locationDigit.replace(/[^0-9]/g, "");
+          if (!["1", "2", "3"].includes(cleanLoc)) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid location (${locationDigit}). Enter 1 to 3.`
+            });
+          }
+
+          if (!notifyDigit) {
+            await saveAdminState(fromPhone, {
+              action: "update",
+              step: 5,
+              tempData: { orderId: order.id, statusDigit: cleanStatus, resultDigit: cleanResult, locationDigit: cleanLoc },
+              lastUpdated: Date.now()
+            });
+
+            const friendlyStatusEn = translateStatusEn(mappedStatus);
+            const resultNamesEn = { "1": "Clean / No Shatnez", "2": "Shatnez Found", "3": "Call to Discuss", "4": "No Change" };
+            const friendlyResultEn = resultNamesEn[cleanResult as keyof typeof resultNamesEn] || "No Change";
+            const locNamesEn = { "1": "14 Buchanan Rd", "2": "166 Clinton Lane", "3": "No Change" };
+            const friendlyLocEn = locNamesEn[cleanLoc as keyof typeof locNamesEn] || "No Change";
+
+            return jsonResponse({
+              success: true,
+              replyMessage: `Status: ${friendlyStatusEn}, Result: ${friendlyResultEn}, Location: ${friendlyLocEn}.\nTrigger customer robocall?\n1: Yes\n2: No`
+            });
+          }
+
+          const cleanNotify = notifyDigit.replace(/[^0-9]/g, "");
+          if (!["1", "2"].includes(cleanNotify)) {
+            return jsonResponse({
+              success: true,
+              replyMessage: `Invalid notify digit (${notifyDigit}). Enter 1 or 2.`
+            });
+          }
+
+          const oldStatus = order.status;
+          order.status = mappedStatus;
+
+          if (cleanResult === "1") order.result = "Clean / No Shatnez";
+          else if (cleanResult === "2") order.result = "Shatnez Found";
+          else if (cleanResult === "3") order.result = "Call to Discuss";
+
+          if (cleanLoc === "1") order.location = "14 Buchanan Rd";
+          else if (cleanLoc === "2") order.location = "166 Clinton Lane";
+
+          await saveOrder(order);
+
+          let callTriggered = false;
+          if (order.status === "ready" && oldStatus !== "ready" && order.phone && cleanNotify !== "2") {
+            const origin = `https://${req.headers.get("host")}`;
+            triggerOutboundCall(order.phone, order.id, origin);
+            callTriggered = true;
+          }
+
+          adminReply += `Order ${order.id} updated! Status: ${order.status}, Result: ${order.result || "N/A"}, Loc: ${order.location || "N/A"}, Call: ${callTriggered ? 'Yes' : 'No'}`;
+          return jsonResponse({ success: true, replyMessage: adminReply });
+        }
+
+        // Fallback Help Menu (only shown if no CLI command matched)
         const prefix = isPinProvided ? pin + " " : "";
-        adminReply += `Admin SMS Menu:\n\n` +
+        const offlineNote = apiKey ? "(AI assistant is currently offline/unavailable - using basic commands)\n\n" : "";
+        adminReply += `${offlineNote}Admin SMS Menu:\n\n` +
           `1. guided add: ${prefix}add\n` +
           `2. guided update: ${prefix}update\n` +
           `3. cancel flow: cancel\n\n` +
           `One-shot commands:\n` +
-          `- ${prefix}recent calls (recent callers)\n` +
-          `- ${prefix}recent orders (recent orders)\n` +
+          `- ${prefix}trigger [ID or Phone]\n` +
+          `- ${prefix}recent calls\n` +
+          `- ${prefix}recent orders\n` +
           `- ${prefix}sms [Phone] [Message]\n` +
           `- ${prefix}add [ID] [Phone] [Loc 1-2]\n` +
           `- ${prefix}update [ID] [Stat 1-6] [Res 1-3] [Loc 1-2] [Call 1-2]`;
