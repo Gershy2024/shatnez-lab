@@ -67,9 +67,13 @@ export async function POST(req: NextRequest) {
           .replace(/14\s*Buchanan/gi, orderLocation);
       }
       const safeEn = escapeXml(outboundMsgEn);
+      twiml += `<Pause length="1"/>`;
       twiml += `<Say voice="Polly.Matthew" language="en-US">${safeEn}</Say>`;
+      twiml += `<Pause length="1"/>`;
     } else {
+      twiml += `<Pause length="1"/>`;
       twiml += `<Say voice="Polly.Matthew" language="en-US">Hello. This is The Shatnez Lab calling regarding your recent order.</Say>`;
+      twiml += `<Pause length="1"/>`;
     }
     twiml += `<Hangup></Hangup>`;
   } else {

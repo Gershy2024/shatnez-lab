@@ -3036,24 +3036,34 @@ export default function AdminPage() {
                               <span className="font-mono text-xs">{order.estimatedCompletion}</span>
                             </div>
                           )}
-                          {order.callLogs && order.callLogs.length > 0 && (
-                            <div className="mt-1 flex items-center gap-1.5 text-xs whitespace-nowrap">
-                              {order.callLogs[order.callLogs.length - 1].status === 'completed' ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                              ) : order.callLogs[order.callLogs.length - 1].status === 'failed' ? (
-                                <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                              ) : (
-                                <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              )}
-                              <span className={`font-medium ${
-                                order.callLogs[order.callLogs.length - 1].status === 'completed' ? 'text-emerald-700' :
-                                order.callLogs[order.callLogs.length - 1].status === 'failed' ? 'text-red-700' :
-                                'text-amber-700'
-                              }`}>
-                                {order.callLogs[order.callLogs.length - 1].status}
-                              </span>
-                            </div>
-                          )}
+                          {order.callLogs && order.callLogs.length > 0 && (() => {
+                            const lastLog = order.callLogs[order.callLogs.length - 1];
+                            const isVm = lastLog.answeredBy?.toLowerCase().startsWith("machine");
+                            const isHum = lastLog.answeredBy?.toLowerCase() === "human";
+                            const statusText = isVm 
+                              ? (isRtl ? "הושאר בתא קולי" : "Left on Voicemail") 
+                              : isHum 
+                              ? (isRtl ? "נענה (לקוח)" : "Answered") 
+                              : lastLog.status;
+                            return (
+                              <div className="mt-1 flex items-center gap-1.5 text-xs whitespace-nowrap">
+                                {lastLog.status === 'completed' ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                ) : lastLog.status === 'failed' ? (
+                                  <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                                ) : (
+                                  <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                )}
+                                <span className={`font-medium ${
+                                  lastLog.status === 'completed' ? 'text-emerald-700' :
+                                  lastLog.status === 'failed' ? 'text-red-700' :
+                                  'text-amber-700'
+                                }`}>
+                                  {statusText}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-center">

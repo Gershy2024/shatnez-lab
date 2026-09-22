@@ -37,6 +37,10 @@ export async function triggerOutboundCall(customerPhone: string, orderId: string
     body.append("StatusCallbackEvent", "completed");
     body.append("StatusCallbackMethod", "POST");
 
+    // Enable Answering Machine Detection: wait for the beep before playing outbound message so it records in voicemail
+    body.append("MachineDetection", "DetectMessageEnd");
+    body.append("MachineDetectionTimeout", "30");
+
     console.log(`[Twilio Call] Initiating outbound call to ${cleanPhone} from ${fromPhone}`);
 
     const res = await fetch(twilioUrl, {

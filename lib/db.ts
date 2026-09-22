@@ -18,6 +18,7 @@ export interface CallLog {
   status: string; // e.g. "completed", "failed", "busy", "no-answer"
   timestamp: string;
   duration?: string;
+  answeredBy?: string; // e.g. "human", "machine_end_beep", "machine_start", "machine_end_silence"
 }
 
 export interface Order {
