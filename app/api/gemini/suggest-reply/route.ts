@@ -34,7 +34,7 @@ Requirements:
 4. Never include markdown formatting, json tags, or any surrounding text. Return ONLY the reply text itself.
 5. If phone numbers are mentioned, format them with dashes (e.g. 845-552-4744).`;
 
-    const modelsToTry = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"];
     let suggestion = "";
 
     for (const model of modelsToTry) {

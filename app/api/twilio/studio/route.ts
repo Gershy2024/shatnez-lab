@@ -1696,7 +1696,7 @@ You must respond with a JSON object ONLY, matching this schema:
 
 Guidelines:
 1. If the admin is asking a question (e.g. "who called me?", "how many orders are ready?", "did order 102 get tested?", "what order number is 8459251395?", "Did you trigger automated call for order 100020?"), analyze the data, match orders/callers, set action="none" and put the detailed answer in "adminReply" (in the language they asked, Hebrew or English).
-2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "trigger authoring notification call for costomer 8459251395", "trigger outbound call for 100063", "so now trigger", "trigger outgoing call that order is ready for pickup", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"):
+2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "Send another robocall for order number 100077", "send robocall for order 100077", "send another call to 100077", "send another reminder call", "send robocall to swartz", "trigger authoring notification call for costomer 8459251395", "trigger outbound call for 100063", "so now trigger", "trigger outgoing call that order is ready for pickup", "שלח עוד רובוקול להזמנה 100077", "שלח עוד שיחה", "שלח עוד תזכורת", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"):
    - Set action="trigger_call".
    - Match the target order by orderId, customer phone number (e.g. 8459251395), or customer name from the active orders list.
    - Set "orderId" to the matched order's ID.
@@ -1733,10 +1733,11 @@ Guidelines:
 - If an actual recorded voicemail exists, you can set action="send_sms", customerPhone=fromPhone, message="Voicemail from " + vm.phone + " (" + vm.duration + "s):", and mediaUrl="${origin}/api/audio?url=" + encodeURIComponent(vm.url). This sends the actual audio file directly into their SMS thread as an MMS!`;
 
             const modelsToTry = [
-              "gemini-2.0-flash",
-              "gemini-1.5-flash",
-              "gemini-1.5-flash-8b",
-              "gemini-1.5-pro"
+              "gemini-2.5-flash",
+              "gemini-2.5-flash-lite",
+              "gemini-3.5-flash",
+              "gemini-2.5-pro",
+              "gemini-flash-latest"
             ];
 
             let aiJson: any = null;
@@ -2026,8 +2027,18 @@ Guidelines:
         if (["אחרונים", "אחרונות"].includes(cmd)) cmd = "recent";
         else if (["הוסף", "הזן", "חדש"].includes(cmd)) cmd = "add";
         else if (["עדכן", "ערוך"].includes(cmd)) cmd = "update";
-        else if (["send", "text", "שלח", "מסרון"].includes(cmd)) cmd = "sms";
+        else if (["send", "text", "שלח", "מסרון"].includes(cmd)) {
+          if (/(robocall|call|שיחה|רובוקול|תזכורת|notification)/i.test(inputMsg) && !/(sms|text|מסרון)/i.test(inputMsg)) {
+            cmd = "trigger";
+          } else {
+            cmd = "sms";
+          }
+        }
         else if (["עזרה", "מנהל", "היי", "hi"].includes(cmd)) cmd = "help";
+
+        if (/(robocall|רובוקול)/i.test(inputMsg) || /(trigger\s*(a\s*)?(call|robocall|outbound)|send\s*(another\s*|a\s*)?(call|robocall)|הפעל\s*שיחה|שלח\s*.*(שיחה|רובוקול))/i.test(inputMsg)) {
+          cmd = "trigger";
+        }
 
         if (cmd === "recent") {
           const secondWord = parts[1]?.toLowerCase() || "";
@@ -2099,7 +2110,6 @@ Guidelines:
           // Extract order ID or phone number from message
           const phoneMatch = inputMsg.match(/\b\d{10,11}\b/) || inputMsg.match(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/);
           const orderIdMatch = inputMsg.match(/\b\d{4,6}\b/);
-          const targetArg = parts[1] || "";
           let order: any = null;
 
           if (orderIdMatch) {
@@ -2114,15 +2124,24 @@ Guidelines:
               order = byPhone[0];
             }
           }
-          if (!order && targetArg) {
-            order = await getOrderById(targetArg);
-            if (!order && targetArg.replace(/\D/g, "").length >= 7) {
-              const byPhone = await getOrdersByPhone(targetArg.replace(/\D/g, ""));
-              if (byPhone.length > 0) order = byPhone[0];
+          // Search parts for order ID or customer name if not matched by regex
+          if (!order) {
+            const potentialArgs = parts.filter(p => !["trigger", "send", "another", "robocall", "call", "for", "order", "number", "הפעל", "שלח", "עוד", "שיחה", "רובוקול", "להזמנה", "מספר"].includes(p.toLowerCase()));
+            for (const arg of potentialArgs) {
+              const cleaned = arg.replace(/\D/g, "");
+              if (cleaned.length >= 4 && cleaned.length <= 6) {
+                order = await getOrderById(cleaned);
+                if (order) break;
+              }
+              if (cleaned.length >= 7) {
+                const byP = await getOrdersByPhone(cleaned);
+                if (byP.length > 0) { order = byP[0]; break; }
+              }
             }
-            if (!order) {
+            if (!order && potentialArgs.length > 0) {
               const allActive = (await getAllOrders()).filter(o => !o.archived);
-              const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(targetArg.toLowerCase()));
+              const targetName = potentialArgs.join(" ").toLowerCase();
+              const matchByName = allActive.find(o => o.customerName && o.customerName.toLowerCase().includes(targetName));
               if (matchByName) order = matchByName;
             }
           }
@@ -2155,21 +2174,22 @@ Guidelines:
         if (cmd === "sms") {
           // Syntax: sms [phone] [message...]
           let args = parts.slice(1);
-          const targetPhone = args[0];
-          const smsBody = args.slice(1).join(" ").trim();
+          const phoneArgIdx = args.findIndex(arg => arg.replace(/\D/g, "").length >= 7);
+          let targetPhone = phoneArgIdx !== -1 ? args[phoneArgIdx] : "";
+          let smsBody = "";
+
+          if (phoneArgIdx !== -1) {
+            const bodyParts = [
+              ...args.slice(0, phoneArgIdx),
+              ...args.slice(phoneArgIdx + 1)
+            ].filter(w => !["to", "text", "sms", "ל", "אל", "מסרון"].includes(w.toLowerCase()));
+            smsBody = bodyParts.join(" ").trim();
+          }
 
           if (!targetPhone || !smsBody) {
             return jsonResponse({
               success: true,
               replyMessage: "Syntax: sms [phone] [message]\nExample: sms 8455551234 Hello customer!"
-            });
-          }
-
-          const cleanPhone = targetPhone.replace(/\D/g, "");
-          if (cleanPhone.length < 7) {
-            return jsonResponse({
-              success: true,
-              replyMessage: `Invalid phone number: ${targetPhone}`
             });
           }
 
