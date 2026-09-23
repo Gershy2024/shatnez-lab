@@ -68,19 +68,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Determine distinct admin alert message
-    const customerDisplay = toPhone || (order ? order.phone : "") || "";
+    // Determine distinct admin alert message (English only)
+    const customerDisplay = (order?.customerName && !order.customerName.toLowerCase().startsWith("customer ("))
+      ? `${order.customerName} (${toPhone || order.phone || ""})`
+      : (toPhone || order?.phone || "");
+
     let smsMessage = "";
     if (callStatus === "completed") {
       if (isVoicemail) {
-        smsMessage = `📞 עדכון: שיחת מוכן לאיסוף להזמנה #${orderId} הגיעה לתא קולי של הלקוח (${customerDisplay}) והושארה הודעה קולית.\nReady call for Order #${orderId} reached customer VOICEMAIL (message left).`;
+        smsMessage = `Ready call for Order #${orderId} reached customer VOICEMAIL (${customerDisplay}) - message left.`;
       } else if (isHuman) {
-        smsMessage = `✅ עדכון: שיחת מוכן לאיסוף להזמנה #${orderId} נענתה על ידי הלקוח (${customerDisplay}).\nReady call for Order #${orderId} was answered by customer.`;
+        smsMessage = `Ready call for Order #${orderId} was answered by customer (${customerDisplay}).`;
       } else {
-        smsMessage = `📞 עדכון: שיחת מוכן לאיסוף להזמנה #${orderId} הושלמה (${customerDisplay}).\nReady call for Order #${orderId} completed.`;
+        smsMessage = `Ready call for Order #${orderId} completed (${customerDisplay}).`;
       }
     } else {
-      smsMessage = `⚠️ עדכון: שיחת מוכן לאיסוף להזמנה #${orderId} לא נענתה (סטטוס: ${callStatus}) עבור ${customerDisplay}.\nReady call for Order #${orderId} ended with status: ${callStatus}.`;
+      smsMessage = `Ready call for Order #${orderId} was not answered (Status: ${callStatus}) for ${customerDisplay}.`;
     }
 
     // Send SMS alert to admin numbers
