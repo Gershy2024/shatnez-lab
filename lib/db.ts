@@ -72,6 +72,8 @@ export interface AdminSettings {
   holidayModeActive?: boolean;
   ivrHolidayMsgEn?: string;
   ivrHolidayMsgHe?: string;
+  announcementActive?: boolean;
+  announcementAudioName?: string;
   dndActive?: boolean;
   twilioApiKey?: string;
   twilioApiSecret?: string;
@@ -341,6 +343,8 @@ export async function getAdminSettings(): Promise<AdminSettings> {
     holidayModeActive: false,
     ivrHolidayMsgEn: "Our office is currently closed for the holidays. Please leave a message after the beep.",
     ivrHolidayMsgHe: "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.",
+    announcementActive: false,
+    announcementAudioName: "announcement",
     dndActive: false
   };
   

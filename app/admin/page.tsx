@@ -13,7 +13,7 @@ import OrderAnalytics from "@/components/OrderAnalytics";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest } from "@/lib/db";
-import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
 function parseTimestamp(ts: any): number {
@@ -584,6 +584,8 @@ export default function AdminPage() {
   const [selectedSmsPhone, setSelectedSmsPhone] = useState<string | null>(null);
   const smsChatEndRef = useRef<HTMLDivElement | null>(null);
   const [holidayModeActive, setHolidayModeActive] = useState(false);
+  const [announcementActive, setAnnouncementActive] = useState(false);
+  const [announcementAudioName, setAnnouncementAudioName] = useState("announcement");
   const [dndActive, setDndActive] = useState(false);
   const [ivrHolidayMsgEn, setIvrHolidayMsgEn] = useState("");
   const [ivrHolidayMsgHe, setIvrHolidayMsgHe] = useState("");
@@ -1040,6 +1042,8 @@ export default function AdminPage() {
       setForwardingHoursEnd(s.forwardingHoursEnd || "21:00");
       setCallerIdType(s.callerIdType || "caller");
       setHolidayModeActive(!!s.holidayModeActive);
+      setAnnouncementActive(!!s.announcementActive);
+      setAnnouncementAudioName(s.announcementAudioName || "announcement");
       setDndActive(!!s.dndActive);
       setIvrHolidayMsgEn(s.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.");
       setIvrHolidayMsgHe(s.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.");
@@ -1125,6 +1129,8 @@ export default function AdminPage() {
       setForwardingNumber(s.forwardingNumber);
       setCallerIdType(s.callerIdType || "caller");
       setHolidayModeActive(!!s.holidayModeActive);
+      setAnnouncementActive(!!s.announcementActive);
+      setAnnouncementAudioName(s.announcementAudioName || "announcement");
       setDndActive(!!s.dndActive);
       setIvrHolidayMsgEn(s.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.");
       setIvrHolidayMsgHe(s.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.");
@@ -1328,6 +1334,59 @@ export default function AdminPage() {
     showToast(isRtl ? `הקישור הועתק ללוח ויכול לשמש ב-Twilio!` : `Link copied to clipboard for use in Twilio!`, "success");
   };
 
+  const handleToggleAnnouncement = async (active: boolean) => {
+    setAnnouncementActive(active);
+    try {
+      const currentSettings = await getAdminSettings();
+      await saveAdminSettings({
+        ...currentSettings,
+        announcementActive: active,
+        announcementAudioName: announcementAudioName || "announcement"
+      });
+      showToast(
+        active 
+          ? (isRtl ? "📢 המודעה הקולית הופעלה בהצלחה בקו הטלפון!" : "📢 Voice announcement activated on phone line!")
+          : (isRtl ? "המודעה הקולית בקו הטלפון כובתה." : "Voice announcement deactivated."),
+        "success"
+      );
+    } catch (err) {
+      console.error("Failed to toggle announcement:", err);
+      showToast(isRtl ? "שגיאה בעדכון מצב המודעה" : "Error toggling announcement", "error");
+    }
+  };
+
+  const handleUploadAnnouncementFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    if (file.size > 1024 * 1024) {
+      showToast(isRtl ? "גודל הקובץ עולה על 1MB. אנא בחר קובץ קטן יותר." : "File size exceeds 1MB. Please choose a smaller file.", "error");
+      return;
+    }
+    const targetName = (announcementAudioName || "announcement").toLowerCase().trim();
+    setIsReplacingName(targetName);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          await uploadAudioFile(targetName, base64);
+          showToast(isRtl ? "קובץ המודעה הקולית הועלה בהצלחה!" : "Announcement audio uploaded successfully!", "success");
+          loadAudioFiles();
+        } catch (err) {
+          console.error(err);
+          showToast(isRtl ? "שגיאה בהעלאת קובץ המודעה." : "Error uploading announcement file.", "error");
+        } finally {
+          setIsReplacingName(null);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      showToast(isRtl ? "שגיאה בקריאת הקובץ." : "Error reading file.", "error");
+      setIsReplacingName(null);
+    }
+  };
+
   const handleTogglePlay = (name: string) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}&t=${Date.now()}`;
@@ -1421,6 +1480,8 @@ export default function AdminPage() {
         twilioTwimlAppSid,
         callerIdType,
         holidayModeActive,
+        announcementActive,
+        announcementAudioName,
         ivrHolidayMsgEn,
         ivrHolidayMsgHe,
         dndActive,
@@ -4651,6 +4712,198 @@ export default function AdminPage() {
               </p>
             </div>
 
+            {/* Special Voice Announcement (Yamim Tovim & Schedule Changes) */}
+            {(() => {
+              const targetName = (announcementAudioName || "announcement").toLowerCase().trim();
+              const announcementFile = audioFiles.find(f => f.name.toLowerCase().trim() === targetName);
+              const origin = typeof window !== "undefined" ? window.location.origin : "";
+              const announcementUrl = `${origin}/api/audio?name=${targetName}`;
+
+              return (
+                <div className={`card p-6 bg-gradient-to-br from-amber-500/10 via-white to-gold-500/5 border-2 ${announcementActive ? "border-amber-400 shadow-md ring-1 ring-amber-300" : "border-primary-200 shadow-sm"} ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-primary-100 pb-4 mb-4 ${isRtl ? "md:flex-row-reverse" : ""}`}>
+                    <div className={`flex items-start gap-3.5 ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+                      <div className={`p-3 rounded-2xl shrink-0 ${announcementActive ? "bg-amber-500 text-white shadow-md animate-pulse" : "bg-primary-150 text-navy-600"}`}>
+                        <Megaphone className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className={`flex items-center gap-2 flex-wrap ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <h3 className="text-xl font-bold text-navy-900">
+                            {isRtl ? "הודעה קולית מיוחדת (ימים טובים / שינוי זמנים)" : "Special Voice Announcement (Holidays & Schedule)"}
+                          </h3>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            announcementActive 
+                              ? "bg-green-100 text-green-800 border border-green-300"
+                              : "bg-gray-150 text-gray-600 border border-gray-200"
+                          }`}>
+                            <span className={`w-2 h-2 rounded-full ${announcementActive ? "bg-green-500 animate-ping" : "bg-gray-400"}`} />
+                            {announcementActive 
+                              ? (isRtl ? "פעיל כעת בקו הטלפון" : "Live on Phone Line")
+                              : (isRtl ? "כבוי - מעבר ישר לתפריט" : "Inactive - Direct to Menu")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-primary-600 mt-1 max-w-2xl">
+                          {isRtl
+                            ? "השמעת מודעה קולית לפני התפריט הראשי לכל המתקשרים לקו הטלפון. מתאים במיוחד לקראת ימים טובים, חגים, הודעה על סגירה מוקדמת או שינוי זמני קבלת בגדים."
+                            : "Broadcast an announcement before the main IVR menu to all callers. Ideal for holiday schedules, early closures, weather advisories, or urgent updates."}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Big Action Toggle */}
+                    <div className={`flex items-center gap-3 shrink-0 self-end md:self-center ${isRtl ? "flex-row-reverse" : ""}`}>
+                      <span className="text-sm font-bold text-navy-900">
+                        {announcementActive ? (isRtl ? "המודעה פעילה" : "Broadcast ON") : (isRtl ? "המודעה כבויה" : "Broadcast OFF")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAnnouncement(!announcementActive)}
+                        className={`relative inline-flex h-7 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner ${
+                          announcementActive ? "bg-amber-500" : "bg-gray-300"
+                        }`}
+                        title={announcementActive ? (isRtl ? "לחץ לכיבוי המודעה" : "Click to deactivate") : (isRtl ? "לחץ להפעלת המודעה בקו" : "Click to activate")}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                            announcementActive ? (isRtl ? "-translate-x-7" : "translate-x-7") : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Announcement Content & Controls */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                    {/* Audio Status & Player */}
+                    <div className="bg-white/80 backdrop-blur rounded-xl border border-primary-200 p-4 flex flex-col justify-between">
+                      <div>
+                        <div className={`flex items-center justify-between gap-2 mb-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <span className="text-xs font-bold text-navy-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <Volume2 className="w-4 h-4 text-amber-500" />
+                            {isRtl ? "קובץ השמע המשודר" : "Broadcast Audio File"}
+                          </span>
+                          <span className="text-[11px] font-mono text-primary-500">
+                            {targetName}.mp3
+                          </span>
+                        </div>
+
+                        {announcementFile ? (
+                          <div className={`p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 mb-3 flex items-center justify-between gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                            <div className="truncate">
+                              <span className="text-xs font-bold text-navy-900 block truncate">
+                                {targetName}.mp3
+                              </span>
+                              <span className="text-[10px] text-primary-500 block">
+                                {announcementFile.uploadedAt ? (isRtl ? `עודכן: ${formatDateTime(announcementFile.uploadedAt)}` : `Updated: ${formatDateTime(announcementFile.uploadedAt)}`) : (isRtl ? "קובץ קיים במערכת" : "Ready in system")}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlay(targetName)}
+                              className={`p-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                                playingName === targetName
+                                  ? "bg-amber-500 text-white"
+                                  : "bg-white text-navy-800 hover:bg-gold-50 border border-primary-200"
+                              }`}
+                            >
+                              {playingName === targetName ? (
+                                <>
+                                  <Pause className="w-4 h-4" />
+                                  <span>{isRtl ? "השהה" : "Pause"}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-4 h-4 text-amber-600 fill-amber-600" />
+                                  <span>{isRtl ? "האזן להקלטה" : "Preview"}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-200 mb-3 text-xs text-yellow-800 flex items-center gap-2">
+                            <Info className="w-4 h-4 shrink-0 text-yellow-600" />
+                            <span>
+                              {isRtl
+                                ? "עדיין לא הועלה קובץ מודעה (announcement.mp3). אנא העלה קובץ שמע מטה כדי שניתן יהיה להשמיעו בקו."
+                                : "No announcement audio file uploaded yet. Upload an MP3 below to enable broadcast."}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quick upload / replace buttons */}
+                      <div className={`flex items-center gap-2 pt-2 border-t border-primary-100 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <label className="btn-secondary flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer hover:border-amber-400">
+                          {isReplacingName === targetName ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5 text-amber-600" />
+                          )}
+                          <span>
+                            {announcementFile 
+                              ? (isRtl ? "החלף קובץ מודעה (MP3)" : "Replace Announcement MP3")
+                              : (isRtl ? "העלה קובץ מודעה חדש (MP3)" : "Upload Announcement MP3")}
+                          </span>
+                          <input
+                            type="file"
+                            accept="audio/mpeg, audio/mp3"
+                            className="hidden"
+                            disabled={isReplacingName === targetName}
+                            onChange={handleUploadAnnouncementFile}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAudioUrl(targetName)}
+                          className="px-3 py-2 rounded-xl border border-primary-200 text-xs font-semibold text-primary-700 hover:bg-primary-50 transition-all flex items-center gap-1 shrink-0"
+                          title={isRtl ? "העתק קישור ל-Twilio" : "Copy Twilio URL"}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>{isRtl ? "העתק קישור" : "Copy URL"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* How It Works & Twilio Studio Status */}
+                    <div className="bg-white/80 backdrop-blur rounded-xl border border-primary-200 p-4 flex flex-col justify-between text-xs text-primary-700">
+                      <div>
+                        <span className={`text-xs font-bold text-navy-800 uppercase tracking-wider mb-2 flex items-center gap-1.5 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <Sparkles className="w-4 h-4 text-gold-500" />
+                          {isRtl ? "כיצד זה פועל בקו הטלפון?" : "How does this work on calls?"}
+                        </span>
+                        <ul className={`space-y-1.5 text-xs text-primary-600 mt-2 ${isRtl ? "text-right list-inside" : ""}`}>
+                          <li className="flex items-start gap-1.5">
+                            <span className="text-amber-500 font-bold shrink-0">1.</span>
+                            <span>{isRtl ? "שיחה מתקבלת לקו והברכה הראשונית מושמעת." : "Caller dials in and hears the welcome intro."}</span>
+                          </li>
+                          <li className="flex items-start gap-1.5">
+                            <span className="text-amber-500 font-bold shrink-0">2.</span>
+                            <span>{isRtl ? "מערכת Twilio בודקת אוטומטית האם המתג למעלה מופעל." : "Twilio flow instantly queries this server if broadcast is active."}</span>
+                          </li>
+                          <li className="flex items-start gap-1.5">
+                            <span className="text-amber-500 font-bold shrink-0">3.</span>
+                            <span>
+                              {announcementActive 
+                                ? (isRtl ? "כעת: המודעה הקולית מושמעת, ורק לאחריה עוברים לתפריט הראשי!" : "Currently: Announcement plays, then proceeds to the main menu.")
+                                : (isRtl ? "כעת: אין מודעה, השיחה עוברת מיד לתפריט הראשי כרגיל." : "Currently: Inactive, calls go straight to the main menu.")}
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className={`mt-3 pt-2.5 border-t border-primary-100 flex items-center justify-between text-[11px] text-primary-500 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <span className="font-mono truncate">{announcementUrl}</span>
+                        <span className="shrink-0 text-navy-700 font-semibold px-2 py-0.5 bg-primary-100 rounded">
+                          Twilio Studio Flow: Ready
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Main Layout Grid */}
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isRtl ? "direction-rtl" : ""}`}>
               
@@ -4725,7 +4978,7 @@ export default function AdminPage() {
                     {isRtl ? "שמות קבצים נפוצים ל-IVR" : "Common IVR File Names"}
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {["welcome", "general_info", "vip_info", "order_not_found", "voicemail_greeting"].map((preset) => (
+                    {["announcement", "welcome", "general_info", "vip_info", "order_not_found", "voicemail_greeting"].map((preset) => (
                       <button
                         key={preset}
                         onClick={() => setAudioName(preset)}

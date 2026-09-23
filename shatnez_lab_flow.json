@@ -1399,7 +1399,7 @@
       "transitions": [
         {
           "event": "success",
-          "next": "welcome_menu"
+          "next": "split_has_announcement"
         },
         {
           "event": "failed",
@@ -1407,6 +1407,57 @@
         }
       ],
       "type": "make-http-request"
+    },
+    {
+      "name": "split_has_announcement",
+      "properties": {
+        "input": "{{widgets.log_call_start.parsed.hasAnnouncement}}",
+        "offset": {
+          "x": -1173,
+          "y": -2220
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "welcome_menu"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.log_call_start.parsed.hasAnnouncement}}"
+              ],
+              "friendly_name": "If announcement is active",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "play_announcement"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "play_announcement",
+      "properties": {
+        "language": "en-US",
+        "loop": 1,
+        "offset": {
+          "x": -950,
+          "y": -2100
+        },
+        "play": "https://www.theshatnezlab.com/api/audio?name=announcement",
+        "voice": "Polly.Joey"
+      },
+      "transitions": [
+        {
+          "event": "audioComplete",
+          "next": "welcome_menu"
+        }
+      ],
+      "type": "say-play"
     },
     {
       "name": "redirect_to_admin_voice",

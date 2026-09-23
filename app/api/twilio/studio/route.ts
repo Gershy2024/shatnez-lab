@@ -384,7 +384,35 @@ async function handleRequest(req: NextRequest) {
     if (action === "log_call_start") {
       console.log(`[Twilio Studio API] Logging call start for CallSid: ${callSid}, Phone: ${phone}`);
       await logCallEvent(callSid, phone, "Call started", "active");
-      return jsonResponse({ success: true });
+      const settings = await getAdminSettings();
+      const hasAnnouncement = Boolean(settings.announcementActive);
+      const audioName = (settings.announcementAudioName || "announcement").toLowerCase().trim();
+      const origin = url.origin || "https://www.theshatnezlab.com";
+      const announcementUrl = `${origin}/api/audio?name=${audioName}`;
+
+      console.log(`[Twilio Studio API] log_call_start: hasAnnouncement=${hasAnnouncement}, audioUrl=${announcementUrl}`);
+      return jsonResponse({ 
+        success: true,
+        hasAnnouncement: hasAnnouncement ? "true" : "false",
+        isAnnouncementActive: hasAnnouncement,
+        announcementUrl
+      });
+    }
+
+    // ─── 0.01 CHECK ANNOUNCEMENT ───
+    if (action === "check_announcement") {
+      const settings = await getAdminSettings();
+      const hasAnnouncement = Boolean(settings.announcementActive);
+      const audioName = (settings.announcementAudioName || "announcement").toLowerCase().trim();
+      const origin = url.origin || "https://www.theshatnezlab.com";
+      const announcementUrl = `${origin}/api/audio?name=${audioName}`;
+
+      return jsonResponse({
+        success: true,
+        hasAnnouncement: hasAnnouncement ? "true" : "false",
+        isAnnouncementActive: hasAnnouncement,
+        announcementUrl
+      });
     }
 
     // ─── 0.1 LOG MENU KEYPRESS ───
