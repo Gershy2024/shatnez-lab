@@ -114,6 +114,26 @@ function lsSet(orders: Order[]) {
   localStorage.setItem(LS_KEY, JSON.stringify(orders));
 }
 
+export function sanitizeCustomerName(name: string | undefined | null, phone?: string): string {
+  const cleanP = phone ? phone.replace(/\D/g, "") : "";
+  const sPhone = cleanP.length === 11 && cleanP.startsWith("1") ? cleanP.substring(1) : cleanP;
+  const defaultFallback = sPhone ? `Customer (${sPhone.slice(-4)})` : "Guest";
+
+  if (!name) return defaultFallback;
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+
+  const isNoise =
+    /^(guest|phone guest|customer|לקוח|a\s+is|and\s+update|order|new\s+order|location|ready|clean|תוצאה|איסוף|מוכן)/i.test(trimmed) ||
+    /\b(ready|pickup|clean|shatnez|results|result|update|location|buchanan|clinton|מוכן|איסוף|נקי|שעטנז|הזמנה)\b/i.test(lower) ||
+    trimmed.split(/\s+/).length > 3;
+
+  if (isNoise) {
+    return defaultFallback;
+  }
+  return trimmed;
+}
+
 /* ── Firestore helpers ── */
 export async function getAllOrders(): Promise<Order[]> {
   if (isConfigured && db) {
@@ -122,13 +142,22 @@ export async function getAllOrders(): Promise<Order[]> {
         query(collection(db, ORDERS_COLLECTION), orderBy("id", "asc"))
       );
       return snapshot.docs
-        .map((d) => d.data() as Order)
+        .map((d) => {
+          const o = d.data() as Order;
+          if (o.customerName) {
+            o.customerName = sanitizeCustomerName(o.customerName, o.phone);
+          }
+          return o;
+        })
         .filter((o) => !(o as any).isDelivery && !o.id.startsWith("DELIVERY_"));
     } catch (e) {
       console.error("Firestore getAllOrders failed:", e);
     }
   }
-  return lsGet();
+  return lsGet().map(o => {
+    if (o.customerName) o.customerName = sanitizeCustomerName(o.customerName, o.phone);
+    return o;
+  });
 }
 
 export async function getOrderById(id: string): Promise<Order | null> {
@@ -137,7 +166,11 @@ export async function getOrderById(id: string): Promise<Order | null> {
       const ref = doc(db, ORDERS_COLLECTION, id);
       const snap = await getDoc(ref);
       if (snap.exists()) {
-        return snap.data() as Order;
+        const order = snap.data() as Order;
+        if (order.customerName) {
+          order.customerName = sanitizeCustomerName(order.customerName, order.phone);
+        }
+        return order;
       }
     } catch (e) {
       console.error(`Firestore getDoc for ID ${id} failed:`, e);
@@ -152,7 +185,11 @@ export async function getOrderById(id: string): Promise<Order | null> {
       console.error("Firestore backup getAllOrders scan failed:", e);
     }
   }
-  return lsGet().find((o) => String(o.id).toUpperCase() === String(id).toUpperCase()) || null;
+  const local = lsGet().find((o) => String(o.id).toUpperCase() === String(id).toUpperCase()) || null;
+  if (local && local.customerName) {
+    local.customerName = sanitizeCustomerName(local.customerName, local.phone);
+  }
+  return local;
 }
 
 export async function getOrdersByPhone(phone: string): Promise<Order[]> {
@@ -204,6 +241,9 @@ export async function getNextOrderId(): Promise<string> {
 
 
 export async function saveOrder(order: Order): Promise<void> {
+  if (order.customerName) {
+    order.customerName = sanitizeCustomerName(order.customerName, order.phone);
+  }
   if (isConfigured && db) {
     try {
       await setDoc(doc(db, ORDERS_COLLECTION, order.id), order);
@@ -242,7 +282,13 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
       (snapshot) => {
         callback(
           snapshot.docs
-            .map((d) => d.data() as Order)
+            .map((d) => {
+              const o = d.data() as Order;
+              if (o.customerName) {
+                o.customerName = sanitizeCustomerName(o.customerName, o.phone);
+              }
+              return o;
+            })
             .filter((o) => !(o as any).isDelivery && !o.id.startsWith("DELIVERY_"))
         );
       }
