@@ -1648,7 +1648,8 @@ async function handleRequest(req: NextRequest) {
                 const cleanPhone = c.phone.trim();
                 if (cleanPhone && !seenCallers.has(cleanPhone)) {
                   seenCallers.add(cleanPhone);
-                  const isSms = c.actions.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:"));
+                  const actionsArr = Array.isArray(c.actions) ? c.actions : [];
+                  const isSms = actionsArr.some(act => typeof act === "string" && (act.trim().startsWith("SMS:") || act.includes("SMS:")));
                   let timeStr = "";
                   try {
                     timeStr = new Intl.DateTimeFormat("en-US", {
@@ -1762,9 +1763,9 @@ Guidelines:
 
             const modelsToTry = [
               "gemini-2.5-flash",
-              "gemini-2.5-flash-lite",
-              "gemini-3.5-flash",
-              "gemini-2.5-pro",
+              "gemini-3.1-flash-lite",
+              "gemini-3.5-flash-lite",
+              "gemini-3.1-pro-preview",
               "gemini-flash-latest"
             ];
 
@@ -1780,7 +1781,8 @@ Guidelines:
                     contents: [{ parts: [{ text: prompt }] }],
                     generationConfig: {
                       temperature: 0.1,
-                      response_mime_type: "application/json"
+                      response_mime_type: "application/json",
+                      thinkingConfig: { thinkingBudget: 0 }
                     }
                   })
                 });
@@ -2068,9 +2070,22 @@ Guidelines:
           cmd = "trigger";
         }
 
-        if (cmd === "recent") {
+        if (
+          cmd === "what" ||
+          /(last|recent|missed|incoming)\s*(call|calls|caller|callers)/i.test(inputMsg) ||
+          /(who\s*called|מי\s*התקשר|מי\s*צלצל|שיחה\s*אחרונה|שיחות\s*אחרונות|שיחות\s*שפוספסו)/i.test(inputMsg) ||
+          /(what\s*was\s*(the\s*)?(last|recent)\s*(incoming\s*|missed\s*)?(call|calls))/i.test(inputMsg)
+        ) {
+          if (/(order|orders|הזמנה|הזמנות)/i.test(inputMsg)) {
+            cmd = "recent_orders";
+          } else {
+            cmd = "recent_calls";
+          }
+        }
+
+        if (cmd === "recent" || cmd === "recent_orders" || cmd === "recent_calls") {
           const secondWord = parts[1]?.toLowerCase() || "";
-          if (secondWord === "orders" || secondWord === "הזמנות") {
+          if (cmd === "recent_orders" || secondWord === "orders" || secondWord === "הזמנות") {
             const orders = await getAllOrders();
             orders.sort((a, b) => {
               if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
@@ -2091,25 +2106,35 @@ Guidelines:
               }
             }
           } else {
+            const isMissedOnly = /(missed|פספוס|שפוספסו|לא\s*נענו)/i.test(inputMsg);
+            const isIncomingOnly = /(incoming|inbound|נכנס|נכנסת|נכנסו)/i.test(inputMsg);
             const calls = await getAllCalls();
-            const uniqueCallers: { phone: string; timestamp: number; isSms: boolean }[] = [];
+            const uniqueCallers: { phone: string; timestamp: number; isSms: boolean; direction: string }[] = [];
             const seen = new Set<string>();
             for (const c of calls) {
               if (c.phone) {
                 const cleanPhone = c.phone.trim();
+                const actionsArr = Array.isArray(c.actions) ? c.actions : [];
+                const isMissed = actionsArr.some(a => typeof a === "string" && (a.includes("Voicemail") || a.includes("Unavailable") || a.includes("Redirected"))) || c.status === "voicemail";
+                const isOutbound = c.direction === "outbound";
+
+                if (isMissedOnly && !isMissed) continue;
+                if (isIncomingOnly && isOutbound) continue;
+
                 if (!seen.has(cleanPhone)) {
                   seen.add(cleanPhone);
-                  const isSms = c.actions.some(act => act.trim().startsWith("SMS:") || act.includes("SMS:"));
-                  uniqueCallers.push({ phone: cleanPhone, timestamp: c.timestamp, isSms });
+                  const isSms = actionsArr.some(act => typeof act === "string" && (act.trim().startsWith("SMS:") || act.includes("SMS:")));
+                  uniqueCallers.push({ phone: cleanPhone, timestamp: c.timestamp, isSms, direction: c.direction || "inbound" });
                   if (uniqueCallers.length >= 5) break;
                 }
               }
             }
 
             if (uniqueCallers.length === 0) {
-              adminReply += "No recent callers found.";
+              adminReply += isMissedOnly ? "No recent missed calls found." : "No recent callers found.";
             } else {
-              adminReply += "Recent Callers:\n";
+              const title = isMissedOnly ? "Recent Missed Callers:" : (/(last|אחרונה)/i.test(inputMsg) && uniqueCallers.length === 1 ? "Last Caller:" : "Recent Callers:");
+              adminReply += `${title}\n`;
               for (let i = 0; i < uniqueCallers.length; i++) {
                 const item = uniqueCallers[i];
                 let formattedTime = "";
@@ -2125,7 +2150,7 @@ Guidelines:
                 } catch (e) {
                   formattedTime = new Date(item.timestamp).toLocaleString();
                 }
-                const typeTag = item.isSms ? "[💬 SMS]" : "[📞 Call]";
+                const typeTag = item.isSms ? "[💬 SMS]" : `[📞 Call ${item.direction === "outbound" ? "Out" : "In"}]`;
                 adminReply += `${i + 1}. ${item.phone} (${formattedTime}) ${typeTag}\n`;
               }
             }
