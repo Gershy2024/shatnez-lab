@@ -525,34 +525,34 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Dramatic Top Command Bar */}
-      <div className="card p-6 bg-gradient-to-r from-slate-900 via-navy-900 to-slate-900 text-white border border-slate-700/80 shadow-2xl relative overflow-hidden">
-        {/* Glow accents */}
-        <div className="absolute top-0 right-1/4 w-96 h-32 bg-amber-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 w-96 h-32 bg-sky-500/10 blur-3xl pointer-events-none" />
+      {/* Top Command Bar (Light Mode) */}
+      <div className="card p-6 bg-white text-navy-950 border border-slate-200 shadow-sm relative overflow-hidden">
+        {/* Subtle glow accents */}
+        <div className="absolute top-0 right-1/4 w-96 h-32 bg-amber-500/5 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/4 w-96 h-32 bg-sky-500/5 blur-3xl pointer-events-none" />
 
         <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10 ${isRtl ? "lg:flex-row-reverse" : ""}`}>
           <div className={`space-y-1.5 ${isRtl ? "text-right" : "text-left"}`}>
             <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
               <div className="relative">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-bold shadow-lg shadow-amber-500/20">
+                <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center font-bold shadow-sm">
                   <Activity className="w-6 h-6 animate-pulse" />
                 </div>
                 <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-slate-900"></span>
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
                 </span>
               </div>
               <div>
                 <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
-                  <h2 className="text-2xl font-black tracking-tight text-white">
+                  <h2 className="text-2xl font-black tracking-tight text-navy-950">
                     {isRtl ? "חדר בקרה ואנליטיקה מתקדמת" : "Executive Analytics & Command Hub"}
                   </h2>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                     LIVE
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 font-light mt-0.5">
+                <p className="text-xs text-slate-500 font-normal mt-0.5">
                   {isRtl 
                     ? "ניתוח בזמן אמת של זרימת פריטים, עומסי מעבדה, קצב בדיקה ושיעורי איתור שעטנז"
                     : "Real-time telemetry of garment throughput, lab backlog, inspection pace, and detection density"}
@@ -562,7 +562,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
           </div>
 
           {/* Time Range Selector Tabs */}
-          <div className="flex items-center gap-1.5 p-1.5 bg-slate-950/70 backdrop-blur-md rounded-2xl border border-slate-700/80 self-start lg:self-auto overflow-x-auto max-w-full">
+          <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 self-start lg:self-auto overflow-x-auto max-w-full">
             {[
               { id: "7d", labelHe: "7 ימים", labelEn: "7 Days" },
               { id: "14d", labelHe: "14 ימים", labelEn: "14 Days" },
@@ -578,8 +578,8 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                   onClick={() => setTimeRange(tab.id as TimeRange)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                     active
-                      ? "bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md shadow-amber-500/20 font-black"
-                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                      ? "bg-amber-500 text-white shadow-sm font-black"
+                      : "text-slate-600 hover:text-navy-950 hover:bg-slate-200/60"
                   }`}
                 >
                   {isRtl ? tab.labelHe : tab.labelEn}
@@ -590,29 +590,29 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
         </div>
 
         {/* Real-time Telemetry Strip */}
-        <div className={`mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs ${isRtl ? "text-right" : "text-left"}`}>
+        <div className={`mt-5 pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs ${isRtl ? "text-right" : "text-left"}`}>
           <div>
-            <div className="text-slate-400 text-[11px]">{isRtl ? "סטטוס בדיקות פעילות" : "Active Lab Backlog"}</div>
-            <div className="font-mono text-base font-bold text-amber-400 mt-0.5">
+            <div className="text-slate-400 text-[11px] font-medium">{isRtl ? "סטטוס בדיקות פעילות" : "Active Lab Backlog"}</div>
+            <div className="font-mono text-base font-bold text-amber-700 mt-0.5">
               {activeBacklogCount} {isRtl ? "בגדים בתור" : "in queue"}
             </div>
           </div>
           <div>
-            <div className="text-slate-400 text-[11px]">{isRtl ? "בדיקות מעל 48 שעות" : "Delayed >48h (SLA)"}</div>
-            <div className={`font-mono text-base font-bold mt-0.5 ${agingOrdersCount > 0 ? "text-rose-400" : "text-emerald-400"}`}>
+            <div className="text-slate-400 text-[11px] font-medium">{isRtl ? "בדיקות מעל 48 שעות" : "Delayed >48h (SLA)"}</div>
+            <div className={`font-mono text-base font-bold mt-0.5 ${agingOrdersCount > 0 ? "text-rose-600" : "text-emerald-600"}`}>
               {agingOrdersCount} {isRtl ? "בטיפול דחוף" : "flagged"}
             </div>
           </div>
           <div>
-            <div className="text-slate-400 text-[11px]">{isRtl ? "שיעור השלמה" : "Throughput Rate"}</div>
-            <div className="font-mono text-base font-bold text-sky-400 mt-0.5">
+            <div className="text-slate-400 text-[11px] font-medium">{isRtl ? "שיעור השלמה" : "Throughput Rate"}</div>
+            <div className="font-mono text-base font-bold text-sky-700 mt-0.5">
               {completionRate}%
             </div>
           </div>
           <div>
-            <div className="text-slate-400 text-[11px]">{isRtl ? "התראת שעטנז קריטית" : "Shatnez Detected"}</div>
-            <div className={`font-mono text-base font-bold mt-0.5 ${resultCounts.shatnezFound > 0 ? "text-rose-400 flex items-center gap-1" : "text-slate-300"}`}>
-              {resultCounts.shatnezFound > 0 && <AlertTriangle className="w-3.5 h-3.5 inline animate-bounce" />}
+            <div className="text-slate-400 text-[11px] font-medium">{isRtl ? "התראת שעטנז קריטית" : "Shatnez Detected"}</div>
+            <div className={`font-mono text-base font-bold mt-0.5 ${resultCounts.shatnezFound > 0 ? "text-rose-600 flex items-center gap-1" : "text-slate-700"}`}>
+              {resultCounts.shatnezFound > 0 && <AlertTriangle className="w-3.5 h-3.5 inline text-rose-500 animate-bounce" />}
               {resultCounts.shatnezFound} {isRtl ? "מקרים אומתו" : "verified"}
             </div>
           </div>
@@ -775,27 +775,27 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
         </div>
       </div>
 
-      {/* Main Advanced Interactive Chart Section */}
-      <div className="card p-6 bg-slate-950 text-white border border-slate-800 shadow-2xl rounded-2xl relative overflow-hidden">
+      {/* Main Advanced Interactive Chart Section (Light Mode) */}
+      <div className="card p-6 bg-white text-navy-950 border border-slate-200 shadow-sm rounded-2xl relative overflow-hidden">
         {/* Subtle grid pattern background */}
-        <div className="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px] opacity-25 pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-70 pointer-events-none" />
 
         {/* Chart Header & Controls */}
-        <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800/80 relative z-10 ${isRtl ? "md:flex-row-reverse" : ""}`}>
+        <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100 relative z-10 ${isRtl ? "md:flex-row-reverse" : ""}`}>
           <div className={isRtl ? "text-right" : "text-left"}>
             <div className={`flex items-center gap-2.5 ${isRtl ? "flex-row-reverse" : ""}`}>
-              <BarChart3 className="w-5 h-5 text-amber-400" />
-              <h3 className="text-lg font-black text-white tracking-wide">
+              <BarChart3 className="w-5 h-5 text-amber-600" />
+              <h3 className="text-lg font-black text-navy-950 tracking-wide">
                 {isRtl ? "גרף גלי אינטראקטיבי וניתוח תפוקה" : "Curved Flow & Velocity Waveform"}
               </h3>
               {peakPoint && (
-                <span className="text-[11px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full hidden sm:inline-flex items-center gap-1">
-                  <Flame className="w-3 h-3 text-amber-400" />
+                <span className="text-[11px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full hidden sm:inline-flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-amber-600" />
                   {isRtl ? `שיא: ${peakPoint.label} (${peakPoint.count})` : `Peak: ${peakPoint.label} (${peakPoint.count})`}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               {isRtl 
                 ? "העבר את העכבר על פני הנקודות בגרף לסריקת נפח, סוגי תוצאות וקצב עבודה מפורט"
                 : "Hover across waveform nodes to inspect volume breakdown, turnaround, and status distribution"}
@@ -804,13 +804,13 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
 
           {/* Chart Display Mode Switcher */}
           <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
-            <div className="flex items-center gap-1 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
               <button
                 onClick={() => setChartMode("spline")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                   chartMode === "spline"
-                    ? "bg-amber-500 text-slate-950 font-black shadow-sm"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-amber-500 text-white font-black shadow-sm"
+                    : "text-slate-600 hover:text-navy-950"
                 }`}
               >
                 <Activity className="w-3.5 h-3.5" />
@@ -821,8 +821,8 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                 onClick={() => setChartMode("throughput")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                   chartMode === "throughput"
-                    ? "bg-sky-500 text-slate-950 font-black shadow-sm"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-sky-600 text-white font-black shadow-sm"
+                    : "text-slate-600 hover:text-navy-950"
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
@@ -833,8 +833,8 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                 onClick={() => setChartMode("bars")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                   chartMode === "bars"
-                    ? "bg-emerald-500 text-slate-950 font-black shadow-sm"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-emerald-600 text-white font-black shadow-sm"
+                    : "text-slate-600 hover:text-navy-950"
                 }`}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
@@ -847,8 +847,8 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
               onClick={() => setShowAverageLine(!showAverageLine)}
               className={`p-1.5 rounded-xl border text-xs font-bold transition-all hidden sm:flex items-center gap-1.5 ${
                 showAverageLine
-                  ? "bg-slate-800 text-amber-300 border-amber-500/30"
-                  : "bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300"
+                  ? "bg-amber-50 text-amber-800 border-amber-300"
+                  : "bg-slate-100 text-slate-500 border-slate-200 hover:text-navy-950"
               }`}
               title={isRtl ? "הצג/הסתר קו ממוצע" : "Toggle Average Guideline"}
             >
@@ -861,7 +861,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
         {/* Interactive SVG Chart Canvas */}
         <div className="relative w-full">
           {trendPoints.length === 0 ? (
-            <div className="py-24 text-center text-slate-500 text-sm font-medium">
+            <div className="py-24 text-center text-slate-400 text-sm font-medium">
               {isRtl ? "אין נתוני הזמנות להצגה בתקופה שנבחרה" : "No telemetry data recorded in this period"}
             </div>
           ) : (
@@ -873,25 +873,25 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                   className="w-full h-64 sm:h-72 overflow-visible"
                 >
                   <defs>
-                    {/* Glowing Area Gradients */}
+                    {/* Glowing Area Gradients for Light Mode */}
                     <linearGradient id="amberWaveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.45" />
-                      <stop offset="60%" stopColor="#f59e0b" stopOpacity="0.08" />
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.32" />
+                      <stop offset="60%" stopColor="#f59e0b" stopOpacity="0.06" />
                       <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
                     </linearGradient>
 
                     <linearGradient id="emeraldThroughputGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
                       <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
                     </linearGradient>
 
-                    {/* Neon Glow Filter */}
+                    {/* Soft Shadow Filters for Light Mode */}
                     <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
-                      <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#f59e0b" floodOpacity="0.5" />
+                      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#f59e0b" floodOpacity="0.3" />
                     </filter>
 
                     <filter id="neonGlowEmerald" x="-20%" y="-20%" width="140%" height="140%">
-                      <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#10b981" floodOpacity="0.5" />
+                      <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#10b981" floodOpacity="0.3" />
                     </filter>
                   </defs>
 
@@ -906,15 +906,14 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                           y1={y}
                           x2={svgWidth - padRight}
                           y2={y}
-                          stroke="#334155"
+                          stroke="#e2e8f0"
                           strokeDasharray="4 4"
                           strokeWidth="1"
-                          strokeOpacity="0.4"
                         />
                         <text
                           x={padLeft - 10}
                           y={y + 3}
-                          fill="#64748b"
+                          fill="#94a3b8"
                           fontSize="10"
                           textAnchor="end"
                           fontFamily="monospace"
@@ -933,15 +932,15 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                         y1={avgLineY}
                         x2={svgWidth - padRight}
                         y2={avgLineY}
-                        stroke="#f59e0b"
+                        stroke="#d97706"
                         strokeDasharray="3 3"
                         strokeWidth="1.5"
-                        strokeOpacity="0.75"
+                        strokeOpacity="0.8"
                       />
                       <text
                         x={svgWidth - padRight + 6}
                         y={avgLineY + 3}
-                        fill="#f59e0b"
+                        fill="#d97706"
                         fontSize="9"
                         fontWeight="bold"
                         fontFamily="monospace"
@@ -998,20 +997,20 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                                 cy={pt.y}
                                 r="12"
                                 fill="#f59e0b"
-                                fillOpacity="0.25"
+                                fillOpacity="0.2"
                                 className="animate-ping"
                               />
                             )}
 
-                            {/* Outer Dot */}
+                            {/* Outer Dot with crisp white border */}
                             <circle
                               cx={pt.x}
                               cy={pt.y}
-                              r={isHovered ? 6 : isPeak ? 5 : 3.5}
-                              fill={isPeak ? "#fbbf24" : isHovered ? "#38bdf8" : "#f59e0b"}
-                              stroke="#0f172a"
+                              r={isHovered ? 6 : isPeak ? 5.5 : 4}
+                              fill={isPeak ? "#d97706" : isHovered ? "#0284c7" : "#f59e0b"}
+                              stroke="#ffffff"
                               strokeWidth="2"
-                              className="cursor-pointer transition-all duration-200"
+                              className="cursor-pointer transition-all duration-200 shadow-sm"
                             />
 
                             {/* Secondary node if Throughput */}
@@ -1019,9 +1018,9 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                               <circle
                                 cx={chartCoords.completedSplinePoints[idx]?.x || pt.x}
                                 cy={chartCoords.completedSplinePoints[idx]?.y || pt.y}
-                                r={isHovered ? 5 : 3}
+                                r={isHovered ? 5 : 3.5}
                                 fill="#10b981"
-                                stroke="#0f172a"
+                                stroke="#ffffff"
                                 strokeWidth="2"
                               />
                             )}
@@ -1056,10 +1055,10 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                                 isPeak
                                   ? "#f59e0b"
                                   : isHovered
-                                    ? "#38bdf8"
+                                    ? "#0284c7"
                                     : pt.count > 0
-                                      ? "#475569"
-                                      : "#1e293b"
+                                      ? "#cbd5e1"
+                                      : "#f1f5f9"
                               }
                               className="transition-colors duration-200 cursor-pointer"
                             />
@@ -1071,7 +1070,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                                 width={barWidth}
                                 height={3}
                                 rx={1.5}
-                                fill={isPeak ? "#fef08a" : isHovered ? "#bae6fd" : "#94a3b8"}
+                                fill={isPeak ? "#fde68a" : isHovered ? "#bae6fd" : "#94a3b8"}
                               />
                             )}
                           </g>
@@ -1091,7 +1090,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                           y1={padTop}
                           x2={matched.x}
                           y2={padTop + chartInnerHeight}
-                          stroke="#38bdf8"
+                          stroke="#0284c7"
                           strokeDasharray="3 3"
                           strokeWidth="1.5"
                           strokeOpacity="0.8"
@@ -1100,7 +1099,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                           cx={matched.x}
                           cy={matched.y}
                           r="5"
-                          fill="#38bdf8"
+                          fill="#0284c7"
                           className="animate-ping"
                         />
                       </g>
@@ -1113,7 +1112,6 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                     const x = N === 1 ? svgWidth / 2 : padLeft + (idx / (N - 1)) * chartInnerWidth;
                     const isHovered = hoveredPoint?.key === pt.key;
 
-                    // Skip labels if too crowded on screen
                     const shouldShowLabel = N <= 14 || (idx % (N > 40 ? 5 : N > 20 ? 2 : 1) === 0) || idx === N - 1;
                     if (!shouldShowLabel) return null;
 
@@ -1122,7 +1120,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                         <text
                           x={x}
                           y={padTop + chartInnerHeight + 18}
-                          fill={isHovered ? "#38bdf8" : "#94a3b8"}
+                          fill={isHovered ? "#0284c7" : "#64748b"}
                           fontSize={isHovered ? "11" : "10"}
                           fontWeight={isHovered ? "bold" : "normal"}
                           textAnchor="middle"
@@ -1134,7 +1132,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                           <text
                             x={x}
                             y={padTop + chartInnerHeight + 30}
-                            fill={isHovered ? "#e2e8f0" : "#64748b"}
+                            fill={isHovered ? "#0f172a" : "#94a3b8"}
                             fontSize="9"
                             textAnchor="middle"
                           >
@@ -1168,7 +1166,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                 </svg>
               </div>
 
-              {/* Floating Glassmorphic HUD Inspector Card */}
+              {/* Floating Glassmorphic HUD Inspector Card (Light Mode) */}
               <AnimatePresence>
                 {hoveredPoint && (
                   <motion.div
@@ -1176,24 +1174,24 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 8 }}
                     transition={{ duration: 0.15 }}
-                    className={`mt-4 p-4 rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4 text-xs ${
+                    className={`mt-4 p-4 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-navy-950 ${
                       isRtl ? "md:flex-row-reverse" : ""
                     }`}
                   >
                     {/* Date & Volume Pillar */}
                     <div className={`flex items-center gap-3.5 ${isRtl ? "flex-row-reverse text-right" : "text-left"}`}>
-                      <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex flex-col items-center justify-center font-bold font-mono shadow-inner">
-                        <span className="text-base leading-none">{hoveredPoint.count}</span>
-                        <span className="text-[9px] uppercase text-amber-300/80">{isRtl ? "הזמנות" : "orders"}</span>
+                      <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex flex-col items-center justify-center font-bold font-mono shadow-sm">
+                        <span className="text-base leading-none font-black">{hoveredPoint.count}</span>
+                        <span className="text-[9px] uppercase text-amber-700/80">{isRtl ? "הזמנות" : "orders"}</span>
                       </div>
                       <div>
-                        <div className="font-bold text-white text-sm flex items-center gap-2">
+                        <div className="font-bold text-navy-950 text-sm flex items-center gap-2">
                           <span>{hoveredPoint.label}</span>
                           {hoveredPoint.subLabel && (
-                            <span className="text-slate-400 text-xs font-normal">({hoveredPoint.subLabel})</span>
+                            <span className="text-slate-500 text-xs font-normal">({hoveredPoint.subLabel})</span>
                           )}
                         </div>
-                        <div className="text-slate-400 text-[11px] mt-0.5">
+                        <div className="text-slate-500 text-[11px] mt-0.5">
                           {isRtl 
                             ? `מתוכן הושלמו ונמסרו: ${hoveredPoint.completedCount}`
                             : `Completed & Delivered: ${hoveredPoint.completedCount}`}
@@ -1204,21 +1202,21 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                     {/* Breakdown Chips */}
                     <div className={`flex items-center gap-2 flex-wrap ${isRtl ? "flex-row-reverse" : ""}`}>
                       {/* Kosher / Clean */}
-                      <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">
+                      <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
                         {isRtl ? "כשר / נקי" : "Kosher"}: {hoveredPoint.cleanCount}
                       </span>
 
                       {/* Shatnez Detected */}
                       {hoveredPoint.shatnezCount > 0 && (
-                        <span className="px-2.5 py-1 rounded-lg bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
+                        <span className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
                           {isRtl ? "נמצא שעטנז" : "Shatnez"}: {hoveredPoint.shatnezCount}
                         </span>
                       )}
 
                       {/* Cumulative Metric if Throughput */}
                       {chartMode === "throughput" && (
-                        <span className="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono">
+                        <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 font-mono">
                           {isRtl ? "מצטבר" : "Cumulative"}: {hoveredPoint.cumulativeIntake}
                         </span>
                       )}
@@ -1228,7 +1226,7 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
               </AnimatePresence>
 
               {/* Chart Legend Footer */}
-              <div className={`mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-3 ${
+              <div className={`mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-3 ${
                 isRtl ? "flex-row-reverse" : ""
               }`}>
                 <div className={`flex items-center gap-4 ${isRtl ? "flex-row-reverse" : ""}`}>
@@ -1244,13 +1242,13 @@ export default function OrderAnalytics({ orders, isRtl }: OrderAnalyticsProps) {
                   )}
                   {showAverageLine && chartMode !== "throughput" && (
                     <div className="flex items-center gap-1.5">
-                      <span className="w-3 h-0.5 border-b border-dashed border-amber-400"></span>
+                      <span className="w-3 h-0.5 border-b border-dashed border-amber-600"></span>
                       <span>{isRtl ? "קו ממוצע תקופתי" : "Period Average"}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="text-[10px] text-slate-500 font-mono">
+                <div className="text-[10px] text-slate-400 font-mono">
                   {isRtl ? "ערכי ציר X: ימים/שבועות • ערכי ציר Y: נפח פריטים" : "X-Axis: Time Sequence • Y-Axis: Garment Count"}
                 </div>
               </div>
