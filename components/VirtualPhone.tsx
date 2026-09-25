@@ -203,6 +203,22 @@ export default function VirtualPhone({
     }
   };
 
+  // Find CRM match for dialing / receiving / notifications
+  const getCrmMatch = (phoneStr: string) => {
+    if (!phoneStr) return null;
+    const cleanNum = phoneStr.replace(/\D/g, "");
+    if (cleanNum.length < 7) return null;
+    
+    // Look up order in database by phone or phone2
+    return orders.find(o => {
+      const p1 = o.phone ? o.phone.replace(/\D/g, "") : "";
+      const p2 = o.phone2 ? o.phone2.replace(/\D/g, "") : "";
+      const m1 = p1.length >= 7 && (p1.includes(cleanNum) || cleanNum.includes(p1));
+      const m2 = p2.length >= 7 && (p2.includes(cleanNum) || cleanNum.includes(p2));
+      return m1 || m2;
+    }) || null;
+  };
+
   // Listen for new SMS/Voicemail changes to fire notifications
   const prevSmsLengthRef = useRef(smsMessages.length);
   const prevVmLengthRef = useRef(voicemails.length);
@@ -211,7 +227,7 @@ export default function VirtualPhone({
     if (smsMessages.length > prevSmsLengthRef.current) {
       const latest = smsMessages[smsMessages.length - 1];
       if (latest && latest.direction === "inbound") {
-        const contactName = orders.find(o => o.phone?.replace(/\D/g, "") === latest.phone.replace(/\D/g, ""))?.customerName || latest.phone;
+        const contactName = getCrmMatch(latest.phone)?.customerName || latest.phone;
         triggerBrowserNotification(
           isRtl ? `הודעה חדשה מ-${contactName}` : `New message from ${contactName}`,
           latest.body
@@ -225,7 +241,7 @@ export default function VirtualPhone({
     if (voicemails.length > prevVmLengthRef.current) {
       const latest = voicemails[0];
       if (latest) {
-        const contactName = orders.find(o => o.phone?.replace(/\D/g, "") === latest.phone.replace(/\D/g, ""))?.customerName || latest.phone;
+        const contactName = getCrmMatch(latest.phone)?.customerName || latest.phone;
         triggerBrowserNotification(
           isRtl ? "תא קולי חדש התקבל" : "New Voicemail Received",
           isRtl ? `הודעה מ-${contactName} (אורך: ${latest.duration} שניות)` : `Message from ${contactName} (${latest.duration}s)`
@@ -337,20 +353,6 @@ export default function VirtualPhone({
     } catch (err) {
       console.error("Failed to update DND setting:", err);
     }
-  };
-
-  // Find CRM match for dialing / receiving
-  const getCrmMatch = (phoneStr: string) => {
-    if (!phoneStr) return null;
-    const cleanNum = phoneStr.replace(/\D/g, "");
-    if (cleanNum.length < 7) return null;
-    
-    // Look up order in database
-    return orders.find(o => {
-      const oPhone = o.phone ? o.phone.replace(/\D/g, "") : "";
-      if (oPhone.length < 7) return false;
-      return oPhone.includes(cleanNum) || cleanNum.includes(oPhone);
-    }) || null;
   };
 
   const initBrowserDevice = async (token: string) => {
@@ -496,9 +498,11 @@ export default function VirtualPhone({
       const threadMessages = smsMessages.filter(
         msg => msg.phone.replace(/\D/g, "") === selectedThreadPhone
       );
-      const associatedOrders = orders.filter(
-        o => o.phone && o.phone.replace(/\D/g, "") === selectedThreadPhone
-      );
+      const associatedOrders = orders.filter(o => {
+        const p1 = o.phone ? o.phone.replace(/\D/g, "") : "";
+        const p2 = o.phone2 ? o.phone2.replace(/\D/g, "") : "";
+        return p1 === selectedThreadPhone || p2 === selectedThreadPhone;
+      });
 
       const response = await fetch("/api/gemini/suggest-reply", {
         method: "POST",
@@ -628,19 +632,21 @@ export default function VirtualPhone({
   const getUniqueContacts = () => {
     const list: Record<string, { name: string; phone: string; orders: Order[] }> = {};
     orders.forEach(o => {
-      if (!o.phone) return;
-      const cleanPhone = o.phone.replace(/\D/g, "");
-      if (!list[cleanPhone]) {
-        list[cleanPhone] = {
-          name: o.customerName,
-          phone: o.phone,
-          orders: [o]
-        };
-      } else {
-        if (!list[cleanPhone].orders.some(x => x.id === o.id)) {
-          list[cleanPhone].orders.push(o);
+      [o.phone, o.phone2].filter(Boolean).forEach(rawPhone => {
+        const cleanPhone = (rawPhone as string).replace(/\D/g, "");
+        if (!cleanPhone || cleanPhone.length < 7) return;
+        if (!list[cleanPhone]) {
+          list[cleanPhone] = {
+            name: o.customerName,
+            phone: rawPhone as string,
+            orders: [o]
+          };
+        } else {
+          if (!list[cleanPhone].orders.some(x => x.id === o.id)) {
+            list[cleanPhone].orders.push(o);
+          }
         }
-      }
+      });
     });
     return Object.values(list).sort((a, b) => a.name.localeCompare(b.name));
   };

@@ -10,6 +10,7 @@ interface Order {
   id: string;
   customerName: string;
   phone?: string;
+  phone2?: string;
   status: OrderStatus;
   dateReceived: string;
   estimatedCompletion: string;
@@ -159,10 +160,12 @@ export default function PrintCard({ order, onClose }: PrintCardProps) {
                 <span className="text-sm font-bold text-navy-900 truncate max-w-[2.2in]">{order.customerName}</span>
               </div>
 
-              {order.phone && (
+              {(order.phone || order.phone2) && (
                 <div className="flex justify-between items-baseline">
                   <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Phone</span>
-                  <span className="text-sm font-mono text-navy-700">{order.phone}</span>
+                  <span className="text-sm font-mono text-navy-700">
+                    {[order.phone, order.phone2].filter(Boolean).join(" / ")}
+                  </span>
                 </div>
               )}
 

@@ -12,7 +12,7 @@ import AdminAiAssistant from "@/components/AdminAiAssistant";
 import OrderAnalytics from "@/components/OrderAnalytics";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
-import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest } from "@/lib/db";
+import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest, extractPhoneNumbers, getOrderPhoneNumbers, hasAudioFile } from "@/lib/db";
 import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
@@ -552,6 +552,7 @@ export default function AdminPage() {
     notes: "",
     result: "",
     phone: "",
+    phone2: "",
     location: "14 Buchanan Rd",
   });
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
@@ -586,6 +587,8 @@ export default function AdminPage() {
   const [holidayModeActive, setHolidayModeActive] = useState(false);
   const [announcementActive, setAnnouncementActive] = useState(false);
   const [announcementAudioName, setAnnouncementAudioName] = useState("announcement");
+  const [orderReadyBuchananAudioName, setOrderReadyBuchananAudioName] = useState("order_ready_buchanan");
+  const [orderReadyClintonAudioName, setOrderReadyClintonAudioName] = useState("order_ready_clinton");
   const [dndActive, setDndActive] = useState(false);
   const [ivrHolidayMsgEn, setIvrHolidayMsgEn] = useState("");
   const [ivrHolidayMsgHe, setIvrHolidayMsgHe] = useState("");
@@ -630,7 +633,7 @@ export default function AdminPage() {
   const [showCallModal, setShowCallModal] = useState(false);
   const [manualCallPhone, setManualCallPhone] = useState("");
   const [manualCallOrderId, setManualCallOrderId] = useState("");
-  const [callPromptData, setCallPromptData] = useState<{orderId: string, phone: string} | null>(null);
+  const [callPromptData, setCallPromptData] = useState<{orderId: string, phone: string, phone2?: string} | null>(null);
   const [activeBlueprintTab, setActiveBlueprintTab] = useState("flow");
   const [isCardFlipped, setIsCardFlipped] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -671,6 +674,7 @@ export default function AdminPage() {
   };
   
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string | null>(null);
+  const [selectedCustomerPhone2, setSelectedCustomerPhone2] = useState<string>("");
   const [selectedCustomerName, setSelectedCustomerName] = useState<string>("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [isAddingOrderInModal, setIsAddingOrderInModal] = useState(false);
@@ -683,32 +687,54 @@ export default function AdminPage() {
     dateReceived: new Date().toISOString().split("T")[0]
   });
 
-  const openCustomerModal = (phone: string, customerName: string) => {
-    setSelectedCustomerPhone(phone);
+  const openCustomerModal = (phone: string, customerName: string, phone2?: string) => {
+    const extracted = extractPhoneNumbers(phone);
+    const p1 = extracted[0] || phone;
+    let p2 = phone2 || (extracted.length > 1 ? extracted[1] : "");
+    if (!p2) {
+      const cleanOldPhone = p1.replace(/\D/g, "");
+      const match = orders.find(o => (o.phone && o.phone.replace(/\D/g, "") === cleanOldPhone) && o.phone2);
+      if (match?.phone2) p2 = match.phone2;
+    }
+    setSelectedCustomerPhone(p1);
+    setSelectedCustomerPhone2(p2 || "");
     setSelectedCustomerName(customerName);
     setIsAddingOrderInModal(false);
     setShowCustomerModal(true);
   };
 
-  const handleUpdateCustomerProfile = async (newName: string, newPhone: string) => {
+  const handleUpdateCustomerProfile = async (newName: string, newPhone: string, newPhone2?: string) => {
     if (!selectedCustomerPhone) return;
     const cleanOldPhone = selectedCustomerPhone.replace(/\D/g, "");
-    const cleanNewPhone = newPhone.replace(/\D/g, "");
-    if (!newName || !cleanNewPhone) {
+    const allExtracted = [
+      ...extractPhoneNumbers(newPhone),
+      ...extractPhoneNumbers(newPhone2)
+    ];
+    const uniquePhones = Array.from(new Set(allExtracted));
+    const p1 = uniquePhones[0] || newPhone.trim();
+    const p2 = uniquePhones.length > 1 ? uniquePhones[1] : (newPhone2?.trim() || "");
+
+    if (!newName || !p1) {
       showToast(isRtl ? "שם ומספר טלפון לא יכולים להיות ריקים!" : "Name and phone number cannot be empty!", "error");
       return;
     }
     
     // Find all orders matching the old phone number
-    const matchingOrders = orders.filter(o => o.phone && o.phone.replace(/\D/g, "") === cleanOldPhone);
+    const matchingOrders = orders.filter(o => {
+      const nums = getOrderPhoneNumbers(o);
+      return nums.some(n => n.includes(cleanOldPhone) || cleanOldPhone.includes(n));
+    });
+
     for (const o of matchingOrders) {
       await saveOrder({
         ...o,
         customerName: newName,
-        phone: newPhone
+        phone: p1,
+        phone2: p2 || undefined
       });
     }
-    setSelectedCustomerPhone(newPhone);
+    setSelectedCustomerPhone(p1);
+    setSelectedCustomerPhone2(p2);
     setSelectedCustomerName(newName);
     showToast(isRtl ? "פרטי הלקוח עודכנו בהצלחה!" : "Customer profile updated successfully!", "success");
   };
@@ -720,6 +746,7 @@ export default function AdminPage() {
       id: nextId,
       customerName: selectedCustomerName,
       phone: selectedCustomerPhone,
+      phone2: selectedCustomerPhone2 || undefined,
       status: (modalNewOrder.status as OrderStatus) || "received",
       dateReceived: modalNewOrder.dateReceived || new Date().toISOString().split("T")[0],
       estimatedCompletion: modalNewOrder.estimatedCompletion || "",
@@ -1044,6 +1071,8 @@ export default function AdminPage() {
       setHolidayModeActive(!!s.holidayModeActive);
       setAnnouncementActive(!!s.announcementActive);
       setAnnouncementAudioName(s.announcementAudioName || "announcement");
+      setOrderReadyBuchananAudioName(s.orderReadyBuchananAudioName || "order_ready_buchanan");
+      setOrderReadyClintonAudioName(s.orderReadyClintonAudioName || "order_ready_clinton");
       setDndActive(!!s.dndActive);
       setIvrHolidayMsgEn(s.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.");
       setIvrHolidayMsgHe(s.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.");
@@ -1131,6 +1160,8 @@ export default function AdminPage() {
       setHolidayModeActive(!!s.holidayModeActive);
       setAnnouncementActive(!!s.announcementActive);
       setAnnouncementAudioName(s.announcementAudioName || "announcement");
+      setOrderReadyBuchananAudioName(s.orderReadyBuchananAudioName || "order_ready_buchanan");
+      setOrderReadyClintonAudioName(s.orderReadyClintonAudioName || "order_ready_clinton");
       setDndActive(!!s.dndActive);
       setIvrHolidayMsgEn(s.ivrHolidayMsgEn || "Our office is currently closed for the holidays. Please leave a message after the beep.");
       setIvrHolidayMsgHe(s.ivrHolidayMsgHe || "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.");
@@ -1387,6 +1418,36 @@ export default function AdminPage() {
     }
   };
 
+  const handleUploadNamedAudioFile = async (targetName: string, file: File, label?: string) => {
+    if (file.size > 1024 * 1024) {
+      showToast(isRtl ? "גודל הקובץ עולה על 1MB. אנא בחר קובץ קטן יותר." : "File size exceeds 1MB. Please choose a smaller file.", "error");
+      return;
+    }
+    const cleanName = targetName.toLowerCase().trim();
+    setIsReplacingName(cleanName);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          await uploadAudioFile(cleanName, base64);
+          showToast(isRtl ? `קובץ השמע ${label || cleanName} הועלה בהצלחה!` : `Audio file ${label || cleanName} uploaded successfully!`, "success");
+          loadAudioFiles();
+        } catch (err) {
+          console.error(err);
+          showToast(isRtl ? "שגיאה בהעלאת קובץ השמע." : "Error uploading audio file.", "error");
+        } finally {
+          setIsReplacingName(null);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      showToast(isRtl ? "שגיאה בקריאת הקובץ." : "Error reading file.", "error");
+      setIsReplacingName(null);
+    }
+  };
+
   const handleTogglePlay = (name: string) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const url = `${origin}/api/audio?name=${name.toLowerCase().trim()}&t=${Date.now()}`;
@@ -1482,6 +1543,8 @@ export default function AdminPage() {
         holidayModeActive,
         announcementActive,
         announcementAudioName,
+        orderReadyBuchananAudioName,
+        orderReadyClintonAudioName,
         ivrHolidayMsgEn,
         ivrHolidayMsgHe,
         dndActive,
@@ -1524,22 +1587,31 @@ export default function AdminPage() {
 
   const handleAddOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newOrder.customerName || !newOrder.phone) {
+    if (!newOrder.customerName || (!newOrder.phone && !newOrder.phone2)) {
       showToast(isRtl ? "אנא הזן שם לקוח ומספר טלפון!" : "Please enter customer name and phone number!", "error");
       return;
     }
 
-    const cleanPhone = newOrder.phone.replace(/\D/g, "");
-    if (!cleanPhone) {
+    const extracted = [
+      ...extractPhoneNumbers(newOrder.phone),
+      ...extractPhoneNumbers(newOrder.phone2)
+    ];
+    const uniquePhones = Array.from(new Set(extracted));
+
+    if (uniquePhones.length === 0) {
       showToast(isRtl ? "מספר טלפון לא תקין!" : "Invalid phone number!", "error");
       return;
     }
+
+    const primaryPhone = uniquePhones[0];
+    const secondaryPhone = uniquePhones.length > 1 ? uniquePhones[1] : (newOrder.phone2?.trim() || undefined);
 
     const nextId = generateNextId();
     const order: Order = {
       id: nextId,
       customerName: newOrder.customerName,
-      phone: newOrder.phone,
+      phone: primaryPhone,
+      phone2: secondaryPhone,
       status: (newOrder.status as OrderStatus) || "received",
       dateReceived: newOrder.dateReceived || new Date().toISOString().split("T")[0],
       estimatedCompletion: newOrder.estimatedCompletion || "",
@@ -1558,6 +1630,7 @@ export default function AdminPage() {
       notes: "",
       result: "",
       phone: "",
+      phone2: "",
       location: "14 Buchanan Rd",
     });
   };
@@ -1570,8 +1643,8 @@ export default function AdminPage() {
     await saveOrder({ ...order, status });
     
     // If status changed to ready, ask to call
-    if (status === "ready" && oldStatus !== "ready" && order.phone) {
-      setCallPromptData({ orderId: order.id, phone: order.phone });
+    if (status === "ready" && oldStatus !== "ready" && (order.phone || order.phone2)) {
+      setCallPromptData({ orderId: order.id, phone: order.phone || "", phone2: order.phone2 });
     }
   };
 
@@ -1581,7 +1654,11 @@ export default function AdminPage() {
       await fetch("/api/twilio/trigger-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: callPromptData.orderId, phone: callPromptData.phone })
+        body: JSON.stringify({ 
+          orderId: callPromptData.orderId, 
+          phone: callPromptData.phone,
+          phone2: callPromptData.phone2 
+        })
       });
       showToast(isRtl ? "שיחה נשלחה בהצלחה" : "Call sent successfully");
     } catch (e) {
@@ -1905,7 +1982,8 @@ export default function AdminPage() {
       !o.archived &&
       (o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
        o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       (o.phone && o.phone.includes(searchQuery)))
+       (o.phone && o.phone.includes(searchQuery)) ||
+       (o.phone2 && o.phone2.includes(searchQuery)))
   ).sort((a, b) => {
     if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
     if (a.createdAt) return -1;
@@ -1918,7 +1996,8 @@ export default function AdminPage() {
       !!o.archived &&
       (o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
        o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       (o.phone && o.phone.includes(searchQuery)))
+       (o.phone && o.phone.includes(searchQuery)) ||
+       (o.phone2 && o.phone2.includes(searchQuery)))
   ).sort((a, b) => {
     if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
     if (a.createdAt) return -1;
@@ -2920,11 +2999,32 @@ export default function AdminPage() {
                   <div>
                     <label className="block text-sm font-medium text-navy-800 mb-1">{t("phone")}</label>
                     <input
-                      type="tel"
+                      type="text"
                       required
                       value={newOrder.phone || ""}
-                      onChange={(e) => setNewOrder({ ...newOrder, phone: e.target.value })}
-                      placeholder="845-552-4744"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const nums = extractPhoneNumbers(val);
+                        if (nums.length >= 2 && !newOrder.phone2) {
+                          setNewOrder({ ...newOrder, phone: nums[0], phone2: nums[1] });
+                        } else {
+                          setNewOrder({ ...newOrder, phone: val });
+                        }
+                      }}
+                      placeholder={isRtl ? "845-709-2022 (או: 8457092022 and 8457020225)" : "845-709-2022 (or: 8457092022 and 8457020225)"}
+                      className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
+                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-navy-800 mb-1">
+                      {isRtl ? "מספר טלפון נוסף (אופציונלי)" : "Secondary Phone (Optional)"}
+                    </label>
+                    <input
+                      type="tel"
+                      value={newOrder.phone2 || ""}
+                      onChange={(e) => setNewOrder({ ...newOrder, phone2: e.target.value })}
+                      placeholder="845-702-0225"
                       className={`w-full px-3 py-2 rounded-lg border border-primary-200 bg-primary-50
                                focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent ${isRtl ? "text-right" : ""}`}
                     />
@@ -3047,18 +3147,29 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-4 min-w-[200px]">
                         <button
-                          onClick={() => openCustomerModal(order.phone || "", order.customerName)}
+                          onClick={() => openCustomerModal(order.phone || "", order.customerName, order.phone2)}
                           className="font-semibold text-navy-800 hover:text-gold-600 hover:underline text-left focus:outline-none block"
                           title={isRtl ? "צפה בהיסטוריית לקוח" : "View customer history"}
                         >
                           {order.customerName}
                         </button>
-                        <div className="text-sm text-primary-500 mt-1 font-mono" dir="ltr">
+                        <div className="text-sm text-primary-500 mt-1 font-mono flex flex-col gap-0.5" dir="ltr">
                           {order.phone ? (
-                            <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
-                              {order.phone}
-                            </a>
+                            <div className="flex items-center gap-1.5">
+                              {order.phone2 && <span className="text-[10px] text-primary-400 font-sans font-bold">1:</span>}
+                              <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
+                                {order.phone}
+                              </a>
+                            </div>
                           ) : "—"}
+                          {order.phone2 && (
+                            <div className="flex items-center gap-1.5 text-xs text-primary-400">
+                              <span className="text-[10px] text-primary-400 font-sans font-bold">2:</span>
+                              <a href={`tel:${order.phone2}`} className="hover:text-gold-600 hover:underline">
+                                {order.phone2}
+                              </a>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-center">
@@ -3602,18 +3713,29 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-4 min-w-[200px]">
                         <button
-                          onClick={() => openCustomerModal(order.phone || "", order.customerName)}
+                          onClick={() => openCustomerModal(order.phone || "", order.customerName, order.phone2)}
                           className="font-semibold text-navy-800 hover:text-gold-600 hover:underline text-left focus:outline-none block animate-none"
                           title={isRtl ? "צפה בהיסטוריית לקוח" : "View customer history"}
                         >
                           {order.customerName}
                         </button>
-                        <div className="text-sm text-primary-500 mt-1 font-mono" dir="ltr">
+                        <div className="text-sm text-primary-500 mt-1 font-mono flex flex-col gap-0.5" dir="ltr">
                           {order.phone ? (
-                            <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
-                              {order.phone}
-                            </a>
+                            <div className="flex items-center gap-1.5">
+                              {order.phone2 && <span className="text-[10px] text-primary-400 font-sans font-bold">1:</span>}
+                              <a href={`tel:${order.phone}`} className="hover:text-gold-600 hover:underline">
+                                {order.phone}
+                              </a>
+                            </div>
                           ) : "—"}
+                          {order.phone2 && (
+                            <div className="flex items-center gap-1.5 text-xs text-primary-400">
+                              <span className="text-[10px] text-primary-400 font-sans font-bold">2:</span>
+                              <a href={`tel:${order.phone2}`} className="hover:text-gold-600 hover:underline">
+                                {order.phone2}
+                              </a>
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-center">
@@ -4904,6 +5026,246 @@ export default function AdminPage() {
               );
             })()}
 
+            {/* Order Ready Recorded Announcements (Buchanan Rd & Clinton Lane) */}
+            {(() => {
+              const origin = typeof window !== "undefined" ? window.location.origin : "";
+              const targetBuchanan = (orderReadyBuchananAudioName || "order_ready_buchanan").toLowerCase().trim();
+              const buchananFile = audioFiles.find(f => f.name.toLowerCase().trim() === targetBuchanan);
+              const buchananUrl = `${origin}/api/audio?name=${targetBuchanan}`;
+
+              const targetClinton = (orderReadyClintonAudioName || "order_ready_clinton").toLowerCase().trim();
+              const clintonFile = audioFiles.find(f => f.name.toLowerCase().trim() === targetClinton);
+              const clintonUrl = `${origin}/api/audio?name=${targetClinton}`;
+
+              return (
+                <div className={`card p-6 bg-white border border-primary-200 shadow-sm ${isRtl ? "text-right" : ""}`}>
+                  <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-primary-100 pb-4 mb-4 ${isRtl ? "md:flex-row-reverse" : ""}`}>
+                    <div className={`flex items-start gap-3.5 ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+                      <div className="p-3 rounded-2xl shrink-0 bg-gold-100 text-gold-700">
+                        <Bell className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className={`flex items-center gap-2 flex-wrap ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <h3 className="text-xl font-bold text-navy-900">
+                            {isRtl ? "הודעות איסוף מוקלטות (במקום TTS)" : "Order Ready Announcements (Replaces TTS)"}
+                          </h3>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-navy-50 text-navy-800 border border-navy-200">
+                            {isRtl ? "שיחות יוצאות אוטומטיות" : "Automated Outbound Calls"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-primary-600 mt-1 max-w-3xl">
+                          {isRtl
+                            ? "העלה כאן הקלטות קוליות אותנטיות (MP3) שיושמעו ללקוחות בשיחה האוטומטית כאשר הזמנתם מוכנה לאיסוף. המערכת משמיעה את ההקלטה המתאימה לפי כתובת האיסוף שנבחרה. אם אין הקלטה מועלית, המערכת משתמשת אוטומטית בהודעת TTS."
+                            : "Upload pre-recorded studio MP3 files played to customers when their order is ready for pickup. Twilio automatically plays the recording matching the order drop-off location. If no recording is uploaded, the system falls back to automatic Polly TTS."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2-Column Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Buchanan Card */}
+                    <div className="bg-primary-50/50 rounded-2xl border border-primary-200 p-5 flex flex-col justify-between space-y-4">
+                      <div>
+                        <div className={`flex items-center justify-between gap-2 mb-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                            <MapPin className="w-4 h-4 text-gold-600" />
+                            <h4 className="font-bold text-navy-900 text-sm">
+                              {isRtl ? "מיקום: ביוקנן 14" : "14 Buchanan Rd"}
+                            </h4>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            buchananFile 
+                              ? "bg-green-100 text-green-800 border border-green-300"
+                              : "bg-amber-100 text-amber-800 border border-amber-300"
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${buchananFile ? "bg-green-600" : "bg-amber-600"}`} />
+                            {buchananFile 
+                              ? (isRtl ? "הקלטה פעילה בשיחות" : "Pre-recorded Audio Active")
+                              : (isRtl ? "פעיל ב-TTS (מומלץ להעלות)" : "Falling back to TTS")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-primary-500 mb-3">
+                          {isRtl 
+                            ? "הקובץ המושמע ללקוחות שהזמנתם מוכנה לאיסוף בכתובת 14 Buchanan Rd." 
+                            : "Announcement played for orders ready for pickup at 14 Buchanan Rd."}
+                        </p>
+
+                        <div className={`p-3 bg-white rounded-xl border border-primary-200 flex items-center justify-between gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <div className="truncate">
+                            <span className="text-xs font-bold text-navy-900 block truncate font-mono">
+                              {targetBuchanan}.mp3
+                            </span>
+                            <span className="text-[10px] text-primary-500 block">
+                              {buchananFile?.uploadedAt ? (isRtl ? `עודכן: ${formatDateTime(buchananFile.uploadedAt)}` : `Updated: ${formatDateTime(buchananFile.uploadedAt)}`) : (isRtl ? "קובץ עדיין לא הועלה" : "No recording uploaded")}
+                            </span>
+                          </div>
+
+                          {buchananFile && (
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlay(targetBuchanan)}
+                              className={`p-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                                playingName === targetBuchanan
+                                  ? "bg-gold-500 text-white"
+                                  : "bg-primary-50 text-navy-800 hover:bg-gold-50 border border-primary-200"
+                              }`}
+                            >
+                              {playingName === targetBuchanan ? (
+                                <>
+                                  <Pause className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? "השהה" : "Pause"}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3.5 h-3.5 text-gold-600 fill-gold-600" />
+                                  <span>{isRtl ? "האזן" : "Preview"}</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center gap-2 pt-2 border-t border-primary-200/60 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <label className="btn-secondary flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer hover:border-gold-400 bg-white">
+                          {isReplacingName === targetBuchanan ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5 text-gold-600" />
+                          )}
+                          <span>
+                            {buchananFile 
+                              ? (isRtl ? "החלף הקלטה (MP3)" : "Replace MP3")
+                              : (isRtl ? "העלה הקלטה לביוקנן (MP3)" : "Upload Buchanan MP3")}
+                          </span>
+                          <input
+                            type="file"
+                            accept="audio/mpeg, audio/mp3"
+                            className="hidden"
+                            disabled={isReplacingName === targetBuchanan}
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleUploadNamedAudioFile(targetBuchanan, e.target.files[0], "14 Buchanan Rd");
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAudioUrl(targetBuchanan)}
+                          className="px-3 py-2 rounded-xl border border-primary-200 text-xs font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-all flex items-center gap-1 shrink-0"
+                          title={isRtl ? "העתק קישור" : "Copy URL"}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>{isRtl ? "העתק" : "Copy"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Clinton Card */}
+                    <div className="bg-primary-50/50 rounded-2xl border border-primary-200 p-5 flex flex-col justify-between space-y-4">
+                      <div>
+                        <div className={`flex items-center justify-between gap-2 mb-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                            <MapPin className="w-4 h-4 text-gold-600" />
+                            <h4 className="font-bold text-navy-900 text-sm">
+                              {isRtl ? "מיקום: קלינטון 166" : "166 Clinton Lane"}
+                            </h4>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            clintonFile 
+                              ? "bg-green-100 text-green-800 border border-green-300"
+                              : "bg-amber-100 text-amber-800 border border-amber-300"
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${clintonFile ? "bg-green-600" : "bg-amber-600"}`} />
+                            {clintonFile 
+                              ? (isRtl ? "הקלטה פעילה בשיחות" : "Pre-recorded Audio Active")
+                              : (isRtl ? "פעיל ב-TTS (מומלץ להעלות)" : "Falling back to TTS")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-primary-500 mb-3">
+                          {isRtl 
+                            ? "הקובץ המושמע ללקוחות שהזמנתם מוכנה לאיסוף בכתובת 166 Clinton Lane." 
+                            : "Announcement played for orders ready for pickup at 166 Clinton Lane."}
+                        </p>
+
+                        <div className={`p-3 bg-white rounded-xl border border-primary-200 flex items-center justify-between gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                          <div className="truncate">
+                            <span className="text-xs font-bold text-navy-900 block truncate font-mono">
+                              {targetClinton}.mp3
+                            </span>
+                            <span className="text-[10px] text-primary-500 block">
+                              {clintonFile?.uploadedAt ? (isRtl ? `עודכן: ${formatDateTime(clintonFile.uploadedAt)}` : `Updated: ${formatDateTime(clintonFile.uploadedAt)}`) : (isRtl ? "קובץ עדיין לא הועלה" : "No recording uploaded")}
+                            </span>
+                          </div>
+
+                          {clintonFile && (
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlay(targetClinton)}
+                              className={`p-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                                playingName === targetClinton
+                                  ? "bg-gold-500 text-white"
+                                  : "bg-primary-50 text-navy-800 hover:bg-gold-50 border border-primary-200"
+                              }`}
+                            >
+                              {playingName === targetClinton ? (
+                                <>
+                                  <Pause className="w-3.5 h-3.5" />
+                                  <span>{isRtl ? "השהה" : "Pause"}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3.5 h-3.5 text-gold-600 fill-gold-600" />
+                                  <span>{isRtl ? "האזן" : "Preview"}</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center gap-2 pt-2 border-t border-primary-200/60 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <label className="btn-secondary flex-1 py-2 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer hover:border-gold-400 bg-white">
+                          {isReplacingName === targetClinton ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5 text-gold-600" />
+                          )}
+                          <span>
+                            {clintonFile 
+                              ? (isRtl ? "החלף הקלטה (MP3)" : "Replace MP3")
+                              : (isRtl ? "העלה הקלטה לקלינטון (MP3)" : "Upload Clinton MP3")}
+                          </span>
+                          <input
+                            type="file"
+                            accept="audio/mpeg, audio/mp3"
+                            className="hidden"
+                            disabled={isReplacingName === targetClinton}
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleUploadNamedAudioFile(targetClinton, e.target.files[0], "166 Clinton Lane");
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAudioUrl(targetClinton)}
+                          className="px-3 py-2 rounded-xl border border-primary-200 text-xs font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-all flex items-center gap-1 shrink-0"
+                          title={isRtl ? "העתק קישור" : "Copy URL"}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>{isRtl ? "העתק" : "Copy"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Main Layout Grid */}
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${isRtl ? "direction-rtl" : ""}`}>
               
@@ -4978,7 +5340,7 @@ export default function AdminPage() {
                     {isRtl ? "שמות קבצים נפוצים ל-IVR" : "Common IVR File Names"}
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {["announcement", "welcome", "general_info", "vip_info", "order_not_found", "voicemail_greeting"].map((preset) => (
+                    {["announcement", "welcome", "order_ready_buchanan", "order_ready_clinton", "general_info", "vip_info", "order_not_found", "voicemail_greeting"].map((preset) => (
                       <button
                         key={preset}
                         onClick={() => setAudioName(preset)}
@@ -5206,13 +5568,19 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-navy-900">{isRtl ? "עדכון לקוח טלפוני" : "Call Customer"}</h3>
-                  <p className="text-sm text-primary-500 font-medium">{callPromptData.phone}</p>
+                  <p className="text-sm text-primary-500 font-medium font-mono" dir="ltr">
+                    {[callPromptData.phone, callPromptData.phone2].filter(Boolean).join(" & ")}
+                  </p>
                 </div>
               </div>
-              <p className="text-navy-700 mb-6 font-medium">
+              <p className="text-navy-700 mb-6 font-medium text-sm">
                 {isRtl 
-                  ? "ההזמנה סומנה כמוכנה לאיסוף. האם תרצה שהמערכת תתקשר אוטומטית ללקוח ותודיע לו לבוא לאסוף?"
-                  : "Order marked as Ready. Do you want the system to automatically call the customer and notify them?"}
+                  ? (callPromptData.phone2 
+                      ? "ההזמנה סומנה כמוכנה לאיסוף. האם תרצה שהמערכת תתקשר אוטומטית לשני מספרי הטלפון של הלקוח ותודיע לבוא לאסוף?" 
+                      : "ההזמנה סומנה כמוכנה לאיסוף. האם תרצה שהמערכת תתקשר אוטומטית ללקוח ותודיע לו לבוא לאסוף?")
+                  : (callPromptData.phone2
+                      ? "Order marked as Ready. Do you want the system to automatically call both customer numbers and notify them?"
+                      : "Order marked as Ready. Do you want the system to automatically call the customer and notify them?")}
               </p>
               <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
                 <button
@@ -5426,7 +5794,7 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-primary-500 mb-1">
-                          {isRtl ? "מספר טלפון:" : "Phone Number:"}
+                          {isRtl ? "מספר טלפון ראשי:" : "Primary Phone:"}
                         </label>
                         <input
                           type="tel"
@@ -5436,8 +5804,21 @@ export default function AdminPage() {
                           dir="ltr"
                         />
                       </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-primary-500 mb-1">
+                          {isRtl ? "מספר טלפון נוסף / משני (אופציונלי):" : "Secondary Phone (Optional):"}
+                        </label>
+                        <input
+                          type="tel"
+                          value={selectedCustomerPhone2}
+                          onChange={(e) => setSelectedCustomerPhone2(e.target.value)}
+                          placeholder="845-702-0225"
+                          className={`w-full px-3 py-2 text-sm rounded-xl border border-primary-200 focus:ring-2 focus:ring-gold-400 focus:outline-none bg-white text-left`}
+                          dir="ltr"
+                        />
+                      </div>
                       <button
-                        onClick={() => handleUpdateCustomerProfile(selectedCustomerName, selectedCustomerPhone)}
+                        onClick={() => handleUpdateCustomerProfile(selectedCustomerName, selectedCustomerPhone, selectedCustomerPhone2)}
                         className="w-full py-2 bg-navy-900 text-white font-bold text-xs rounded-xl hover:bg-navy-800 transition-colors shadow flex items-center justify-center gap-1.5"
                       >
                         <Save className="w-3.5 h-3.5" />
@@ -5558,7 +5939,11 @@ export default function AdminPage() {
                       <Package className="w-4 h-4 text-gold-500" />
                       {isRtl ? "היסטוריית הזמנות של הלקוח" : "Customer Order History"}
                       <span className="text-xs bg-primary-100 text-primary-800 px-2 py-0.5 rounded-full font-bold">
-                        {orders.filter(o => o.phone && o.phone.replace(/\D/g, "") === selectedCustomerPhone?.replace(/\D/g, "")).length}
+                        {orders.filter(o => {
+                          const oNums = getOrderPhoneNumbers(o);
+                          const searchNums = [selectedCustomerPhone, selectedCustomerPhone2].map(p => p?.replace(/\D/g, "")).filter(Boolean);
+                          return oNums.some(n => searchNums.some(sn => n.includes(sn!) || sn!.includes(n)));
+                        }).length}
                       </span>
                     </h3>
 
@@ -5577,7 +5962,11 @@ export default function AdminPage() {
                         </thead>
                         <tbody>
                           {orders
-                            .filter(o => o.phone && o.phone.replace(/\D/g, "") === selectedCustomerPhone?.replace(/\D/g, ""))
+                            .filter(o => {
+                              const oNums = getOrderPhoneNumbers(o);
+                              const searchNums = [selectedCustomerPhone, selectedCustomerPhone2].map(p => p?.replace(/\D/g, "")).filter(Boolean);
+                              return oNums.some(n => searchNums.some(sn => n.includes(sn!) || sn!.includes(n)));
+                            })
                             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
                             .map((o) => (
                               <tr key={o.id} className="border-b border-primary-50 hover:bg-primary-50/20 transition-colors">

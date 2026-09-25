@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, getAllVoicemails, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest, sanitizeCustomerName } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, getAllVoicemails, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest, sanitizeCustomerName, extractPhoneNumbers, getOrderPhoneNumbers } from "@/lib/db";
 import { triggerOutboundCall, sendSms, triggerCallBridge } from "@/lib/twilioCall";
 import { findChatSessionByShortId, addChatMessage } from "@/lib/liveChat";
 import nodemailer from "nodemailer";
@@ -1715,6 +1715,7 @@ You must respond with a JSON object ONLY, matching this schema:
   "result": "Clean / No Shatnez" | "Shatnez Found" | "Call to Discuss" (if updating/adding),
   "location": "14 Buchanan Rd" | "166 Clinton Lane" (if updating/adding),
   "customerPhone": string (for add_order, update_order, trigger_call, send_sms, or bridge_call),
+  "customerPhone2": string (optional secondary phone number if the customer has 2 numbers, e.g. "8457092022 and 8457020225"),
   "customerName": string (for add_order, update_order, trigger_call, or bridge_call),
   "notes": string (optional notes if updating/adding),
   "triggerCall": boolean (true if the order is ready and an automated customer call should be triggered),
@@ -1740,7 +1741,8 @@ Guidelines:
 5. If they want to add a new order (e.g. "New order for Swartz 8453620850", "Add a new order for 8453545268 location is 14 buchanan rd and ready for pickup results clean", "Add new order for 8454946595 and update results is clean and ready for pickup at 14 buchanan rd", "הזמנה חדשה לשוורץ 8453620850"):
    Set action="add_order".
    Extract:
-   - "customerPhone": The phone number (e.g. "8453545268").
+   - "customerPhone": The primary phone number (e.g. "8453545268").
+   - "customerPhone2": The secondary phone number if 2 numbers are mentioned (e.g. "8457020225" in "8457092022 and 8457020225").
    - "location": "166 Clinton Lane" if Clinton is mentioned, "14 Buchanan Rd" if Buchanan is mentioned or if not specified.
    - "status": If they mention ready or pickup ("ready for pickup", "מוכן"), set status="ready" and set triggerCall=true (to trigger the automated order ready robocall)! If testing, set status="testing". Default to "received".
    - "result": If clean is mentioned ("results clean", "clean", "נקי"), set result="Clean / No Shatnez". If shatnez found, set result="Shatnez Found". If not specified, set result="".
@@ -1935,7 +1937,14 @@ Guidelines:
                 }
               } else if (aiJson.action === "add_order" && (aiJson.customerPhone || aiJson.customerName)) {
                 const newId = await getNextOrderId();
-                const customerPhone = (aiJson.customerPhone || "").trim();
+                const rawPhones = [
+                  ...extractPhoneNumbers(aiJson.customerPhone),
+                  ...extractPhoneNumbers((aiJson as any).customerPhone2),
+                  ...extractPhoneNumbers(inputMsg)
+                ];
+                const uniquePhones = Array.from(new Set(rawPhones));
+                const customerPhone = uniquePhones[0] || (aiJson.customerPhone || "").trim();
+                const customerPhone2 = uniquePhones.length > 1 ? uniquePhones[1] : (((aiJson as any).customerPhone2 || "").trim() || undefined);
                 let customerName = sanitizeCustomerName(aiJson.customerName, customerPhone);
 
                 const cleanPhone = customerPhone.replace(/\D/g, "");
@@ -1982,6 +1991,7 @@ Guidelines:
                   id: newId,
                   customerName,
                   phone: customerPhone,
+                  phone2: customerPhone2,
                   status: orderStatus,
                   dateReceived: new Date().toISOString().split("T")[0],
                   estimatedCompletion: "",
@@ -1992,8 +2002,9 @@ Guidelines:
                 });
 
                 let callTriggered = false;
-                if (orderStatus === "ready" && customerPhone && aiJson.triggerCall !== false) {
-                  await triggerOutboundCall(customerPhone, newId, origin);
+                const phonesToCall = [customerPhone, customerPhone2].filter(Boolean) as string[];
+                if (orderStatus === "ready" && phonesToCall.length > 0 && aiJson.triggerCall !== false) {
+                  await triggerOutboundCall(phonesToCall, newId, origin);
                   callTriggered = true;
                 }
 
@@ -2263,9 +2274,15 @@ Guidelines:
         }
 
         if (cmd === "add") {
-          // Detect phone number anywhere in the message
-          const phonePatternMatch = inputMsg.match(/\b\d{10,11}\b/) || inputMsg.match(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/) || inputMsg.match(/\b\d{7,9}\b/);
-          let customerPhone = phonePatternMatch ? phonePatternMatch[0].replace(/[-.\s]/g, "") : "";
+          // Detect phone numbers anywhere in the message
+          const detectedPhones = extractPhoneNumbers(inputMsg);
+          let customerPhone = detectedPhones[0] || "";
+          let customerPhone2 = detectedPhones.length > 1 ? detectedPhones[1] : undefined;
+
+          if (!customerPhone) {
+            const phonePatternMatch = inputMsg.match(/\b\d{10,11}\b/) || inputMsg.match(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/) || inputMsg.match(/\b\d{7,9}\b/);
+            if (phonePatternMatch) customerPhone = phonePatternMatch[0].replace(/[-.\s]/g, "");
+          }
 
           if (!customerPhone) {
             const phoneArg = parts.find(p => p.replace(/\D/g, "").length >= 7);
@@ -2366,6 +2383,7 @@ Guidelines:
             id: finalId,
             customerName,
             phone: customerPhone,
+            phone2: customerPhone2,
             status: detectedStatus,
             dateReceived: today,
             estimatedCompletion: "",
@@ -2377,11 +2395,12 @@ Guidelines:
 
           // Trigger automated customer robocall if status is ready
           let callTriggered = false;
-          if (detectedStatus === "ready" && customerPhone) {
+          const phonesToCall = [customerPhone, customerPhone2].filter(Boolean) as string[];
+          if (detectedStatus === "ready" && phonesToCall.length > 0) {
             const proto = req.headers.get("x-forwarded-proto") || "https";
             const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
             const origin = `${proto}://${host}`;
-            await triggerOutboundCall(customerPhone, finalId, origin);
+            await triggerOutboundCall(phonesToCall, finalId, origin);
             callTriggered = true;
           }
 

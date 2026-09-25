@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getAdminSettings, logCallEvent } from "@/lib/db";
+import { getOrderById, getAdminSettings, logCallEvent, hasAudioFile } from "@/lib/db";
 
 function escapeXml(unsafe: string): string {
   return unsafe
@@ -56,20 +56,37 @@ export async function POST(req: NextRequest) {
   }
   // 2. If it's a robotic voice notification call (Status Ready check)
   else if (orderId) {
+    const origin = `https://${req.headers.get("host")}`;
     let outboundMsgEn = settings.outboundMsgEn || "Hello. This is The Shatnez Lab. We are calling to inform you that your order is now ready for pickup. Pick up at 14 Buchanan Rd. Thank you.";
     const order = await getOrderById(orderId);
     if (order && order.status === "ready") {
       const orderLocation = order.location || "14 Buchanan Rd";
-      if (orderLocation !== "14 Buchanan Rd") {
-        outboundMsgEn = outboundMsgEn
-          .replace(/14\s*Buchanan\s*Rd\.?/gi, orderLocation)
-          .replace(/14\s*Buchanan\s*Road\.?/gi, orderLocation)
-          .replace(/14\s*Buchanan/gi, orderLocation);
+      const isClinton = /(166\s*clinton|clinton|קלינטון)/i.test(orderLocation);
+      const audioFileName = isClinton
+        ? (settings.orderReadyClintonAudioName || "order_ready_clinton").toLowerCase().trim()
+        : (settings.orderReadyBuchananAudioName || "order_ready_buchanan").toLowerCase().trim();
+
+      const audioExists = await hasAudioFile(audioFileName);
+
+      if (audioExists) {
+        console.log(`[Twilio Outbound Call] Playing pre-recorded ready audio "${audioFileName}" for order #${orderId} (${orderLocation})`);
+        const audioUrl = `${origin}/api/audio?name=${encodeURIComponent(audioFileName)}`;
+        twiml += `<Pause length="1"/>`;
+        twiml += `<Play>${audioUrl}</Play>`;
+        twiml += `<Pause length="1"/>`;
+      } else {
+        console.log(`[Twilio Outbound Call] No pre-recorded audio found for "${audioFileName}". Falling back to TTS for order #${orderId} (${orderLocation})`);
+        if (orderLocation !== "14 Buchanan Rd") {
+          outboundMsgEn = outboundMsgEn
+            .replace(/14\s*Buchanan\s*Rd\.?/gi, orderLocation)
+            .replace(/14\s*Buchanan\s*Road\.?/gi, orderLocation)
+            .replace(/14\s*Buchanan/gi, orderLocation);
+        }
+        const safeEn = escapeXml(outboundMsgEn);
+        twiml += `<Pause length="1"/>`;
+        twiml += `<Say voice="Polly.Matthew" language="en-US">${safeEn}</Say>`;
+        twiml += `<Pause length="1"/>`;
       }
-      const safeEn = escapeXml(outboundMsgEn);
-      twiml += `<Pause length="1"/>`;
-      twiml += `<Say voice="Polly.Matthew" language="en-US">${safeEn}</Say>`;
-      twiml += `<Pause length="1"/>`;
     } else {
       twiml += `<Pause length="1"/>`;
       twiml += `<Say voice="Polly.Matthew" language="en-US">Hello. This is The Shatnez Lab calling regarding your recent order.</Say>`;

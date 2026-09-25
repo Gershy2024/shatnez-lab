@@ -1,23 +1,35 @@
-import { getAdminSettings, logCallEvent } from "./db";
+import { getAdminSettings, logCallEvent, extractPhoneNumbers } from "./db";
 
-export async function triggerOutboundCall(customerPhone: string, orderId: string, origin: string) {
+export async function triggerOutboundCall(customerPhone: string | string[], orderId: string, origin: string) {
   try {
     const settings = await getAdminSettings();
     if (!settings.twilioAccountSid || !settings.twilioAuthToken || !settings.twilioPhoneNumber) {
       console.log("[Twilio Call] Missing Twilio credentials or phone number for outbound call.");
-      return;
+      return false;
     }
 
     if (!customerPhone) {
       console.log("[Twilio Call] No customer phone number provided.");
-      return;
+      return false;
     }
 
-    // Clean customer phone number to make sure it's valid format
-    let cleanPhone = customerPhone.replace(/\D/g, "");
-    if (cleanPhone.length === 10) cleanPhone = "+1" + cleanPhone;
-    else if (cleanPhone.length === 11 && cleanPhone.startsWith("1")) cleanPhone = "+" + cleanPhone;
-    else if (cleanPhone.length >= 7) cleanPhone = "+" + cleanPhone;
+    // Extract all distinct valid phone numbers (handles "8457092022 and 8457020225", arrays, etc.)
+    let targetPhones: string[] = [];
+    if (Array.isArray(customerPhone)) {
+      targetPhones = customerPhone.flatMap(p => extractPhoneNumbers(p));
+    } else {
+      targetPhones = extractPhoneNumbers(customerPhone);
+    }
+
+    if (targetPhones.length === 0) {
+      const raw = (Array.isArray(customerPhone) ? customerPhone[0] : customerPhone)?.replace(/\D/g, "");
+      if (raw && raw.length >= 7) targetPhones.push(raw);
+    }
+
+    if (targetPhones.length === 0) {
+      console.log("[Twilio Call] Could not parse any valid phone numbers from:", customerPhone);
+      return false;
+    }
 
     let fromPhone = settings.twilioPhoneNumber.replace(/\D/g, "");
     if (fromPhone.length === 10) fromPhone = "+1" + fromPhone;
@@ -27,56 +39,71 @@ export async function triggerOutboundCall(customerPhone: string, orderId: string
     const auth = Buffer.from(`${settings.twilioAccountSid}:${settings.twilioAuthToken}`).toString('base64');
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${settings.twilioAccountSid}/Calls.json`;
 
-    const body = new URLSearchParams();
-    body.append("To", cleanPhone);
-    body.append("From", fromPhone);
-    body.append("Url", `${origin}/api/twilio/outbound?orderId=${orderId}`);
-    
-    // Status callbacks to log if the call was answered, went to voicemail, failed, etc.
-    body.append("StatusCallback", `${origin}/api/twilio/call-status?orderId=${orderId}`);
-    body.append("StatusCallbackEvent", "completed");
-    body.append("StatusCallbackMethod", "POST");
+    let allSuccess = true;
 
-    // Enable Answering Machine Detection: wait for the beep before playing outbound message so it records in voicemail
-    body.append("MachineDetection", "DetectMessageEnd");
-    body.append("MachineDetectionTimeout", "30");
+    for (const rawPhone of targetPhones) {
+      let cleanPhone = rawPhone.replace(/\D/g, "");
+      if (cleanPhone.length === 10) cleanPhone = "+1" + cleanPhone;
+      else if (cleanPhone.length === 11 && cleanPhone.startsWith("1")) cleanPhone = "+" + cleanPhone;
+      else if (cleanPhone.length >= 7) cleanPhone = "+" + cleanPhone;
 
-    console.log(`[Twilio Call] Initiating outbound call to ${cleanPhone} from ${fromPhone}`);
+      const body = new URLSearchParams();
+      body.append("To", cleanPhone);
+      body.append("From", fromPhone);
+      body.append("Url", `${origin}/api/twilio/outbound?orderId=${orderId}`);
+      
+      // Status callbacks to log if the call was answered, went to voicemail, failed, etc.
+      body.append("StatusCallback", `${origin}/api/twilio/call-status?orderId=${orderId}`);
+      body.append("StatusCallbackEvent", "completed");
+      body.append("StatusCallbackMethod", "POST");
 
-    const res = await fetch(twilioUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: body.toString()
-    });
+      // Enable Answering Machine Detection: wait for the beep before playing outbound message so it records in voicemail
+      body.append("MachineDetection", "DetectMessageEnd");
+      body.append("MachineDetectionTimeout", "30");
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`[Twilio Call] Failed to initiate call: ${res.status} ${errorText}`);
-      return false;
-    } else {
+      console.log(`[Twilio Call] Initiating outbound call to ${cleanPhone} from ${fromPhone} (Order #${orderId})`);
+
       try {
-        const callData = await res.json();
-        const callSid = callData.sid;
-        console.log(`[Twilio Call] Outbound call initiated successfully. CallSid: ${callSid}`);
-        
-        // Log the automated outbound notification call in the call logs
-        await logCallEvent(
-          callSid, 
-          cleanPhone, 
-          `Automated Order Ready Call (Order #${orderId})`, 
-          "active", 
-          undefined, 
-          "outbound",
-          orderId
-        );
-      } catch (logErr) {
-        console.error("[Twilio Call] Failed to log call event for outbound call:", logErr);
+        const res = await fetch(twilioUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${auth}`,
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: body.toString()
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error(`[Twilio Call] Failed to initiate call to ${cleanPhone}: ${res.status} ${errorText}`);
+          allSuccess = false;
+        } else {
+          try {
+            const callData = await res.json();
+            const callSid = callData.sid;
+            console.log(`[Twilio Call] Outbound call initiated successfully to ${cleanPhone}. CallSid: ${callSid}`);
+            
+            // Log the automated outbound notification call in the call logs
+            await logCallEvent(
+              callSid, 
+              cleanPhone, 
+              `Automated Order Ready Call (Order #${orderId})`, 
+              "active", 
+              undefined, 
+              "outbound",
+              orderId
+            );
+          } catch (logErr) {
+            console.error("[Twilio Call] Failed to log call event for outbound call:", logErr);
+          }
+        }
+      } catch (callErr) {
+        console.error(`[Twilio Call] Exception calling ${cleanPhone}:`, callErr);
+        allSuccess = false;
       }
-      return true;
     }
+
+    return allSuccess;
   } catch (error) {
     console.error("[Twilio Call] Error initiating outbound call:", error);
     return false;

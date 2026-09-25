@@ -25,6 +25,7 @@ export interface Order {
   id: string;
   customerName: string;
   phone?: string;
+  phone2?: string;
   status: OrderStatus;
   dateReceived: string;
   estimatedCompletion: string;
@@ -74,6 +75,8 @@ export interface AdminSettings {
   ivrHolidayMsgHe?: string;
   announcementActive?: boolean;
   announcementAudioName?: string;
+  orderReadyBuchananAudioName?: string;
+  orderReadyClintonAudioName?: string;
   dndActive?: boolean;
   twilioApiKey?: string;
   twilioApiSecret?: string;
@@ -194,16 +197,55 @@ export async function getOrderById(id: string): Promise<Order | null> {
   return local;
 }
 
+export function extractPhoneNumbers(input?: string | null): string[] {
+  if (!input) return [];
+  const str = String(input);
+  // Split on delimiters like "and", "or", "&", ",", "/", ";", newline, or multiple spaces
+  const rawParts = str.split(/\s*(?:and|&|,|\/|\+|;|\n|\r|\s{2,})\s*/i);
+  const found: string[] = [];
+
+  for (const part of rawParts) {
+    const digits = part.replace(/\D/g, "");
+    if (digits.length >= 7) {
+      const norm = digits.length === 11 && digits.startsWith("1") ? digits.substring(1) : digits;
+      if (!found.includes(norm)) {
+        found.push(norm);
+      }
+    }
+  }
+
+  // Fallback: if user pasted concatenated 20 digits or string wasn't split
+  if (found.length === 0) {
+    const allDigits = str.replace(/\D/g, "");
+    if (allDigits.length === 20) {
+      found.push(allDigits.substring(0, 10));
+      found.push(allDigits.substring(10, 20));
+    } else if (allDigits.length >= 7) {
+      found.push(allDigits.length === 11 && allDigits.startsWith("1") ? allDigits.substring(1) : allDigits);
+    }
+  }
+
+  return found;
+}
+
+export function getOrderPhoneNumbers(order: { phone?: string; phone2?: string }): string[] {
+  const p1 = extractPhoneNumbers(order.phone);
+  const p2 = extractPhoneNumbers(order.phone2);
+  return Array.from(new Set([...p1, ...p2]));
+}
+
 export async function getOrdersByPhone(phone: string): Promise<Order[]> {
   try {
     const all = await getAllOrders();
-    const normalized = phone.replace(/\D/g, "");
-    if (!normalized) return [];
+    const rawClean = phone.replace(/\D/g, "");
+    if (!rawClean) return [];
+    const searchClean = rawClean.length === 11 && rawClean.startsWith("1") ? rawClean.substring(1) : rawClean;
     
     const matches = all.filter((o) => {
-      const orderPhoneNormalized = o.phone ? o.phone.replace(/\D/g, "") : "";
+      const orderNums = getOrderPhoneNumbers(o);
+      const phoneMatches = orderNums.some(num => num.includes(searchClean) || searchClean.includes(num));
       const orderIdNormalized = o.id ? o.id.replace(/\D/g, "") : "";
-      return orderPhoneNormalized.includes(normalized) || orderIdNormalized.includes(normalized);
+      return phoneMatches || (orderIdNormalized && (orderIdNormalized.includes(searchClean) || searchClean.includes(orderIdNormalized)));
     });
 
     // Sort descending by creation date/timestamp
@@ -345,6 +387,8 @@ export async function getAdminSettings(): Promise<AdminSettings> {
     ivrHolidayMsgHe: "המשרד סגור כעת לרגל החג. אנא השאירו הודעה לאחר הצפצוף.",
     announcementActive: false,
     announcementAudioName: "announcement",
+    orderReadyBuchananAudioName: "order_ready_buchanan",
+    orderReadyClintonAudioName: "order_ready_clinton",
     dndActive: false
   };
   
@@ -449,6 +493,20 @@ export async function uploadAudioFile(name: string, base64: string): Promise<voi
       throw e;
     }
   }
+}
+
+export async function hasAudioFile(name: string): Promise<boolean> {
+  if (!name) return false;
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, "settings", "audio_" + name.toLowerCase().trim());
+      const snap = await getDoc(docRef);
+      return snap.exists();
+    } catch (e) {
+      console.error("Firestore hasAudioFile failed:", e);
+    }
+  }
+  return false;
 }
 
 export interface CallRecord {
