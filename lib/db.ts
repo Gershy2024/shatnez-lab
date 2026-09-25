@@ -780,10 +780,10 @@ export async function getRecentCalls(limitNum: number): Promise<CallRecord[]> {
   return lsGetCalls().sort((a, b) => b.timestamp - a.timestamp).slice(0, limitNum);
 }
 
-export function subscribeToCalls(callback: (calls: CallRecord[]) => void) {
+export function subscribeToCalls(callback: (calls: CallRecord[]) => void, limitNum: number = 200) {
   if (isConfigured && db) {
     return onSnapshot(
-      query(collection(db, CALLS_COLLECTION), orderBy("timestamp", "desc")),
+      query(collection(db, CALLS_COLLECTION), orderBy("timestamp", "desc"), limit(limitNum)),
       (snapshot) => {
         callback(snapshot.docs.map((d) => d.data() as CallRecord));
       },
@@ -793,15 +793,15 @@ export function subscribeToCalls(callback: (calls: CallRecord[]) => void) {
     );
   }
   // Fallback: poll localStorage every 2 seconds
-  let last = JSON.stringify(lsGetCalls());
+  let last = JSON.stringify(lsGetCalls().slice(0, limitNum));
   const interval = setInterval(() => {
-    const current = JSON.stringify(lsGetCalls());
+    const current = JSON.stringify(lsGetCalls().slice(0, limitNum));
     if (current !== last) {
       last = current;
-      callback(lsGetCalls().sort((a, b) => b.timestamp - a.timestamp));
+      callback(lsGetCalls().sort((a, b) => b.timestamp - a.timestamp).slice(0, limitNum));
     }
   }, 2000);
-  callback(lsGetCalls().sort((a, b) => b.timestamp - a.timestamp));
+  callback(lsGetCalls().sort((a, b) => b.timestamp - a.timestamp).slice(0, limitNum));
   return () => clearInterval(interval);
 }
 

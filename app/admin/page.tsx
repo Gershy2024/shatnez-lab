@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
@@ -13,7 +13,7 @@ import OrderAnalytics from "@/components/OrderAnalytics";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest, extractPhoneNumbers, getOrderPhoneNumbers, hasAudioFile } from "@/lib/db";
-import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell } from "lucide-react";
+import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
 function parseTimestamp(ts: any): number {
@@ -566,7 +566,19 @@ export default function AdminPage() {
   const [callerIdType, setCallerIdType] = useState<"caller" | "twilio">("caller");
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [callSearchQuery, setCallSearchQuery] = useState("");
+  const [debouncedCallSearch, setDebouncedCallSearch] = useState("");
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  
+  // Server-side paginated Call Logs
+  const [paginatedCalls, setPaginatedCalls] = useState<CallRecord[]>([]);
+  const [callsTotalCount, setCallsTotalCount] = useState<number>(0);
+  const [callsTotalPages, setCallsTotalPages] = useState<number>(1);
+  const [callsCurrentPage, setCallsCurrentPage] = useState<number>(1);
+  const [callsLimit, setCallsLimit] = useState<number>(25);
+  const [callsDirectionFilter, setCallsDirectionFilter] = useState<"all" | "inbound" | "outbound">("all");
+  const [callsStatusFilter, setCallsStatusFilter] = useState<"all" | "active" | "completed" | "voicemail">("all");
+  const [callsLoading, setCallsLoading] = useState<boolean>(false);
+  const [callPageJumpInput, setCallPageJumpInput] = useState<string>("");
   const [smsMessages, setSmsMessages] = useState<SmsMessage[]>([]);
   const [isSyncingPrices, setIsSyncingPrices] = useState(false);
   const [callLogSubTab, setCallLogSubTab] = useState<"timeline" | "sms">("timeline");
@@ -887,6 +899,7 @@ export default function AdminPage() {
     try {
       await logCallEvent(callId, phone, isRtl ? "סומן כהושלם ידנית" : "Manually completed", "completed");
       showToast(isRtl ? "השיחה סומנה כהושלמה" : "Call marked as completed", "success");
+      fetchPaginatedCalls();
     } catch (err) {
       console.error("Failed to mark call completed:", err);
       showToast(isRtl ? "שגיאה בסימון השיחה" : "Failed to mark call completed", "error");
@@ -899,6 +912,7 @@ export default function AdminPage() {
       const res = await fetch("/api/twilio/sync-prices");
       const data = await res.json();
       if (data.success) {
+        fetchPaginatedCalls();
         if (data.synced > 0) {
           showToast(
             isRtl 
@@ -1195,17 +1209,110 @@ export default function AdminPage() {
     }
   }, [isAuthenticated]);
 
-  // Fast map of cleanPhone -> Order for O(1) instant lookups without looping
+  // Fast map of cleanPhone -> Order for O(1) instant lookups without looping (supports phone & phone2)
   const ordersPhoneMap = useMemo(() => {
     const map = new Map<string, Order>();
     orders.forEach(o => {
       if (o.phone) {
         const clean = o.phone.replace(/\D/g, "");
-        if (clean) map.set(clean, o);
+        if (clean && !map.has(clean)) map.set(clean, o);
+      }
+      if (o.phone2) {
+        const clean2 = o.phone2.replace(/\D/g, "");
+        if (clean2 && !map.has(clean2)) map.set(clean2, o);
       }
     });
     return map;
   }, [orders]);
+
+  // Debounce Call Search Input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCallSearch(callSearchQuery);
+      setCallsCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [callSearchQuery]);
+
+  // Server-Side Paginated Call Fetcher
+  const fetchPaginatedCalls = useCallback(async (
+    page = callsCurrentPage,
+    limit = callsLimit,
+    search = debouncedCallSearch,
+    direction = callsDirectionFilter,
+    status = callsStatusFilter
+  ) => {
+    setCallsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      if (search) params.set("search", search);
+      if (direction !== "all") params.set("direction", direction);
+      if (status !== "all") params.set("status", status);
+
+      const res = await fetch(`/api/calls?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setPaginatedCalls(data.calls || []);
+          setCallsTotalCount(data.pagination.totalCount || 0);
+          setCallsTotalPages(data.pagination.totalPages || 1);
+          setCallsCurrentPage(data.pagination.page || 1);
+          setCallsLoading(false);
+          return;
+        }
+      }
+      throw new Error("API call error");
+    } catch (err) {
+      console.warn("Fallback to client-side calls slice:", err);
+      const filtered = calls.filter(c => {
+        const isOutbound = c.direction === "outbound" || (c.actions && c.actions.some(act => act.toLowerCase().includes("outbound")));
+        if (direction === "inbound" && isOutbound) return false;
+        if (direction === "outbound" && !isOutbound) return false;
+        if (status !== "all" && c.status !== status) return false;
+        if (search) {
+          const rawPhone = (c.phone || "").toLowerCase();
+          const cleanPhone = (c.phone || "").replace(/\D/g, "");
+          const matchesPhone = rawPhone.includes(search) || cleanPhone.includes(search.replace(/\D/g, ""));
+          const matchedOrder = ordersPhoneMap.get(cleanPhone);
+          const matchesCust = matchedOrder?.customerName?.toLowerCase().includes(search) || false;
+          if (!matchesPhone && !matchesCust) return false;
+        }
+        return true;
+      }).sort((a, b) => b.timestamp - a.timestamp);
+
+      const total = filtered.length;
+      const pages = Math.max(1, Math.ceil(total / limit));
+      const safeP = Math.min(page, pages);
+      setCallsTotalCount(total);
+      setCallsTotalPages(pages);
+      setCallsCurrentPage(safeP);
+      setPaginatedCalls(filtered.slice((safeP - 1) * limit, safeP * limit));
+      setCallsLoading(false);
+    }
+  }, [callsCurrentPage, callsLimit, debouncedCallSearch, callsDirectionFilter, callsStatusFilter, calls, ordersPhoneMap]);
+
+  // Fetch paginated calls when active or filters change
+  useEffect(() => {
+    if (activeAdminTab === "calls" && callLogSubTab === "timeline") {
+      fetchPaginatedCalls(callsCurrentPage, callsLimit, debouncedCallSearch, callsDirectionFilter, callsStatusFilter);
+    }
+  }, [activeAdminTab, callLogSubTab, callsCurrentPage, callsLimit, debouncedCallSearch, callsDirectionFilter, callsStatusFilter, fetchPaginatedCalls]);
+
+  // Smart Pagination Numbers Helper
+  const getCallPageNumbers = (current: number, total: number) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, "...", total];
+    }
+    if (current >= total - 3) {
+      return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, "...", current - 1, current, current + 1, "...", total];
+  };
 
   // Group SMS Messages by Phone number, strictly sorted newest first
   const smsThreads = useMemo(() => {
@@ -3943,32 +4050,133 @@ export default function AdminPage() {
             {/* Timeline Sub-tab */}
             {callLogSubTab === "timeline" && (
               <div className="space-y-4">
-                {/* Search */}
-                <div className={`flex flex-col sm:flex-row gap-4 items-stretch ${isRtl ? "sm:flex-row-reverse" : ""}`}>
-                  <div className="flex-1 relative">
-                    <Search className={`absolute ${isRtl ? "right-4" : "left-4"} top-1/2 -translate-y-1/2 w-5 h-5 text-primary-400`} />
-                    <input
-                      type="text"
-                      value={callSearchQuery}
-                      onChange={(e) => setCallSearchQuery(e.target.value)}
-                      placeholder={isRtl ? "חפש לפי מספר טלפון..." : "Search by phone number..."}
-                      className={`w-full ${isRtl ? "pr-12 pl-4 text-right" : "pl-12 pr-4 text-left"} py-3 rounded-xl border border-primary-200 bg-white
-                               focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-transparent
-                               transition-all duration-200 shadow-sm`}
-                    />
+                {/* Search & Filter Toolbar */}
+                <div className="card p-4 bg-white border border-primary-200 shadow-sm space-y-3">
+                  <div className={`flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between ${isRtl ? "md:flex-row-reverse" : ""}`}>
+                    {/* Search Bar */}
+                    <div className="flex-1 relative">
+                      <Search className={`absolute ${isRtl ? "right-3.5" : "left-3.5"} top-1/2 -translate-y-1/2 w-4 h-4 text-primary-400`} />
+                      <input
+                        type="text"
+                        value={callSearchQuery}
+                        onChange={(e) => setCallSearchQuery(e.target.value)}
+                        placeholder={isRtl ? "חפש לפי מספר טלפון, שם לקוח, פעולה..." : "Search by phone, customer name, action..."}
+                        className={`w-full ${isRtl ? "pr-10 pl-9 text-right" : "pl-10 pr-9 text-left"} py-2.5 rounded-xl border border-primary-200 bg-primary-50/30
+                                 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:bg-white text-sm
+                                 transition-all duration-200`}
+                      />
+                      {callSearchQuery && (
+                        <button
+                          onClick={() => setCallSearchQuery("")}
+                          className={`absolute ${isRtl ? "left-3" : "right-3"} top-1/2 -translate-y-1/2 text-primary-400 hover:text-primary-700 p-0.5 rounded-full hover:bg-primary-100 transition-colors`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Action Buttons: Refresh & Sync Costs */}
+                    <div className={`flex items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      <button
+                        onClick={() => fetchPaginatedCalls()}
+                        disabled={callsLoading}
+                        title={isRtl ? "רענן שיחות" : "Refresh Call Logs"}
+                        className="p-2.5 rounded-xl border border-primary-200 bg-white hover:bg-primary-50 active:bg-primary-100 text-navy-800 transition-all shadow-sm disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${callsLoading ? "animate-spin text-gold-600" : ""}`} />
+                      </button>
+
+                      <button
+                        onClick={handleSyncCallPrices}
+                        disabled={isSyncingPrices}
+                        className="px-4 py-2.5 rounded-xl bg-gold-600 hover:bg-gold-700 active:bg-gold-800 text-white font-bold shadow-sm transition-all duration-200 flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPrices ? "animate-spin" : ""}`} />
+                        <span>{isRtl ? "סנכרן עלויות" : "Sync Costs"}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={handleSyncCallPrices}
-                    disabled={isSyncingPrices}
-                    className={`px-5 py-3 rounded-xl bg-gold-600 hover:bg-gold-700 active:bg-gold-800 text-white font-bold shadow-sm transition-all duration-200 flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isSyncingPrices ? "animate-spin" : ""}`} />
-                    <span>{isRtl ? "סנכרן עלויות" : "Sync Costs"}</span>
-                  </button>
+
+                  {/* Filter Pills Row */}
+                  <div className={`flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-primary-100 ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+                    <div className={`flex flex-wrap items-center gap-2 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      {/* Direction Filter */}
+                      <span className="text-xs font-semibold text-primary-400 ml-1 mr-1">
+                        {isRtl ? "כיוון:" : "Direction:"}
+                      </span>
+                      {(["all", "inbound", "outbound"] as const).map((dir) => (
+                        <button
+                          key={dir}
+                          onClick={() => {
+                            setCallsDirectionFilter(dir);
+                            setCallsCurrentPage(1);
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                            callsDirectionFilter === dir
+                              ? "bg-navy-900 text-white shadow-sm"
+                              : "bg-primary-100/60 text-primary-700 hover:bg-primary-200/60"
+                          }`}
+                        >
+                          {dir === "all" ? (isRtl ? "הכל" : "All") : dir === "inbound" ? (isRtl ? "נכנסות" : "Inbound") : (isRtl ? "יוצאות" : "Outbound")}
+                        </button>
+                      ))}
+
+                      <div className="w-[1px] h-4 bg-primary-200 mx-1 hidden sm:block" />
+
+                      {/* Status Filter */}
+                      <span className="text-xs font-semibold text-primary-400 ml-1 mr-1">
+                        {isRtl ? "סטטוס:" : "Status:"}
+                      </span>
+                      {(["all", "completed", "active", "voicemail"] as const).map((st) => (
+                        <button
+                          key={st}
+                          onClick={() => {
+                            setCallsStatusFilter(st);
+                            setCallsCurrentPage(1);
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                            callsStatusFilter === st
+                              ? "bg-navy-900 text-white shadow-sm"
+                              : "bg-primary-100/60 text-primary-700 hover:bg-primary-200/60"
+                          }`}
+                        >
+                          {st === "all" ? (isRtl ? "הכל" : "All") : st === "completed" ? (isRtl ? "הושלמו" : "Completed") : st === "active" ? (isRtl ? "פעילות" : "Active") : (isRtl ? "תא קולי" : "Voicemail")}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Page Size Selector */}
+                    <div className={`flex items-center gap-1.5 text-xs text-primary-500 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      <span className="font-medium">{isRtl ? "שורות בעמוד:" : "Per page:"}</span>
+                      {[15, 25, 50, 100].map((size) => (
+                        <button
+                          key={size}
+                          onClick={() => {
+                            setCallsLimit(size);
+                            setCallsCurrentPage(1);
+                          }}
+                          className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${
+                            callsLimit === size
+                              ? "bg-gold-500 text-white shadow-sm"
+                              : "bg-primary-100/70 text-navy-800 hover:bg-primary-200"
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Calls Table */}
-                <div className="card overflow-hidden bg-white border border-primary-200 shadow-sm">
+                {/* Calls Table Card */}
+                <div className="card overflow-hidden bg-white border border-primary-200 shadow-sm relative">
+                  {/* Subtle Loading Progress Bar on Top */}
+                  {callsLoading && (
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gold-200 overflow-hidden z-20">
+                      <div className="w-full h-full bg-gold-500 animate-pulse origin-left" />
+                    </div>
+                  )}
+
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[950px]">
                       <thead>
@@ -3984,163 +4192,306 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody className={isRtl ? "text-right" : "text-left"}>
-                        {calls
-                          .filter(call => call.phone && call.phone.includes(callSearchQuery))
-                          .sort((a, b) => b.timestamp - a.timestamp)
-                          .length === 0 ? (
+                        {callsLoading && paginatedCalls.length === 0 ? (
+                          // Loading Skeleton Rows
+                          Array.from({ length: 6 }).map((_, idx) => (
+                            <tr key={`skeleton-${idx}`} className="border-b border-primary-50 animate-pulse">
+                              <td className="px-4 py-4"><div className="w-20 h-6 bg-primary-100 rounded-full" /></td>
+                              <td className="px-4 py-4"><div className="w-28 h-5 bg-primary-100 rounded" /></td>
+                              <td className="px-4 py-4"><div className="w-32 h-5 bg-primary-100 rounded" /></td>
+                              <td className="px-4 py-4"><div className="w-24 h-4 bg-primary-100 rounded" /></td>
+                              <td className="px-4 py-4"><div className="w-16 h-4 bg-primary-100 rounded" /></td>
+                              <td className="px-4 py-4"><div className="w-14 h-4 bg-primary-100 rounded" /></td>
+                              <td className="px-4 py-4"><div className="w-20 h-6 bg-primary-100 rounded" /></td>
+                              <td className="px-4 py-4 text-center"><div className="w-16 h-5 bg-primary-100 rounded mx-auto" /></td>
+                            </tr>
+                          ))
+                        ) : paginatedCalls.length === 0 ? (
                           <tr>
                             <td colSpan={8} className="px-6 py-12 text-center text-primary-500">
                               <Phone className="w-12 h-12 mx-auto mb-3 text-primary-300" />
-                              <p>{isRtl ? "לא נמצאו שיחות" : "No calls found"}</p>
+                              <p className="font-semibold text-navy-900">{isRtl ? "לא נמצאו שיחות העונות לחיפוש" : "No calls found matching your filters"}</p>
+                              {(callSearchQuery || callsDirectionFilter !== "all" || callsStatusFilter !== "all") && (
+                                <button
+                                  onClick={() => {
+                                    setCallSearchQuery("");
+                                    setCallsDirectionFilter("all");
+                                    setCallsStatusFilter("all");
+                                    setCallsCurrentPage(1);
+                                  }}
+                                  className="mt-3 text-xs text-gold-600 hover:text-gold-700 font-bold underline"
+                                >
+                                  {isRtl ? "נקה מסננים והצג הכל" : "Reset filters and show all"}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ) : (
-                          calls
-                            .filter(call => call.phone && call.phone.includes(callSearchQuery))
-                            .sort((a, b) => b.timestamp - a.timestamp)
-                            .map((call) => {
-                              const isOutbound = call.direction === "outbound" || (call.actions && call.actions.some(act => act.toLowerCase().includes("outbound")));
-                              const cleanPhone = call.phone ? call.phone.replace(/\D/g, "") : "";
-                              const matchedOrder = orders.find(o => o.phone && o.phone.replace(/\D/g, "") === cleanPhone);
-                              const customerName = matchedOrder ? matchedOrder.customerName : "";
+                          paginatedCalls.map((call) => {
+                            const isOutbound = call.direction === "outbound" || (call.actions && call.actions.some(act => act.toLowerCase().includes("outbound")));
+                            const cleanPhone = call.phone ? call.phone.replace(/\D/g, "") : "";
+                            const matchedOrder = ordersPhoneMap.get(cleanPhone);
+                            const customerName = matchedOrder ? matchedOrder.customerName : "";
 
-                              return (
-                                <Fragment key={call.id}>
-                                  <tr className="border-b border-primary-50 hover:bg-primary-50/50 transition-colors">
-                                    <td className="px-4 py-4">
-                                      <div className="flex flex-col items-start gap-1">
-                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                          isOutbound 
-                                            ? "bg-amber-50 text-amber-700 border border-amber-200" 
-                                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                        }`}>
-                                          {isOutbound ? (
-                                            <>
-                                              <PhoneOutgoing className="w-3.5 h-3.5" />
-                                              <span>{isRtl ? "יוצאת" : "Outbound"}</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <PhoneIncoming className="w-3.5 h-3.5" />
-                                              <span>{isRtl ? "נכנסת" : "Inbound"}</span>
-                                            </>
-                                          )}
-                                        </span>
-                                        {getCallSelectionBadge(call, isRtl)}
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-4 font-semibold text-navy-900" dir="ltr">{call.phone}</td>
-                                    <td className="px-4 py-4">
-                                      {customerName ? (
-                                        <div className="flex flex-col">
-                                          <button
-                                            onClick={() => openCustomerModal(call.phone, customerName)}
-                                            className="font-semibold text-navy-800 hover:text-gold-600 hover:underline text-left focus:outline-none"
-                                          >
-                                            {customerName}
-                                          </button>
-                                          {matchedOrder?.location && (
-                                            <span className="text-[10px] text-primary-500 mt-0.5 flex items-center gap-0.5">
-                                              <MapPin className="w-3 h-3 text-gold-500 shrink-0" />
-                                              {matchedOrder.location}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="text-primary-400 italic">—</span>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-4 text-xs text-navy-700">
-                                      <div>{formatDateTime(call.timestamp)}</div>
-                                      <div className="text-[10px] text-primary-400 mt-0.5">{getRelativeTime(call.timestamp, isRtl)}</div>
-                                    </td>
-                                    <td className="px-4 py-4 text-xs font-mono text-navy-700">{formatDuration(call.duration, isRtl)}</td>
-                                    <td className="px-4 py-4 text-xs font-mono text-navy-700" dir="ltr">{formatPrice(call.price, call.priceUnit)}</td>
-                                    <td className="px-4 py-4">
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${
-                                        call.status === "active" 
-                                          ? "bg-rose-100 text-rose-800 animate-pulse border border-rose-200" 
-                                          : call.status === "voicemail"
-                                          ? "bg-blue-100 text-blue-800 border border-blue-200"
-                                          : "bg-primary-100 text-primary-700 border border-primary-200"
+                            return (
+                              <Fragment key={call.id}>
+                                <tr className="border-b border-primary-50 hover:bg-primary-50/50 transition-colors">
+                                  <td className="px-4 py-4">
+                                    <div className="flex flex-col items-start gap-1">
+                                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                        isOutbound 
+                                          ? "bg-amber-50 text-amber-700 border border-amber-200" 
+                                          : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                       }`}>
-                                        {call.status === "active" ? (isRtl ? "פעילה" : "Active") : call.status === "voicemail" ? (isRtl ? "תא קולי" : "Voicemail") : (isRtl ? "הושלמה" : "Completed")}
+                                        {isOutbound ? (
+                                          <>
+                                            <PhoneOutgoing className="w-3.5 h-3.5" />
+                                            <span>{isRtl ? "יוצאת" : "Outbound"}</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <PhoneIncoming className="w-3.5 h-3.5" />
+                                            <span>{isRtl ? "נכנסת" : "Inbound"}</span>
+                                          </>
+                                        )}
                                       </span>
-                                    </td>
-                                    <td className="px-4 py-4">
-                                      <div className="flex items-center justify-center gap-3">
+                                      {getCallSelectionBadge(call, isRtl)}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-4 font-semibold text-navy-900" dir="ltr">{call.phone}</td>
+                                  <td className="px-4 py-4">
+                                    {customerName ? (
+                                      <div className="flex flex-col">
                                         <button
-                                          onClick={() => setSelectedCallId(selectedCallId === call.id ? null : call.id)}
-                                          className="text-xs text-gold-600 hover:text-gold-700 font-bold transition-colors focus:outline-none"
+                                          onClick={() => openCustomerModal(call.phone, customerName)}
+                                          className="font-semibold text-navy-800 hover:text-gold-600 hover:underline text-left focus:outline-none"
                                         >
-                                          {selectedCallId === call.id ? (isRtl ? "הסתר פירוט" : "Hide Details") : (isRtl ? "הצג פירוט" : "Show Details")}
+                                          {customerName}
                                         </button>
-                                        {call.status === "active" && (
-                                          <button
-                                            onClick={() => handleMarkCallCompleted(call.id, call.phone)}
-                                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded-lg shadow-sm transition-colors"
-                                          >
-                                            {isRtl ? "סיים שיחה" : "Complete"}
-                                          </button>
+                                        {matchedOrder?.location && (
+                                          <span className="text-[10px] text-primary-500 mt-0.5 flex items-center gap-0.5">
+                                            <MapPin className="w-3 h-3 text-gold-500 shrink-0" />
+                                            {matchedOrder.location}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-primary-400 italic">—</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-4 text-xs text-navy-700">
+                                    <div>{formatDateTime(call.timestamp)}</div>
+                                    <div className="text-[10px] text-primary-400 mt-0.5">{getRelativeTime(call.timestamp, isRtl)}</div>
+                                  </td>
+                                  <td className="px-4 py-4 text-xs font-mono text-navy-700">{formatDuration(call.duration, isRtl)}</td>
+                                  <td className="px-4 py-4 text-xs font-mono text-navy-700" dir="ltr">{formatPrice(call.price, call.priceUnit)}</td>
+                                  <td className="px-4 py-4">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${
+                                      call.status === "active" 
+                                        ? "bg-rose-100 text-rose-800 animate-pulse border border-rose-200" 
+                                        : call.status === "voicemail"
+                                        ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                        : "bg-primary-100 text-primary-700 border border-primary-200"
+                                    }`}>
+                                      {call.status === "active" ? (isRtl ? "פעילה" : "Active") : call.status === "voicemail" ? (isRtl ? "תא קולי" : "Voicemail") : (isRtl ? "הושלמה" : "Completed")}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-4">
+                                    <div className="flex items-center justify-center gap-3">
+                                      <button
+                                        onClick={() => setSelectedCallId(selectedCallId === call.id ? null : call.id)}
+                                        className="text-xs text-gold-600 hover:text-gold-700 font-bold transition-colors focus:outline-none"
+                                      >
+                                        {selectedCallId === call.id ? (isRtl ? "הסתר פירוט" : "Hide Details") : (isRtl ? "הצג פירוט" : "Show Details")}
+                                      </button>
+                                      {call.status === "active" && (
+                                        <button
+                                          onClick={() => handleMarkCallCompleted(call.id, call.phone)}
+                                          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded-lg shadow-sm transition-colors"
+                                        >
+                                          {isRtl ? "סיים שיחה" : "Complete"}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                                {selectedCallId === call.id && (
+                                  <tr className="bg-slate-50/60 border-y border-slate-100/80 shadow-inner">
+                                    <td colSpan={8} className="px-8 py-5">
+                                      <div className={`space-y-5 relative ${isRtl ? "pr-8" : "pl-8"} before:absolute before:content-[''] ${isRtl ? "before:right-11 before:translate-x-1/2" : "before:left-11 before:-translate-x-1/2"} before:top-3 before:bottom-3 before:w-[2px] before:bg-gray-200 before:z-0`}>
+                                        {call.actions && call.actions.map((action, idx) => {
+                                          const parsed = parseCallAction(action);
+                                          const rawText = translateSystemLabel(parsed, isRtl);
+                                          const { main, secondary } = splitActionText(rawText);
+                                          const timeIndicator = getStepTimeIndicator(action, idx, call.actions.length, call, isRtl);
+                                          return (
+                                            <div key={idx} className={`flex items-start justify-between gap-4 relative py-1 ${isRtl ? "text-right" : "text-left"}`}>
+                                              <div className="flex items-start gap-4 flex-1">
+                                                <div className="relative bg-white w-6 h-6 rounded-full border border-slate-200 shadow-sm flex items-center justify-center shrink-0 z-10">
+                                                  {getTimelineIcon(parsed)}
+                                                </div>
+                                                <div className="flex-1">
+                                                  <p className="font-bold text-navy-950 text-xs md:text-sm">
+                                                    {main}
+                                                  </p>
+                                                  {secondary && (
+                                                    <p className="text-[11px] text-slate-500 font-normal mt-0.5 leading-relaxed">
+                                                      {secondary}
+                                                    </p>
+                                                  )}
+                                                  {parsed.type === "voice" && parsed.transcript && (
+                                                    <p className="text-primary-600 bg-white px-2.5 py-1 rounded border border-primary-150 mt-1.5 italic text-[11px] shadow-sm inline-block">
+                                                      &quot;{parsed.transcript}&quot;
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              {timeIndicator && (
+                                                <span className="text-[10px] md:text-xs text-slate-400 font-medium whitespace-nowrap bg-slate-100 px-2 py-0.5 rounded-full self-start mt-1">
+                                                  {timeIndicator}
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                        {(!call.actions || call.actions.length === 0) && (
+                                          <span className="text-xs text-primary-400 italic">
+                                            {isRtl ? "אין פירוט פעולות עבור שיחה זו" : "No action history logged for this call."}
+                                          </span>
                                         )}
                                       </div>
                                     </td>
                                   </tr>
-                                  {selectedCallId === call.id && (
-                                    <tr className="bg-slate-50/60 border-y border-slate-100/80 shadow-inner">
-                                      <td colSpan={8} className="px-8 py-5">
-                                        <div className={`space-y-5 relative ${isRtl ? "pr-8" : "pl-8"} before:absolute before:content-[''] ${isRtl ? "before:right-11 before:translate-x-1/2" : "before:left-11 before:-translate-x-1/2"} before:top-3 before:bottom-3 before:w-[2px] before:bg-gray-200 before:z-0`}>
-                                          {call.actions && call.actions.map((action, idx) => {
-                                            const parsed = parseCallAction(action);
-                                            const rawText = translateSystemLabel(parsed, isRtl);
-                                            const { main, secondary } = splitActionText(rawText);
-                                            const timeIndicator = getStepTimeIndicator(action, idx, call.actions.length, call, isRtl);
-                                            return (
-                                              <div key={idx} className={`flex items-start justify-between gap-4 relative py-1 ${isRtl ? "text-right" : "text-left"}`}>
-                                                <div className="flex items-start gap-4 flex-1">
-                                                  <div className="relative bg-white w-6 h-6 rounded-full border border-slate-200 shadow-sm flex items-center justify-center shrink-0 z-10">
-                                                    {getTimelineIcon(parsed)}
-                                                  </div>
-                                                  <div className="flex-1">
-                                                    <p className="font-bold text-navy-950 text-xs md:text-sm">
-                                                      {main}
-                                                    </p>
-                                                    {secondary && (
-                                                      <p className="text-[11px] text-slate-500 font-normal mt-0.5 leading-relaxed">
-                                                        {secondary}
-                                                      </p>
-                                                    )}
-                                                    {parsed.type === "voice" && parsed.transcript && (
-                                                      <p className="text-primary-600 bg-white px-2.5 py-1 rounded border border-primary-150 mt-1.5 italic text-[11px] shadow-sm inline-block">
-                                                        &quot;{parsed.transcript}&quot;
-                                                      </p>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                                {timeIndicator && (
-                                                  <span className="text-[10px] md:text-xs text-slate-400 font-medium whitespace-nowrap bg-slate-100 px-2 py-0.5 rounded-full self-start mt-1">
-                                                    {timeIndicator}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            );
-                                          })}
-                                          {(!call.actions || call.actions.length === 0) && (
-                                            <span className="text-xs text-primary-400 italic">
-                                              {isRtl ? "אין פירוט פעולות עבור שיחה זו" : "No action history logged for this call."}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </Fragment>
-                              );
-                            })
+                                )}
+                              </Fragment>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Server-Side Pagination Controls Footer */}
+                  {callsTotalCount > 0 && (
+                    <div className={`p-4 bg-primary-50/60 border-t border-primary-150 flex flex-col md:flex-row items-center justify-between gap-4 ${isRtl ? "direction-rtl text-right" : ""}`}>
+                      {/* Left: Total & Range Info */}
+                      <div className="text-xs text-primary-700 font-medium">
+                        {isRtl ? (
+                          <>
+                            מציג <span className="font-bold text-navy-900 font-mono">{Math.min((callsCurrentPage - 1) * callsLimit + 1, callsTotalCount)}</span>–<span className="font-bold text-navy-900 font-mono">{Math.min(callsCurrentPage * callsLimit, callsTotalCount)}</span> מתוך <span className="font-bold text-navy-900 font-mono">{callsTotalCount.toLocaleString()}</span> שיחות
+                          </>
+                        ) : (
+                          <>
+                            Showing <span className="font-bold text-navy-900 font-mono">{Math.min((callsCurrentPage - 1) * callsLimit + 1, callsTotalCount)}</span>–<span className="font-bold text-navy-900 font-mono">{Math.min(callsCurrentPage * callsLimit, callsTotalCount)}</span> of <span className="font-bold text-navy-900 font-mono">{callsTotalCount.toLocaleString()}</span> calls
+                          </>
+                        )}
+                      </div>
+
+                      {/* Center: Navigation Buttons */}
+                      <div className="flex items-center gap-1">
+                        {/* First Page */}
+                        <button
+                          onClick={() => setCallsCurrentPage(1)}
+                          disabled={callsCurrentPage <= 1 || callsLoading}
+                          title={isRtl ? "עמוד ראשון" : "First Page"}
+                          className="p-1.5 rounded-lg border border-primary-200 bg-white hover:bg-primary-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-navy-800"
+                        >
+                          {isRtl ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
+                        </button>
+
+                        {/* Prev Page */}
+                        <button
+                          onClick={() => setCallsCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={callsCurrentPage <= 1 || callsLoading}
+                          title={isRtl ? "עמוד קודם" : "Previous Page"}
+                          className="p-1.5 rounded-lg border border-primary-200 bg-white hover:bg-primary-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-navy-800"
+                        >
+                          {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                        </button>
+
+                        {/* Page Numbers */}
+                        <div className="flex items-center gap-1 mx-1">
+                          {getCallPageNumbers(callsCurrentPage, callsTotalPages).map((pNum, idx) => {
+                            if (pNum === "...") {
+                              return (
+                                <span key={`ellipsis-${idx}`} className="px-2 text-xs text-primary-400 select-none">
+                                  ...
+                                </span>
+                              );
+                            }
+                            const isCurrent = pNum === callsCurrentPage;
+                            return (
+                              <button
+                                key={`page-${pNum}`}
+                                onClick={() => setCallsCurrentPage(Number(pNum))}
+                                disabled={callsLoading}
+                                className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-bold transition-all ${
+                                  isCurrent
+                                    ? "bg-navy-900 text-white shadow-sm"
+                                    : "bg-white border border-primary-200 hover:bg-primary-100 text-navy-800"
+                                }`}
+                              >
+                                {pNum}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Next Page */}
+                        <button
+                          onClick={() => setCallsCurrentPage(p => Math.min(callsTotalPages, p + 1))}
+                          disabled={callsCurrentPage >= callsTotalPages || callsLoading}
+                          title={isRtl ? "עמוד הבא" : "Next Page"}
+                          className="p-1.5 rounded-lg border border-primary-200 bg-white hover:bg-primary-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-navy-800"
+                        >
+                          {isRtl ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+
+                        {/* Last Page */}
+                        <button
+                          onClick={() => setCallsCurrentPage(callsTotalPages)}
+                          disabled={callsCurrentPage >= callsTotalPages || callsLoading}
+                          title={isRtl ? "עמוד אחרון" : "Last Page"}
+                          className="p-1.5 rounded-lg border border-primary-200 bg-white hover:bg-primary-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-navy-800"
+                        >
+                          {isRtl ? <ChevronsLeft className="w-4 h-4" /> : <ChevronsRight className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* Right: Quick Jump */}
+                      {callsTotalPages > 1 && (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const p = parseInt(callPageJumpInput, 10);
+                            if (!isNaN(p) && p >= 1 && p <= callsTotalPages) {
+                              setCallsCurrentPage(p);
+                              setCallPageJumpInput("");
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 text-xs text-primary-600 ${isRtl ? "flex-row-reverse" : ""}`}
+                        >
+                          <span>{isRtl ? "עבור לעמוד:" : "Go to:"}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={callsTotalPages}
+                            value={callPageJumpInput}
+                            onChange={(e) => setCallPageJumpInput(e.target.value)}
+                            placeholder={String(callsCurrentPage)}
+                            className="w-14 px-2 py-1 rounded-lg border border-primary-200 text-center font-bold text-navy-900 bg-white focus:outline-none focus:ring-1 focus:ring-gold-400"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!callPageJumpInput}
+                            className="px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-navy-900 text-white font-bold disabled:opacity-40 transition-colors"
+                          >
+                            {isRtl ? "עבור" : "Go"}
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
