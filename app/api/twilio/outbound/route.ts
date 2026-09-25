@@ -57,8 +57,13 @@ export async function POST(req: NextRequest) {
   // 2. If it's a robotic voice notification call (Status Ready check)
   else if (orderId) {
     const origin = `https://${req.headers.get("host")}`;
+    const [order, settings] = await Promise.all([
+      getOrderById(orderId),
+      getAdminSettings()
+    ]);
+
     let outboundMsgEn = settings.outboundMsgEn || "Hello. This is The Shatnez Lab. We are calling to inform you that your order is now ready for pickup. Pick up at 14 Buchanan Rd. Thank you.";
-    const order = await getOrderById(orderId);
+
     if (order && order.status === "ready") {
       const orderLocation = order.location || "14 Buchanan Rd";
       const isClinton = /(166\s*clinton|clinton|קלינטון)/i.test(orderLocation);
@@ -71,7 +76,10 @@ export async function POST(req: NextRequest) {
       if (audioExists) {
         console.log(`[Twilio Outbound Call] Playing pre-recorded ready audio "${audioFileName}" for order #${orderId} (${orderLocation})`);
         const audioUrl = `${origin}/api/audio?name=${encodeURIComponent(audioFileName)}`;
+        // Immediate 1-second pause so customer can hear the start after saying "Hello", then play twice for voicemail/clarity
         twiml += `<Pause length="1"/>`;
+        twiml += `<Play>${audioUrl}</Play>`;
+        twiml += `<Pause length="2"/>`;
         twiml += `<Play>${audioUrl}</Play>`;
         twiml += `<Pause length="1"/>`;
       } else {
@@ -84,6 +92,8 @@ export async function POST(req: NextRequest) {
         }
         const safeEn = escapeXml(outboundMsgEn);
         twiml += `<Pause length="1"/>`;
+        twiml += `<Say voice="Polly.Matthew" language="en-US">${safeEn}</Say>`;
+        twiml += `<Pause length="2"/>`;
         twiml += `<Say voice="Polly.Matthew" language="en-US">${safeEn}</Say>`;
         twiml += `<Pause length="1"/>`;
       }

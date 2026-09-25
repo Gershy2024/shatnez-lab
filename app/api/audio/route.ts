@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
       headers: {
         "Content-Type": "audio/mpeg",
         "Content-Length": buffer.length.toString(),
-        "Cache-Control": "no-store, max-age=0, must-revalidate",
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
       },
     });
   } catch (error: any) {
