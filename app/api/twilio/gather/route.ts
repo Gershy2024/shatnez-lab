@@ -706,7 +706,7 @@ export async function POST(req: NextRequest) {
     if (step === "appointment_start") {
       console.log(`[Twilio IVR Log] Appointment Start for caller "${fromPhoneNumber}"`);
       await logCallEvent(callSid, fromPhoneNumber, "Started Appointment Scheduling");
-      const introMsg = "Welcome to appointment scheduling at The Shatnez Lab. How many garments would you like to bring in for testing? Please enter a number from 1 to 9, followed by the pound key. Or, press star to return to the main menu.";
+      const introMsg = "Welcome to appointment scheduling at The Shatnez Lab. How many garments would you like to bring in for testing? Please press a number from 1 to 9. Or, press star to return to the main menu.";
       return xmlResponse(
         gather(
           `${origin}/api/twilio/gather?step=appointment_date`,
@@ -721,8 +721,28 @@ export async function POST(req: NextRequest) {
 
     // ── Appointment Date (Today or Tomorrow) ──
     if (step === "appointment_date") {
-      let rawGarments = digits || url.searchParams.get("garments") || "1";
-      let garments = parseInt(rawGarments.replace(/\D/g, ""), 10);
+      if (digits === "*" || digits.includes("*")) {
+        return xmlResponse(
+          sayEn("Returning to the main menu.") +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
+
+      let cleanDigitsOnly = (digits || "").replace(/\D/g, "");
+      if (!cleanDigitsOnly) {
+        return xmlResponse(
+          gather(
+            `${origin}/api/twilio/gather?step=appointment_date`,
+            1,
+            10,
+            sayEn("Please press a number from 1 to 9 for the number of garments, or press star for the main menu.")
+          ) +
+          sayEn("Returning to the main menu.") +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
+
+      let garments = parseInt(cleanDigitsOnly, 10);
       if (isNaN(garments) || garments < 1) garments = 1;
       if (garments > 9) garments = 9;
 
@@ -744,11 +764,17 @@ export async function POST(req: NextRequest) {
 
     // ── Appointment Time Options ──
     if (step === "appointment_time_options") {
+      if (digits === "*" || digits.includes("*")) {
+        return xmlResponse(
+          sayEn("Returning to the main menu.") +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
       const garments = parseInt(url.searchParams.get("garments") || "1", 10) || 1;
       const dateChoice = cleanDigits;
 
       if (dateChoice !== "1" && dateChoice !== "2") {
-        const invalidMsg = "Invalid selection. Please press 1 to schedule for today, or press 2 for tomorrow.";
+        const invalidMsg = "Invalid selection. Please press 1 to schedule for today, or press 2 for tomorrow. Or press star for the main menu.";
         return xmlResponse(
           gather(
             `${origin}/api/twilio/gather?step=appointment_time_options&garments=${garments}`,
@@ -815,6 +841,12 @@ export async function POST(req: NextRequest) {
 
     // ── Appointment Confirm & Save ──
     if (step === "appointment_confirm") {
+      if (digits === "*" || digits.includes("*")) {
+        return xmlResponse(
+          sayEn("Returning to the main menu.") +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
       const dateStr = url.searchParams.get("date") || "";
       const dayWord = url.searchParams.get("dayWord") || "your selected day";
       const garments = parseInt(url.searchParams.get("garments") || "1", 10) || 1;

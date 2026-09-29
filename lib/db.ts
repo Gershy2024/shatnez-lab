@@ -1493,7 +1493,13 @@ export const DEFAULT_APPOINTMENT_SETTINGS: AppointmentSettings = {
   endHour: "18:00",
   daysOfWeek: [0, 1, 2, 3, 4], // Sunday to Thursday
   dayOverrides: {
-    "5": { start: "09:00", end: "12:30", closed: false } // Friday
+    "0": { start: "10:00", end: "18:00", closed: false },
+    "1": { start: "10:00", end: "18:00", closed: false },
+    "2": { start: "10:00", end: "18:00", closed: false },
+    "3": { start: "10:00", end: "18:00", closed: false },
+    "4": { start: "10:00", end: "18:00", closed: false },
+    "5": { start: "09:00", end: "12:30", closed: false },
+    "6": { start: "10:00", end: "18:00", closed: true }
   },
   blackoutDates: [],
   locationText: "14 Buchanan Rd, North Square, NY"

@@ -134,6 +134,73 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
     setSelectedDate(`${newY}-${newM}-${newD}`);
   };
 
+  // Weekdays definitions
+  const WEEK_DAYS = [
+    { day: 0, en: "Sunday", he: "יום ראשון" },
+    { day: 1, en: "Monday", he: "יום שני" },
+    { day: 2, en: "Tuesday", he: "יום שלישי" },
+    { day: 3, en: "Wednesday", he: "יום רביעי" },
+    { day: 4, en: "Thursday", he: "יום חמישי" },
+    { day: 5, en: "Friday", he: "יום שישי" },
+    { day: 6, en: "Saturday", he: "שבת קודש" }
+  ];
+
+  const getDayConfig = (day: number) => {
+    const dayKey = String(day);
+    const override = settings.dayOverrides?.[dayKey];
+    const isDayInDaysOfWeek = (settings.daysOfWeek || [0, 1, 2, 3, 4]).includes(day);
+    const isClosed = override?.closed !== undefined ? override.closed : !isDayInDaysOfWeek;
+    const defaultStart = day === 5 ? "09:00" : (settings.startHour || "10:00");
+    const defaultEnd = day === 5 ? "12:30" : (settings.endHour || "18:00");
+    const start = override?.start || defaultStart;
+    const end = override?.end || defaultEnd;
+    return { isOpen: !isClosed, start, end };
+  };
+
+  const handleUpdateDay = (day: number, update: { isOpen?: boolean; start?: string; end?: string }) => {
+    const current = getDayConfig(day);
+    const newIsOpen = update.isOpen !== undefined ? update.isOpen : current.isOpen;
+    const newStart = update.start !== undefined ? update.start : current.start;
+    const newEnd = update.end !== undefined ? update.end : current.end;
+
+    const overrides = { ...(settings.dayOverrides || {}) };
+    overrides[String(day)] = {
+      start: newStart,
+      end: newEnd,
+      closed: !newIsOpen
+    };
+
+    const daysSet = new Set(settings.daysOfWeek || [0, 1, 2, 3, 4]);
+    if (newIsOpen) {
+      daysSet.add(day);
+    } else {
+      daysSet.delete(day);
+    }
+
+    setSettings({
+      ...settings,
+      daysOfWeek: Array.from(daysSet).sort((a, b) => a - b),
+      dayOverrides: overrides
+    });
+  };
+
+  const handleApplyPresetHours = () => {
+    const overrides = { ...(settings.dayOverrides || {}) };
+    [0, 1, 2, 3, 4].forEach((d) => {
+      overrides[String(d)] = { start: "10:00", end: "18:00", closed: false };
+    });
+    overrides["5"] = { start: "09:00", end: "12:30", closed: false };
+    overrides["6"] = { start: "10:00", end: "18:00", closed: true };
+
+    setSettings({
+      ...settings,
+      startHour: "10:00",
+      endHour: "18:00",
+      daysOfWeek: [0, 1, 2, 3, 4, 5],
+      dayOverrides: overrides
+    });
+  };
+
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
@@ -742,7 +809,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl border border-primary-200"
+              className="bg-white rounded-3xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-primary-200"
             >
               <div className="flex items-center justify-between pb-3 border-b border-primary-100 mb-4">
                 <div className="flex items-center gap-2">
@@ -779,30 +846,78 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   />
                 </div>
 
-                {/* Operating Hours */}
+                {/* Per-Day Schedule & Hours */}
                 <div className="space-y-3">
-                  <h4 className="font-bold text-navy-900 uppercase tracking-wider text-[11px] text-primary-600">
-                    Standard Reception Hours
-                  </h4>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Opening Time</label>
-                      <input
-                        type="time"
-                        value={settings.startHour || "10:00"}
-                        onChange={(e) => setSettings({ ...settings, startHour: e.target.value })}
-                        className="w-full px-3 py-2 border border-primary-300 rounded-xl"
-                      />
+                      <h4 className="font-bold text-navy-900 uppercase tracking-wider text-[11px] text-primary-600">
+                        {isRtl ? "שעות קבלה יומיות (לפי כל יום בשבוע)" : "Daily Reception Hours (Per Day)"}
+                      </h4>
+                      <p className="text-xs text-primary-500">
+                        {isRtl ? "קבע את שעות הפתיחה והסגירה המדויקות לכל יום בנפרד" : "Set exact open hours and availability for each specific day"}
+                      </p>
                     </div>
-                    <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Closing Time</label>
-                      <input
-                        type="time"
-                        value={settings.endHour || "18:00"}
-                        onChange={(e) => setSettings({ ...settings, endHour: e.target.value })}
-                        className="w-full px-3 py-2 border border-primary-300 rounded-xl"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyPresetHours}
+                      className="text-xs font-semibold text-primary-700 hover:text-primary-900 bg-primary-100 hover:bg-primary-200 px-2.5 py-1 rounded-lg transition-colors border border-primary-200"
+                    >
+                      {isRtl ? "איפוס לשעות ברירת מחדל" : "Reset Standard Hours"}
+                    </button>
+                  </div>
+
+                  <div className="border border-primary-200 rounded-2xl overflow-hidden divide-y divide-primary-100 bg-white">
+                    {WEEK_DAYS.map(({ day, en, he }) => {
+                      const cfg = getDayConfig(day);
+                      return (
+                        <div
+                          key={day}
+                          className={`p-3 flex flex-wrap items-center justify-between gap-3 transition-colors ${
+                            cfg.isOpen ? "bg-white" : "bg-primary-50/40 opacity-70"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-[150px]">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateDay(day, { isOpen: !cfg.isOpen })}
+                              className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all ${
+                                cfg.isOpen
+                                  ? "bg-emerald-500 text-white border-emerald-600 shadow-xs hover:bg-emerald-600"
+                                  : "bg-primary-100 text-primary-600 border-primary-200 hover:bg-primary-200"
+                              }`}
+                            >
+                              {cfg.isOpen ? (isRtl ? "פתוח" : "Open") : (isRtl ? "סגור" : "Closed")}
+                            </button>
+                            <span className="font-bold text-sm text-navy-900">
+                              {isRtl ? he : en}
+                            </span>
+                          </div>
+
+                          {cfg.isOpen ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-primary-500 font-medium">{isRtl ? "משעה" : "From"}</span>
+                              <input
+                                type="time"
+                                value={cfg.start}
+                                onChange={(e) => handleUpdateDay(day, { start: e.target.value })}
+                                className="px-2.5 py-1 text-xs font-semibold border border-primary-300 rounded-xl bg-primary-50/50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                              />
+                              <span className="text-xs text-primary-400 font-medium">{isRtl ? "עד" : "to"}</span>
+                              <input
+                                type="time"
+                                value={cfg.end}
+                                onChange={(e) => handleUpdateDay(day, { end: e.target.value })}
+                                className="px-2.5 py-1 text-xs font-semibold border border-primary-300 rounded-xl bg-primary-50/50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-xs text-primary-400 font-medium italic">
+                              {isRtl ? "אין קבלת קהל / סגור לפגישות" : "Closed for appointments"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -813,7 +928,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   </h4>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Minutes per Garment</label>
+                      <label className="block text-primary-600 mb-1 font-medium">Minutes per Garment (4+)</label>
                       <input
                         type="number"
                         min={1}
@@ -827,7 +942,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     </div>
 
                     <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Min Duration (mins)</label>
+                      <label className="block text-primary-600 mb-1 font-medium">Base Slot (2-3 items)</label>
                       <input
                         type="number"
                         min={5}
@@ -853,45 +968,6 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                         className="w-full px-3 py-2 border border-primary-300 rounded-xl"
                       />
                     </div>
-                  </div>
-                </div>
-
-                {/* Active Days */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-navy-900 uppercase tracking-wider text-[11px] text-primary-600">
-                    Active Days for In-Person Reception
-                  </h4>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {[
-                      { day: 0, label: "Sunday" },
-                      { day: 1, label: "Monday" },
-                      { day: 2, label: "Tuesday" },
-                      { day: 3, label: "Wednesday" },
-                      { day: 4, label: "Thursday" },
-                      { day: 5, label: "Friday" }
-                    ].map(({ day, label }) => {
-                      const isActive = settings.daysOfWeek?.includes(day);
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => {
-                            const current = settings.daysOfWeek || [0, 1, 2, 3, 4];
-                            const updated = isActive
-                              ? current.filter((d) => d !== day)
-                              : [...current, day].sort();
-                            setSettings({ ...settings, daysOfWeek: updated });
-                          }}
-                          className={`py-2 px-2 rounded-xl text-center font-semibold transition-all border ${
-                            isActive
-                              ? "bg-primary-600 text-white border-primary-600 shadow-sm"
-                              : "bg-primary-50 text-primary-600 border-primary-200 hover:bg-primary-100"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
 
