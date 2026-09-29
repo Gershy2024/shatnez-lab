@@ -301,6 +301,20 @@
             }
           ],
           "event": "match",
+          "next": "redirect_to_appointments"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.welcome_menu.Digits}}"
+              ],
+              "friendly_name": "If value equal_to 6",
+              "type": "equal_to",
+              "value": "6"
+            }
+          ],
+          "event": "match",
           "next": "log_keypress_5"
         }
       ],
@@ -1989,6 +2003,31 @@
         }
       ],
       "type": "say-play"
+    },
+    {
+      "name": "redirect_to_appointments",
+      "properties": {
+        "method": "POST",
+        "offset": {
+          "x": -1800,
+          "y": -1400
+        },
+        "timeout": "14400",
+        "url": "https://www.theshatnezlab.com/api/twilio/gather?step=appointment_start"
+      },
+      "transitions": [
+        {
+          "event": "return",
+          "next": "welcome_menu"
+        },
+        {
+          "event": "timeout"
+        },
+        {
+          "event": "fail"
+        }
+      ],
+      "type": "add-twiml-redirect"
     }
   ]
 }

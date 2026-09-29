@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
       Press 1 for drop-off information, pricing, and instructions.
       Press 2 to check your order status and test results.
       Press 3 to hear about our special VIP and store services.
-      Press 5 for door-to-door pickup and delivery services.
+      Press 5 to schedule an appointment.
+      Press 6 for door-to-door pickup and delivery services.
       Press 0 to speak with a representative.
       Or, enter your order number followed by pound.
     </Say>
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
       להקשת אחת לקבלת מידע על מסירת בגדים, מחירים והנחיות.
       להקשת שתיים לבדיקת סטטוס הזמנה ותוצאות הבדיקה.
       להקשת שלוש לשמיעת פרטים על שירותי ה-VIP והחנויות המיוחדים שלנו.
+      להקשת חמש לקביעת תור וקבלה במעבדה.
+      להקשת שש לשירותי איסוף ומשלוח עד הבית.
       להקשת אפס לשיחה עם נציג.
       או הקישו את מספר ההזמנה שלכם ולאחריו סולמית.
     </Say>

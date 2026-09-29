@@ -47,6 +47,35 @@ export interface DeliveryRequest {
   notes?: string;
 }
 
+export interface Appointment {
+  id: string;
+  customerName?: string;
+  phone: string;
+  date: string; // "YYYY-MM-DD"
+  time: string; // "HH:mm" (e.g. "16:30")
+  duration: number; // minutes
+  garmentsCount: number;
+  status: "scheduled" | "completed" | "cancelled" | "no-show";
+  notes?: string;
+  createdAt: number;
+  source?: "phone" | "admin" | "web";
+}
+
+export interface AppointmentSettings {
+  enabled: boolean;
+  minutesPerGarment: number; // default 5
+  minDuration: number; // default 10
+  maxGarments: number; // default 10
+  bufferMinutes: number; // default 5
+  startHour: string; // default "10:00"
+  endHour: string; // default "18:00"
+  daysOfWeek: number[]; // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri
+  dayOverrides?: Record<string, { start: string; end: string; closed?: boolean }>;
+  blackoutDates?: string[]; // "YYYY-MM-DD"
+  locationText?: string;
+}
+
+
 export interface AdminSettings {
   pin: string;
   adminUser?: string;
@@ -89,10 +118,12 @@ const SETTINGS_COLLECTION = "settings";
 const VOICEMAILS_COLLECTION = "voicemails";
 const CALLS_COLLECTION = "calls";
 const DELIVERIES_COLLECTION = "deliveries";
+const APPOINTMENTS_COLLECTION = "appointments";
 const LS_KEY = "shatnez_orders";
 const LS_VM_KEY = "shatnez_voicemails";
 const CALLS_LS_KEY = "shatnez_calls";
 const DELIVERIES_LS_KEY = "shatnez_deliveries";
+const APPOINTMENTS_LS_KEY = "shatnez_appointments";
 
 export interface Voicemail {
   id: string;
@@ -1449,6 +1480,192 @@ export async function updateSmsMessagePrice(
     }
   }
 }
+
+/* ── Appointment Helpers ── */
+
+export const DEFAULT_APPOINTMENT_SETTINGS: AppointmentSettings = {
+  enabled: true,
+  minutesPerGarment: 5,
+  minDuration: 10,
+  maxGarments: 10,
+  bufferMinutes: 5,
+  startHour: "10:00",
+  endHour: "18:00",
+  daysOfWeek: [0, 1, 2, 3, 4], // Sunday to Thursday
+  dayOverrides: {
+    "5": { start: "09:00", end: "12:30", closed: false } // Friday
+  },
+  blackoutDates: [],
+  locationText: "14 Buchanan Rd, North Square, NY"
+};
+
+function lsGetAppointments(): Appointment[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const data = localStorage.getItem(APPOINTMENTS_LS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function lsSetAppointments(list: Appointment[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(APPOINTMENTS_LS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.error("Failed to save appointments to localStorage:", e);
+  }
+}
+
+export async function saveAppointment(appointment: Appointment): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, APPOINTMENTS_COLLECTION, appointment.id);
+      await setDoc(docRef, appointment);
+      return;
+    } catch (e) {
+      console.error("Firestore saveAppointment failed:", e);
+    }
+  }
+  const list = lsGetAppointments();
+  const idx = list.findIndex((a) => a.id === appointment.id);
+  if (idx >= 0) {
+    list[idx] = appointment;
+  } else {
+    list.push(appointment);
+  }
+  lsSetAppointments(list);
+}
+
+export async function deleteAppointment(id: string): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      await deleteDoc(doc(db, APPOINTMENTS_COLLECTION, id));
+      return;
+    } catch (e) {
+      console.error("Firestore deleteAppointment failed:", e);
+    }
+  }
+  const list = lsGetAppointments().filter((a) => a.id !== id);
+  lsSetAppointments(list);
+}
+
+export async function updateAppointmentStatus(id: string, status: Appointment["status"]): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, APPOINTMENTS_COLLECTION, id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data() as Appointment;
+        data.status = status;
+        await setDoc(docRef, data);
+        return;
+      }
+    } catch (e) {
+      console.error("Firestore updateAppointmentStatus failed:", e);
+    }
+  }
+  const list = lsGetAppointments();
+  const idx = list.findIndex((a) => a.id === id);
+  if (idx >= 0) {
+    list[idx].status = status;
+    lsSetAppointments(list);
+  }
+}
+
+export async function getAllAppointments(): Promise<Appointment[]> {
+  if (isConfigured && db) {
+    try {
+      const snapshot = await getDocs(query(collection(db, APPOINTMENTS_COLLECTION)));
+      return snapshot.docs
+        .map((d) => d.data() as Appointment)
+        .sort((a, b) => {
+          const compDate = (a.date || "").localeCompare(b.date || "");
+          if (compDate !== 0) return compDate;
+          return (a.time || "").localeCompare(b.time || "");
+        });
+    } catch (e) {
+      console.error("Firestore getAllAppointments failed:", e);
+    }
+  }
+  return lsGetAppointments().sort((a, b) => {
+    const compDate = (a.date || "").localeCompare(b.date || "");
+    if (compDate !== 0) return compDate;
+    return (a.time || "").localeCompare(b.time || "");
+  });
+}
+
+export async function getAppointmentsForDate(date: string): Promise<Appointment[]> {
+  const all = await getAllAppointments();
+  return all.filter((a) => a.date === date && a.status !== "cancelled");
+}
+
+export function subscribeToAppointments(callback: (appointments: Appointment[]) => void) {
+  if (isConfigured && db) {
+    return onSnapshot(
+      query(collection(db, APPOINTMENTS_COLLECTION)),
+      (snapshot) => {
+        const list = snapshot.docs
+          .map((d) => d.data() as Appointment)
+          .sort((a, b) => {
+            const compDate = (a.date || "").localeCompare(b.date || "");
+            if (compDate !== 0) return compDate;
+            return (a.time || "").localeCompare(b.time || "");
+          });
+        callback(list);
+      },
+      (error) => {
+        console.error("Firestore appointments subscription error:", error);
+      }
+    );
+  }
+  callback(lsGetAppointments());
+  return () => {};
+}
+
+const APPOINTMENT_SETTINGS_DOC = "appointment_settings";
+
+export async function getAppointmentSettings(): Promise<AppointmentSettings> {
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, SETTINGS_COLLECTION, APPOINTMENT_SETTINGS_DOC);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { ...DEFAULT_APPOINTMENT_SETTINGS, ...(snap.data() as AppointmentSettings) };
+      }
+    } catch (e) {
+      console.error("Firestore getAppointmentSettings failed:", e);
+    }
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const local = localStorage.getItem("shatnez_apt_settings");
+      if (local) return { ...DEFAULT_APPOINTMENT_SETTINGS, ...JSON.parse(local) };
+    } catch {}
+  }
+  return DEFAULT_APPOINTMENT_SETTINGS;
+}
+
+export async function saveAppointmentSettings(settings: AppointmentSettings): Promise<void> {
+  if (isConfigured && db) {
+    try {
+      const docRef = doc(db, SETTINGS_COLLECTION, APPOINTMENT_SETTINGS_DOC);
+      await setDoc(docRef, settings);
+      return;
+    } catch (e) {
+      console.error("Firestore saveAppointmentSettings failed:", e);
+    }
+  }
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("shatnez_apt_settings", JSON.stringify(settings));
+    } catch (e) {
+      console.error("Failed to save appointment settings to localStorage:", e);
+    }
+  }
+}
+
 
 
 

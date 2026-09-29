@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest, saveAppointment, getAppointmentSettings, Appointment } from "@/lib/db";
 import { triggerOutboundCall, sendSms } from "@/lib/twilioCall";
+import { getAvailableSlots, getNyDateString, formatTime12h } from "@/lib/appointmentSlots";
 
 // Global cache to track calls accepted by admin during Call Screening whisper
 const acceptedScreenCalls = new Set<string>();
@@ -62,6 +63,11 @@ function say(en: string, he: string) {
 function sayEn(en: string) {
   const safeEn = en.replace(/&/g, "&amp;");
   return `<Say voice="Polly.Matthew" language="en-US">${safeEn}</Say>`;
+}
+
+function playTtsEn(origin: string, en: string) {
+  const encoded = encodeURIComponent(en);
+  return `<Play>${origin}/api/audio/tts?text=${encoded}&amp;voice=en-US-GuyNeural</Play>`;
 }
 
 function gather(action: string, numDigits: number | string, timeout = 10, innerXml: string) {
@@ -389,8 +395,13 @@ export async function POST(req: NextRequest) {
         );
       }
       if (cleanDigits === "5") {
-        console.log(`[Twilio IVR Log] Main Menu: Option 5 played.`);
-        await logCallEvent(callSid, fromPhoneNumber, "Pressed Option 5 (Delivery Services)");
+        console.log(`[Twilio IVR Log] Main Menu: Option 5 selected (Appointment Scheduling).`);
+        await logCallEvent(callSid, fromPhoneNumber, "Pressed Option 5 (Appointment Scheduling)");
+        return xmlResponse(redirect(`${origin}/api/twilio/gather?step=appointment_start`));
+      }
+      if (cleanDigits === "6") {
+        console.log(`[Twilio IVR Log] Main Menu: Option 6 played (Delivery Services).`);
+        await logCallEvent(callSid, fromPhoneNumber, "Pressed Option 6 (Delivery Services)");
         const deliveryEn = "We offer a door-to-door pickup and delivery service for only ten dollars. We will pick up your garment today and deliver it back to you tomorrow, fully checked. To request this service, press 1. Or, press star to return to the main menu.";
         return xmlResponse(
           gather(`${origin}/api/twilio/gather?step=delivery_confirm`, 1, 15, sayEn(deliveryEn)) +
@@ -689,6 +700,181 @@ export async function POST(req: NextRequest) {
       }
       await logCallEvent(callSid, fromPhoneNumber, `Looked up: "${clean}"`);
       return await lookupOrder(clean, origin);
+    }
+
+    // ── Appointment Start ──
+    if (step === "appointment_start") {
+      console.log(`[Twilio IVR Log] Appointment Start for caller "${fromPhoneNumber}"`);
+      await logCallEvent(callSid, fromPhoneNumber, "Started Appointment Scheduling");
+      const introMsg = "Welcome to appointment scheduling at The Shatnez Lab. How many garments would you like to bring in for testing? Please enter a number from 1 to 9, followed by the pound key. Or, press star to return to the main menu.";
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=appointment_date`,
+          1,
+          10,
+          playTtsEn(origin, introMsg) + sayEn(introMsg)
+        ) +
+        sayEn("We did not receive your input. Returning to the main menu.") +
+        redirect(`${origin}/api/twilio/voice`)
+      );
+    }
+
+    // ── Appointment Date (Today or Tomorrow) ──
+    if (step === "appointment_date") {
+      let rawGarments = digits || url.searchParams.get("garments") || "1";
+      let garments = parseInt(rawGarments.replace(/\D/g, ""), 10);
+      if (isNaN(garments) || garments < 1) garments = 1;
+      if (garments > 9) garments = 9;
+
+      console.log(`[Twilio IVR Log] Appointment Garments selected: ${garments}`);
+      const garmentWord = garments === 1 ? "garment" : "garments";
+      const promptMsg = `You entered ${garments} ${garmentWord}. To schedule your appointment for today, press 1. To schedule for tomorrow, press 2. Or, press star to return to the main menu.`;
+
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=appointment_time_options&garments=${garments}`,
+          1,
+          10,
+          playTtsEn(origin, promptMsg) + sayEn(promptMsg)
+        ) +
+        sayEn("We did not receive your input. Returning to the main menu.") +
+        redirect(`${origin}/api/twilio/voice`)
+      );
+    }
+
+    // ── Appointment Time Options ──
+    if (step === "appointment_time_options") {
+      const garments = parseInt(url.searchParams.get("garments") || "1", 10) || 1;
+      const dateChoice = cleanDigits;
+
+      if (dateChoice !== "1" && dateChoice !== "2") {
+        const invalidMsg = "Invalid selection. Please press 1 to schedule for today, or press 2 for tomorrow.";
+        return xmlResponse(
+          gather(
+            `${origin}/api/twilio/gather?step=appointment_time_options&garments=${garments}`,
+            1,
+            10,
+            playTtsEn(origin, invalidMsg) + sayEn(invalidMsg)
+          ) +
+          redirect(`${origin}/api/twilio/gather?step=appointment_date&garments=${garments}`)
+        );
+      }
+
+      const targetDateInfo = getNyDateString(dateChoice === "2" ? 1 : 0);
+      const targetDayWord = dateChoice === "2" ? "tomorrow" : "today";
+      const garmentWord = garments === 1 ? "garment" : "garments";
+
+      console.log(`[Twilio IVR Log] Checking available slots for ${targetDayWord} (${targetDateInfo.dateStr}), garments: ${garments}`);
+      const slots = await getAvailableSlots(targetDateInfo.dateStr, garments);
+
+      if (slots.length === 0) {
+        const noSlotsMsg = `We are sorry, there are no available appointments for ${targetDayWord} that can accommodate ${garments} ${garmentWord}. Press 1 to choose a different day, press 0 to speak with a representative, or press star to return to the main menu.`;
+        return xmlResponse(
+          gather(
+            `${origin}/api/twilio/gather?step=appointment_no_slots&garments=${garments}`,
+            1,
+            12,
+            playTtsEn(origin, noSlotsMsg) + sayEn(noSlotsMsg)
+          ) +
+          redirect(`${origin}/api/twilio/voice`)
+        );
+      }
+
+      // Offer up to 5 earliest slots
+      const offeredSlots = slots.slice(0, 5);
+      let promptMsg = `Available appointments for ${targetDayWord}: `;
+      offeredSlots.forEach((slot, index) => {
+        promptMsg += `Press ${index + 1} for ${slot.label}. `;
+      });
+      promptMsg += "Or, press star to go back.";
+
+      const slotTimesParam = encodeURIComponent(offeredSlots.map((s) => s.time).join(","));
+      return xmlResponse(
+        gather(
+          `${origin}/api/twilio/gather?step=appointment_confirm&date=${targetDateInfo.dateStr}&dayWord=${targetDayWord}&garments=${garments}&slotList=${slotTimesParam}`,
+          1,
+          15,
+          playTtsEn(origin, promptMsg) + sayEn(promptMsg)
+        ) +
+        sayEn("We did not receive your selection. Returning to the main menu.") +
+        redirect(`${origin}/api/twilio/voice`)
+      );
+    }
+
+    // ── Appointment No Slots Fallback ──
+    if (step === "appointment_no_slots") {
+      const garments = url.searchParams.get("garments") || "1";
+      if (cleanDigits === "1") {
+        return xmlResponse(redirect(`${origin}/api/twilio/gather?step=appointment_date&garments=${garments}`));
+      }
+      if (cleanDigits === "0") {
+        return xmlResponse(redirect(`${origin}/api/twilio/gather?step=menu&Digits=0`));
+      }
+      return xmlResponse(redirect(`${origin}/api/twilio/voice`));
+    }
+
+    // ── Appointment Confirm & Save ──
+    if (step === "appointment_confirm") {
+      const dateStr = url.searchParams.get("date") || "";
+      const dayWord = url.searchParams.get("dayWord") || "your selected day";
+      const garments = parseInt(url.searchParams.get("garments") || "1", 10) || 1;
+      const rawSlotList = url.searchParams.get("slotList") || "";
+      const slotList = decodeURIComponent(rawSlotList).split(",");
+
+      const selectedIdx = parseInt(cleanDigits, 10) - 1;
+
+      if (isNaN(selectedIdx) || selectedIdx < 0 || selectedIdx >= slotList.length) {
+        const errorMsg = "Invalid selection. Please try again.";
+        return xmlResponse(
+          sayEn(errorMsg) +
+          redirect(`${origin}/api/twilio/gather?step=appointment_date&garments=${garments}`)
+        );
+      }
+
+      const selectedTime = slotList[selectedIdx];
+      const aptSettings = await getAppointmentSettings();
+      const minutesPerGarment = aptSettings.minutesPerGarment || 5;
+      const minDuration = aptSettings.minDuration || 10;
+      const duration = Math.max(garments * minutesPerGarment, minDuration);
+
+      const aptId = `apt_${Date.now()}_${cleanPhone ? cleanPhone.slice(-4) : "0000"}`;
+      const newApt: Appointment = {
+        id: aptId,
+        phone: cleanPhone || fromPhoneNumber,
+        customerName: "",
+        date: dateStr,
+        time: selectedTime,
+        duration,
+        garmentsCount: garments,
+        status: "scheduled",
+        createdAt: Date.now(),
+        source: "phone",
+        notes: `Booked via phone IVR (${garments} garments, ${duration} mins)`
+      };
+
+      await saveAppointment(newApt);
+      await logCallEvent(callSid, fromPhoneNumber, `Scheduled Appointment: ${dateStr} at ${selectedTime} (${garments} garments)`);
+
+      const { label: friendlyTime } = formatTime12h(selectedTime);
+      const garmentWord = garments === 1 ? "garment" : "garments";
+
+      // Send SMS confirmation if customer has a valid phone number
+      const targetPhone = cleanPhone || fromPhoneNumber;
+      if (targetPhone && targetPhone.replace(/\D/g, "").length >= 10) {
+        const locationAddress = aptSettings.locationText || "14 Buchanan Rd, North Square, NY";
+        const smsMsg = `The Shatnez Lab: Your appointment is confirmed for ${dayWord} (${dateStr}) at ${friendlyTime} for ${garments} ${garmentWord}.\nLocation: ${locationAddress}.\nPlease arrive on time. For assistance, call our 24/7 automated line. Thank you!`;
+        sendSms(targetPhone, smsMsg).catch((err) =>
+          console.error("[Appointment IVR] Failed to send SMS:", err)
+        );
+      }
+
+      const confirmSpoken = `Thank you! Your appointment is confirmed for ${dayWord} at ${friendlyTime} for ${garments} ${garmentWord}. A confirmation text message has been sent to your phone. We look forward to seeing you at 14 Buchanan Road. Goodbye.`;
+
+      return xmlResponse(
+        playTtsEn(origin, confirmSpoken) +
+        sayEn(confirmSpoken) +
+        `<Hangup />`
+      );
     }
 
     // ── Delivery Confirm ──

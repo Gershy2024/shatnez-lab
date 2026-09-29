@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot } from "lucide-react";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot, Calendar } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import PrintCard from "@/components/PrintCard";
@@ -10,6 +10,7 @@ import VirtualPhone from "@/components/VirtualPhone";
 import LiveChatAdminManager from "@/components/LiveChatAdminManager";
 import AdminAiAssistant from "@/components/AdminAiAssistant";
 import OrderAnalytics from "@/components/OrderAnalytics";
+import AppointmentsManager from "@/components/AppointmentsManager";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest, extractPhoneNumbers, getOrderPhoneNumbers, hasAudioFile } from "@/lib/db";
@@ -651,7 +652,7 @@ export default function AdminPage() {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const [adminNotes, setAdminNotes] = useState("");
-  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "livechat" | "ai_assistant">("orders");
+  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "appointments" | "livechat" | "ai_assistant">("orders");
   const [analyticsSubTab, setAnalyticsSubTab] = useState<"orders" | "calls" | "all">("orders");
   const [showAiModal, setShowAiModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2282,6 +2283,16 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => { setActiveAdminTab("appointments"); setSidebarOpen(false); }}
+            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
+              activeAdminTab === "appointments" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
+            }`}
+          >
+            <Calendar className="w-4 h-4 shrink-0 text-primary-400" />
+            <span>{isRtl ? "תורים ופגישות" : "Appointments"}</span>
+          </button>
+
+          <button
             onClick={() => { setActiveAdminTab("deliveries"); setSidebarOpen(false); }}
             className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
               activeAdminTab === "deliveries" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
@@ -2464,7 +2475,7 @@ export default function AdminPage() {
 
       {/* Main Content Area */}
       <div className={`min-h-screen transition-all duration-300 ${isRtl ? "lg:mr-60" : "lg:ml-60"} pt-16 lg:pt-0`}>
-        <div className={`w-full ${activeAdminTab === "orders" || activeAdminTab === "archive" || activeAdminTab === "deliveries" || activeAdminTab === "calls" ? "max-w-[98%] 2xl:max-w-[1850px]" : "max-w-7xl 2xl:max-w-[1650px]"} mx-auto px-3 sm:px-5 lg:px-6 py-5 lg:py-8`}>
+        <div className={`w-full ${activeAdminTab === "orders" || activeAdminTab === "archive" || activeAdminTab === "deliveries" || activeAdminTab === "appointments" || activeAdminTab === "calls" ? "max-w-[98%] 2xl:max-w-[1850px]" : "max-w-7xl 2xl:max-w-[1650px]"} mx-auto px-3 sm:px-5 lg:px-6 py-5 lg:py-8`}>
           {/* Page Header */}
           <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 ${isRtl ? "sm:flex-row-reverse text-right" : ""}`}>
             <div>
@@ -2472,6 +2483,7 @@ export default function AdminPage() {
                 {activeAdminTab === "ai_assistant" ? (isRtl ? "עוזר AI למנהל המעבדה" : "Executive AI Assistant") :
                  activeAdminTab === "livechat" ? (isRtl ? "צ'אט חי באתר" : "Website Live Chat") :
                  activeAdminTab === "orders" ? (isRtl ? "ניהול הזמנות" : "Orders Management") :
+                 activeAdminTab === "appointments" ? (isRtl ? "יומן תורים ופגישות" : "Appointments & Schedule") :
                  activeAdminTab === "deliveries" ? (isRtl ? "ניהול איסוף ומשלוחים" : "Pickup & Delivery Management") :
                  activeAdminTab === "voicemails" ? (isRtl ? "הודעות ותא קולי" : "Voicemails & Messages") :
                  activeAdminTab === "audio" ? (isRtl ? "מנהל שמע IVR" : "IVR Audio Manager") :
@@ -2486,6 +2498,7 @@ export default function AdminPage() {
                 {activeAdminTab === "ai_assistant" ? (isRtl ? "מענה חכם, ניתוח נתונים, סטטיסטיקות שיחות ודוחות בזמן אמת" : "Intelligent assistance, real-time data analysis, and lab insights") :
                  activeAdminTab === "livechat" ? (isRtl ? "ניהול ומענה בזמן אמת לשיחות צ'אט נכנסות מגולשים באתר" : "Manage and respond in real-time to incoming website visitor live chats") :
                  activeAdminTab === "billing" ? (isRtl ? "ניהול ומעקב אחר עלויות השימוש ב-Twilio במעבדה" : "Track and manage Twilio usage costs for the lab") :
+                 activeAdminTab === "appointments" ? (isRtl ? "לוח שנה, תורים וקבלת קהל אישית במעבדה, שעות פתיחה והגדרות" : "Manage in-person garment testing appointments, reception hours, and schedule") :
                  activeAdminTab === "deliveries" ? (isRtl ? "מעקב וניהול בקשות של לקוחות לאיסוף והחזרה מדלת לדלת" : "Track and manage door-to-door garment pickup and delivery requests") :
                  (isRtl ? "לוח בקרה וניהול הזמנות מערכת" : "System Dashboard and Order Management")}
               </p>
@@ -3541,6 +3554,19 @@ export default function AdminPage() {
             </div>
           );
         })()}
+      </motion.div>
+    )}
+
+    {/* Appointments & Schedule Tab */}
+    {activeAdminTab === "appointments" && (
+      <motion.div
+        key="appointments"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        className="space-y-6"
+      >
+        <AppointmentsManager isRtl={isRtl} />
       </motion.div>
     )}
 
