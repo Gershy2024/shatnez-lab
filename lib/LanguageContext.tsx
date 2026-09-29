@@ -14,6 +14,7 @@ export const translations: Translations = {
   // Navigation
   home: { en: "Home", he: "בית" },
   track_order: { en: "Track Order", he: "מעקב הזמנה" },
+  book_appointment: { en: "Book Appointment", he: "קביעת פגישה" },
   shipping: { en: "Ship to Us", he: "משלוח אלינו" },
   contact: { en: "Contact", he: "צור קשר" },
   admin: { en: "Admin", he: "ניהול" },

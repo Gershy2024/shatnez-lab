@@ -12,6 +12,7 @@ export default function Navbar() {
 
   const navLinks = [
     { href: "/", label: t("home") },
+    { href: "/appointment", label: t("book_appointment") },
     { href: "/track", label: t("track_order") },
     { href: "/stats", label: t("shatnez_info") },
     { href: "/shipping", label: t("shipping") },

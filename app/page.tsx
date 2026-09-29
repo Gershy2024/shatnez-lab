@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Microscope, Truck, Home, ShieldCheck, Clock, Phone, ChevronRight, Plus, Minus, MapPin } from "lucide-react";
+import { Microscope, Truck, Home, ShieldCheck, Clock, Phone, ChevronRight, Plus, Minus, MapPin, Calendar } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 import { saveDeliveryRequest, getAdminSettings } from "@/lib/db";
 
@@ -162,11 +162,15 @@ export default function HomePage() {
             </motion.p>
             
             <motion.div variants={fadeInUp} className="flex flex-wrap gap-4">
-              <Link href="/track" className="btn-primary inline-flex items-center gap-2">
+              <Link href="/appointment" className="btn-primary inline-flex items-center gap-2 shadow-lg shadow-gold-500/20">
+                <Calendar className="w-5 h-5" />
+                {t("book_appointment")}
+              </Link>
+              <Link href="/track" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all duration-300">
                 <Truck className="w-5 h-5" />
                 {t("track_your_order")}
               </Link>
-              <Link href="/contact" className="inline-flex items-center gap-2 px-8 py-3 rounded-lg font-semibold border-2 border-white/20 text-white hover:bg-white/10 transition-all duration-300">
+              <Link href="/contact" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold border-2 border-white/20 text-white hover:bg-white/10 transition-all duration-300">
                 <Phone className="w-5 h-5" />
                 {t("contact_us")}
               </Link>
@@ -252,16 +256,24 @@ export default function HomePage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-12 p-6 bg-gold-50/80 backdrop-blur-sm rounded-2xl border border-gold-200/60 max-w-3xl mx-auto text-center shadow-sm"
+            className="mt-12 p-6 bg-gold-50/80 backdrop-blur-sm rounded-2xl border border-gold-200/60 max-w-3xl mx-auto shadow-sm"
           >
-            <div className={`flex flex-col sm:flex-row items-center justify-center gap-4 ${isRtl ? "sm:flex-row-reverse" : ""}`}>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gold-100 text-gold-800 border border-gold-300 ${isRtl ? "flex-row-reverse" : ""}`}>
-                <Clock className="w-3.5 h-3.5 text-gold-600" />
-                {t("on_spot_badge")}
-              </span>
-              <p className="text-navy-900 font-medium text-sm sm:text-base">
-                {t("on_spot_text")}
-              </p>
+            <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 ${isRtl ? "sm:flex-row-reverse text-right" : "text-left"}`}>
+              <div className="space-y-1">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gold-100 text-gold-800 border border-gold-300 ${isRtl ? "flex-row-reverse" : ""}`}>
+                  <Clock className="w-3.5 h-3.5 text-gold-600" />
+                  {t("on_spot_badge")}
+                </span>
+                <p className="text-navy-900 font-medium text-sm sm:text-base mt-1">
+                  {t("on_spot_text")}
+                </p>
+              </div>
+              <Link
+                href="/appointment"
+                className="btn-primary px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 shadow-sm"
+              >
+                {isRtl ? "קביעת פגישה מיידית" : "Book Spot Now"}
+              </Link>
             </div>
           </motion.div>
         </div>
