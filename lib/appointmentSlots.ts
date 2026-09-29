@@ -63,7 +63,8 @@ export function getNyDateString(offsetDays = 0): { dateStr: string; dayOfWeek: n
 
 /**
  * Calculates appointment duration based on garment count:
- * - 1 to 3 garments: 10 minutes (minimum appointment slot)
+ * - 1 garment: 5 minutes (or configurable minutesPerGarment)
+ * - 2 to 3 garments: 10 minutes (minimum appointment slot)
  * - 4 garments: 15 minutes
  * - 5 garments: 20 minutes
  * - Each garment beyond 3 adds 5 minutes (or configurable minutesPerGarment).
@@ -76,8 +77,11 @@ export function calculateAppointmentDuration(
   const minDuration = settings?.minDuration || 10;
   const perGarment = settings?.minutesPerGarment || 5;
 
+  if (count === 1) {
+    return perGarment; // 5 minutes for a single garment
+  }
   if (count <= 3) {
-    return minDuration;
+    return minDuration; // 10 minutes for 2 or 3 garments
   }
   return minDuration + (count - 3) * perGarment;
 }
