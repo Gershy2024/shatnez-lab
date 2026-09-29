@@ -467,14 +467,34 @@ Guidelines:
         .join("\n");
       const promptText = `${systemInstruction}\n\nRecent conversation:\n${recentMessages}\n\nVisitor: ${userMessage}\nLab Assistant:`;
 
-      const response = await fetch(geminiUrl, {
+      // Try with thinkingBudget: 0 to disable thinking overhead & ensure fast full responses
+      let response = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: promptText }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 1200,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
       });
+
+      // If model does not support thinkingConfig, fallback without it and use high max tokens
+      if (!response.ok) {
+        response = await fetch(geminiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }],
+            generationConfig: {
+              temperature: 0.4,
+              maxOutputTokens: 2048,
+            },
+          }),
+        });
+      }
 
       if (response.ok) {
         const data = await response.json();

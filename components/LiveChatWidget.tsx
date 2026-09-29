@@ -627,7 +627,7 @@ export function LiveChatWidget() {
                         {isRtl ? "מעבדת השעטנז" : "The Shatnez Lab"}
                       </div>
                     )}
-                    <p className={`whitespace-pre-wrap ${isRtl ? "text-right" : "text-left"}`}>{msg.text}</p>
+                    <p className={`whitespace-pre-wrap break-words ${isRtl ? "text-right" : "text-left"}`}>{msg.text}</p>
                   </div>
                   <span className="text-[10px] text-navy-400 font-medium px-1 flex items-center gap-1">
                     {dateStr}

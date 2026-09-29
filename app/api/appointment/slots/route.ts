@@ -38,7 +38,9 @@ export async function GET(req: NextRequest) {
         endHour: settings.endHour,
         bufferMinutes: settings.bufferMinutes,
         dayOverrides: settings.dayOverrides,
-        daysOfWeek: settings.daysOfWeek
+        daysOfWeek: settings.daysOfWeek,
+        blackoutDates: settings.blackoutDates || [],
+        dateOverrides: settings.dateOverrides || {}
       }
     });
   } catch (error) {

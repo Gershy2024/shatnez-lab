@@ -53,6 +53,8 @@ export default function AppointmentBookingPage() {
   const [systemEnabled, setSystemEnabled] = useState<boolean>(true);
   const [dayOverrides, setDayOverrides] = useState<Record<string, any>>({});
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([0, 1, 2, 3, 4, 5]);
+  const [blackoutDates, setBlackoutDates] = useState<string[]>([]);
+  const [dateOverrides, setDateOverrides] = useState<Record<string, any>>({});
 
   // Submission State
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -123,6 +125,8 @@ export default function AppointmentBookingPage() {
           if (data.settings?.locationText) setLabAddress(data.settings.locationText);
           if (data.settings?.dayOverrides) setDayOverrides(data.settings.dayOverrides);
           if (data.settings?.daysOfWeek) setDaysOfWeek(data.settings.daysOfWeek);
+          if (data.settings?.blackoutDates) setBlackoutDates(data.settings.blackoutDates);
+          if (data.settings?.dateOverrides) setDateOverrides(data.settings.dateOverrides);
           setSystemEnabled(data.enabled !== false);
         } else {
           setSlotsError(data.message || "Failed to load slots");
@@ -206,12 +210,50 @@ export default function AppointmentBookingPage() {
     }
   };
 
-  const isDayOpen = (day: DayOption) => {
-    const override = dayOverrides[String(day.dayOfWeek)];
+  const getDayStatus = (day: DayOption) => {
+    // 1. Date exception override (Holiday / special closure / custom hours)
+    const override = dateOverrides[day.dateStr];
     if (override) {
-      return !override.closed;
+      if (override.closed) {
+        return {
+          isOpen: false,
+          label: override.label || (isRtl ? "סגור" : "Closed"),
+          isHoliday: true
+        };
+      }
+      return {
+        isOpen: true,
+        label: override.label || null,
+        isHoliday: false
+      };
     }
-    return daysOfWeek.includes(day.dayOfWeek) && day.dayOfWeek !== 6;
+
+    // 2. Blackout dates array
+    if (blackoutDates.includes(day.dateStr)) {
+      return {
+        isOpen: false,
+        label: isRtl ? "סגור" : "Closed",
+        isHoliday: true
+      };
+    }
+
+    // 3. Day of week override
+    const dowOverride = dayOverrides[String(day.dayOfWeek)];
+    if (dowOverride) {
+      return {
+        isOpen: !dowOverride.closed,
+        label: !dowOverride.closed ? null : (isRtl ? "סגור" : "Closed"),
+        isHoliday: false
+      };
+    }
+
+    // 4. Default weekly schedule
+    const isOpen = daysOfWeek.includes(day.dayOfWeek) && day.dayOfWeek !== 6;
+    return {
+      isOpen,
+      label: isOpen ? null : (day.dayOfWeek === 6 ? (isRtl ? "שבת" : "Shabbos") : (isRtl ? "סגור" : "Closed")),
+      isHoliday: false
+    };
   };
 
   return (
@@ -333,7 +375,8 @@ export default function AppointmentBookingPage() {
                 {/* Day selector pills */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
                   {upcomingDays.map((day) => {
-                    const isOpen = isDayOpen(day);
+                    const status = getDayStatus(day);
+                    const isOpen = status.isOpen;
                     const isSelected = selectedDate === day.dateStr;
 
                     return (
@@ -347,7 +390,7 @@ export default function AppointmentBookingPage() {
                             ? "bg-primary-600 text-white border-primary-600 shadow-md scale-102"
                             : isOpen
                             ? "bg-white text-navy-900 border-primary-200 hover:border-primary-400 hover:bg-primary-50"
-                            : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
+                            : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60"
                         }`}
                       >
                         {day.isToday && (
@@ -373,8 +416,21 @@ export default function AppointmentBookingPage() {
                         </span>
                         <span className="text-xs font-bold mt-0.5">{day.displayDate}</span>
                         {!isOpen && (
-                          <span className="text-[9px] text-rose-500 font-semibold mt-1">
-                            {isRtl ? "סגור" : "Closed"}
+                          <span
+                            className="text-[9px] text-rose-500 font-semibold mt-1 truncate max-w-[85px]"
+                            title={status.label || undefined}
+                          >
+                            {status.label || (isRtl ? "סגור" : "Closed")}
+                          </span>
+                        )}
+                        {isOpen && status.label && (
+                          <span
+                            className={`text-[9px] font-medium mt-1 truncate max-w-[85px] ${
+                              isSelected ? "text-primary-100" : "text-amber-700"
+                            }`}
+                            title={status.label}
+                          >
+                            {status.label}
                           </span>
                         )}
                       </button>

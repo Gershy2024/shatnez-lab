@@ -40,14 +40,29 @@ Requirements:
     for (const model of modelsToTry) {
       try {
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(geminiUrl, {
+        let response = await fetch(geminiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [{ text: systemPrompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 250 }
-          })
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 1200,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+          }),
         });
+
+        if (!response.ok) {
+          response = await fetch(geminiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: systemPrompt }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+            }),
+          });
+        }
 
         if (response.ok) {
           const resData = await response.json();

@@ -886,7 +886,7 @@ export default function LiveChatAdminManager({ isRtl }: LiveChatAdminManagerProp
                             ? "Lab Representative (Staff / AI)"
                             : `Visitor #${selectedSession.shortId}`}
                         </div>
-                        <p className={`whitespace-pre-wrap ${isRtl ? "text-right" : "text-left"}`}>{msg.text}</p>
+                        <p className={`whitespace-pre-wrap break-words ${isRtl ? "text-right" : "text-left"}`}>{msg.text}</p>
                       </div>
                       <span className="text-[10px] text-primary-400 px-1">{dateStr}</span>
                     </div>

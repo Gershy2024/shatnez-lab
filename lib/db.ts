@@ -61,6 +61,14 @@ export interface Appointment {
   source?: "phone" | "admin" | "web";
 }
 
+export interface DateException {
+  date: string; // "YYYY-MM-DD"
+  closed: boolean;
+  label?: string; // e.g. "ראש השנה", "ערב יום כיפור", "חופשה"
+  start?: string;
+  end?: string;
+}
+
 export interface AppointmentSettings {
   enabled: boolean;
   minutesPerGarment: number; // default 5
@@ -72,6 +80,7 @@ export interface AppointmentSettings {
   daysOfWeek: number[]; // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri
   dayOverrides?: Record<string, { start: string; end: string; closed?: boolean }>;
   blackoutDates?: string[]; // "YYYY-MM-DD"
+  dateOverrides?: Record<string, DateException>; // Specific holiday & closure dates
   locationText?: string;
   adminNotificationPhone?: string; // Phone number to receive SMS notifications on new bookings
 }

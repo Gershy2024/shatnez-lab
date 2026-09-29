@@ -97,9 +97,14 @@ export async function getAvailableSlots(
   const settings = customSettings || (await getAppointmentSettings());
   if (!settings.enabled) return [];
 
-  // Check blackout dates
-  if (settings.blackoutDates && settings.blackoutDates.includes(dateStr)) {
-    return [];
+  // 1. Check specific date exception (holiday, blackout, or custom hours for this date)
+  const specificDateException = settings.dateOverrides?.[dateStr];
+  if (specificDateException) {
+    if (specificDateException.closed) {
+      return []; // Day is closed for holiday or special closure
+    }
+  } else if (settings.blackoutDates && settings.blackoutDates.includes(dateStr)) {
+    return []; // Day is blacked out
   }
 
   // Parse target date to get day of week
@@ -110,16 +115,21 @@ export async function getAvailableSlots(
   // Check day overrides or general daysOfWeek
   let startHour = settings.startHour || "10:00";
   let endHour = settings.endHour || "18:00";
-  let isClosed = false;
 
-  const override = settings.dayOverrides?.[String(dayOfWeek)];
-  if (override) {
-    if (override.closed) return [];
-    startHour = override.start || startHour;
-    endHour = override.end || endHour;
+  if (specificDateException && !specificDateException.closed) {
+    // Specific date has custom hours
+    if (specificDateException.start) startHour = specificDateException.start;
+    if (specificDateException.end) endHour = specificDateException.end;
   } else {
-    if (!settings.daysOfWeek.includes(dayOfWeek)) {
-      return []; // Day not active
+    const override = settings.dayOverrides?.[String(dayOfWeek)];
+    if (override) {
+      if (override.closed) return [];
+      startHour = override.start || startHour;
+      endHour = override.end || endHour;
+    } else {
+      if (!settings.daysOfWeek.includes(dayOfWeek)) {
+        return []; // Day not active
+      }
     }
   }
 
