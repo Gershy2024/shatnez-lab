@@ -712,7 +712,7 @@ export async function POST(req: NextRequest) {
           `${origin}/api/twilio/gather?step=appointment_date`,
           1,
           10,
-          playTtsEn(origin, introMsg) + sayEn(introMsg)
+          sayEn(introMsg)
         ) +
         sayEn("We did not receive your input. Returning to the main menu.") +
         redirect(`${origin}/api/twilio/voice`)
@@ -735,7 +735,7 @@ export async function POST(req: NextRequest) {
           `${origin}/api/twilio/gather?step=appointment_time_options&garments=${garments}`,
           1,
           10,
-          playTtsEn(origin, promptMsg) + sayEn(promptMsg)
+          sayEn(promptMsg)
         ) +
         sayEn("We did not receive your input. Returning to the main menu.") +
         redirect(`${origin}/api/twilio/voice`)
@@ -754,7 +754,7 @@ export async function POST(req: NextRequest) {
             `${origin}/api/twilio/gather?step=appointment_time_options&garments=${garments}`,
             1,
             10,
-            playTtsEn(origin, invalidMsg) + sayEn(invalidMsg)
+            sayEn(invalidMsg)
           ) +
           redirect(`${origin}/api/twilio/gather?step=appointment_date&garments=${garments}`)
         );
@@ -774,7 +774,7 @@ export async function POST(req: NextRequest) {
             `${origin}/api/twilio/gather?step=appointment_no_slots&garments=${garments}`,
             1,
             12,
-            playTtsEn(origin, noSlotsMsg) + sayEn(noSlotsMsg)
+            sayEn(noSlotsMsg)
           ) +
           redirect(`${origin}/api/twilio/voice`)
         );
@@ -794,7 +794,7 @@ export async function POST(req: NextRequest) {
           `${origin}/api/twilio/gather?step=appointment_confirm&date=${targetDateInfo.dateStr}&dayWord=${targetDayWord}&garments=${garments}&slotList=${slotTimesParam}`,
           1,
           15,
-          playTtsEn(origin, promptMsg) + sayEn(promptMsg)
+          sayEn(promptMsg)
         ) +
         sayEn("We did not receive your selection. Returning to the main menu.") +
         redirect(`${origin}/api/twilio/voice`)
@@ -869,7 +869,6 @@ export async function POST(req: NextRequest) {
       const confirmSpoken = `Thank you! Your appointment is confirmed for ${dayWord} at ${friendlyTime} for ${garments} ${garmentWord}. A confirmation text message has been sent to your phone. We look forward to seeing you at 14 Buchanan Road. Goodbye.`;
 
       return xmlResponse(
-        playTtsEn(origin, confirmSpoken) +
         sayEn(confirmSpoken) +
         `<Hangup />`
       );

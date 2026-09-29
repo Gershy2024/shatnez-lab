@@ -1521,8 +1521,13 @@ function lsSetAppointments(list: Appointment[]) {
 export async function saveAppointment(appointment: Appointment): Promise<void> {
   if (isConfigured && db) {
     try {
-      const docRef = doc(db, APPOINTMENTS_COLLECTION, appointment.id);
-      await setDoc(docRef, appointment);
+      const docId = appointment.id.startsWith("APT_") ? appointment.id : `APT_${appointment.id}`;
+      const dataToSave = {
+        ...appointment,
+        id: docId,
+        isAppointment: true
+      };
+      await setDoc(doc(db, ORDERS_COLLECTION, docId), dataToSave);
       return;
     } catch (e) {
       console.error("Firestore saveAppointment failed:", e);
@@ -1541,7 +1546,8 @@ export async function saveAppointment(appointment: Appointment): Promise<void> {
 export async function deleteAppointment(id: string): Promise<void> {
   if (isConfigured && db) {
     try {
-      await deleteDoc(doc(db, APPOINTMENTS_COLLECTION, id));
+      const docId = id.startsWith("APT_") ? id : `APT_${id}`;
+      await deleteDoc(doc(db, ORDERS_COLLECTION, docId));
       return;
     } catch (e) {
       console.error("Firestore deleteAppointment failed:", e);
@@ -1554,10 +1560,11 @@ export async function deleteAppointment(id: string): Promise<void> {
 export async function updateAppointmentStatus(id: string, status: Appointment["status"]): Promise<void> {
   if (isConfigured && db) {
     try {
-      const docRef = doc(db, APPOINTMENTS_COLLECTION, id);
+      const docId = id.startsWith("APT_") ? id : `APT_${id}`;
+      const docRef = doc(db, ORDERS_COLLECTION, docId);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        const data = snap.data() as Appointment;
+        const data = snap.data();
         data.status = status;
         await setDoc(docRef, data);
         return;
@@ -1577,9 +1584,23 @@ export async function updateAppointmentStatus(id: string, status: Appointment["s
 export async function getAllAppointments(): Promise<Appointment[]> {
   if (isConfigured && db) {
     try {
-      const snapshot = await getDocs(query(collection(db, APPOINTMENTS_COLLECTION)));
+      const snapshot = await getDocs(query(collection(db, ORDERS_COLLECTION)));
       return snapshot.docs
-        .map((d) => d.data() as Appointment)
+        .map((d) => d.data())
+        .filter((d) => d.isAppointment === true || String(d.id).startsWith("APT_"))
+        .map((d) => ({
+          id: d.id,
+          phone: d.phone || "",
+          customerName: d.customerName || "",
+          date: d.date || "",
+          time: d.time || "",
+          duration: d.duration || 10,
+          garmentsCount: d.garmentsCount || 1,
+          status: d.status || "scheduled",
+          notes: d.notes || "",
+          createdAt: d.createdAt || Date.now(),
+          source: d.source || "phone"
+        } as Appointment))
         .sort((a, b) => {
           const compDate = (a.date || "").localeCompare(b.date || "");
           if (compDate !== 0) return compDate;
@@ -1603,22 +1624,43 @@ export async function getAppointmentsForDate(date: string): Promise<Appointment[
 
 export function subscribeToAppointments(callback: (appointments: Appointment[]) => void) {
   if (isConfigured && db) {
-    return onSnapshot(
-      query(collection(db, APPOINTMENTS_COLLECTION)),
-      (snapshot) => {
-        const list = snapshot.docs
-          .map((d) => d.data() as Appointment)
-          .sort((a, b) => {
-            const compDate = (a.date || "").localeCompare(b.date || "");
-            if (compDate !== 0) return compDate;
-            return (a.time || "").localeCompare(b.time || "");
-          });
-        callback(list);
-      },
-      (error) => {
-        console.error("Firestore appointments subscription error:", error);
-      }
-    );
+    try {
+      return onSnapshot(
+        query(collection(db, ORDERS_COLLECTION)),
+        (snapshot) => {
+          const list = snapshot.docs
+            .map((d) => d.data())
+            .filter((d) => d.isAppointment === true || String(d.id).startsWith("APT_"))
+            .map((d) => ({
+              id: d.id,
+              phone: d.phone || "",
+              customerName: d.customerName || "",
+              date: d.date || "",
+              time: d.time || "",
+              duration: d.duration || 10,
+              garmentsCount: d.garmentsCount || 1,
+              status: d.status || "scheduled",
+              notes: d.notes || "",
+              createdAt: d.createdAt || Date.now(),
+              source: d.source || "phone"
+            } as Appointment))
+            .sort((a, b) => {
+              const compDate = (a.date || "").localeCompare(b.date || "");
+              if (compDate !== 0) return compDate;
+              return (a.time || "").localeCompare(b.time || "");
+            });
+          callback(list);
+        },
+        (error) => {
+          console.error("Firestore appointments subscription error:", error);
+          callback(lsGetAppointments());
+        }
+      );
+    } catch (e) {
+      console.error("Firestore subscribeToAppointments error:", e);
+      callback(lsGetAppointments());
+      return () => {};
+    }
   }
   callback(lsGetAppointments());
   return () => {};

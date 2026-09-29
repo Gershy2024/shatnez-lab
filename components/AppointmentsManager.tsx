@@ -70,12 +70,26 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
   // Subscribe to real-time appointments
   useEffect(() => {
+    let mounted = true;
     const unsubscribe = subscribeToAppointments((list) => {
-      setAppointments(list);
-      setLoading(false);
+      if (mounted) {
+        setAppointments(list);
+        setLoading(false);
+      }
     });
-    getAppointmentSettings().then(setSettings);
-    return () => unsubscribe();
+    getAppointmentSettings().then((s) => {
+      if (mounted) setSettings(s);
+    });
+
+    const timer = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 2000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, []);
 
   // Filtered appointments
