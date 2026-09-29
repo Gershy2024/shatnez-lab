@@ -62,6 +62,27 @@ export function getNyDateString(offsetDays = 0): { dateStr: string; dayOfWeek: n
 }
 
 /**
+ * Calculates appointment duration based on garment count:
+ * - 1 to 3 garments: 10 minutes (minimum appointment slot)
+ * - 4 garments: 15 minutes
+ * - 5 garments: 20 minutes
+ * - Each garment beyond 3 adds 5 minutes (or configurable minutesPerGarment).
+ */
+export function calculateAppointmentDuration(
+  garmentsCount: number,
+  settings?: { minDuration?: number; minutesPerGarment?: number; maxGarments?: number }
+): number {
+  const count = Math.max(1, Math.min(garmentsCount, settings?.maxGarments || 10));
+  const minDuration = settings?.minDuration || 10;
+  const perGarment = settings?.minutesPerGarment || 5;
+
+  if (count <= 3) {
+    return minDuration;
+  }
+  return minDuration + (count - 3) * perGarment;
+}
+
+/**
  * Calculates available appointment slots for a given date and number of garments.
  */
 export async function getAvailableSlots(
@@ -102,11 +123,9 @@ export async function getAvailableSlots(
   const endMins = timeToMinutes(endHour);
   if (endMins <= startMins) return [];
 
-  // Calculate required duration: e.g. count * 5 mins, with minDuration
+  // Calculate required duration using custom tiered rule
   const count = Math.max(1, Math.min(garmentsCount, settings.maxGarments || 10));
-  const minDuration = settings.minDuration || 10;
-  const minutesPerGarment = settings.minutesPerGarment || 5;
-  const duration = Math.max(count * minutesPerGarment, minDuration);
+  const duration = calculateAppointmentDuration(count, settings);
   const buffer = settings.bufferMinutes || 5;
 
   // Retrieve existing active appointments for this date

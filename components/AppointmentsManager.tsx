@@ -38,7 +38,7 @@ import {
   saveAppointmentSettings,
   DEFAULT_APPOINTMENT_SETTINGS
 } from "@/lib/db";
-import { formatTime12h, getNyDateString } from "@/lib/appointmentSlots";
+import { formatTime12h, getNyDateString, calculateAppointmentDuration } from "@/lib/appointmentSlots";
 
 interface Props {
   isRtl?: boolean;
@@ -139,9 +139,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
     setSavingNewApt(true);
     try {
-      const minutesPerGarment = settings.minutesPerGarment || 5;
-      const minDuration = settings.minDuration || 10;
-      const duration = Math.max(newGarments * minutesPerGarment, minDuration);
+      const duration = calculateAppointmentDuration(newGarments, settings);
 
       const apt: Appointment = {
         id: `apt_${Date.now()}_${newPhone.replace(/\D/g, "").slice(-4) || "0000"}`,
@@ -672,7 +670,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     Number of Garments: <strong>{newGarments}</strong>
                     <span className="text-primary-500 font-normal">
                       {" "}
-                      (Calculated duration: {Math.max(newGarments * (settings.minutesPerGarment || 5), settings.minDuration || 10)} mins)
+                      (Calculated duration: {calculateAppointmentDuration(newGarments, settings)} mins)
                     </span>
                   </label>
                   <input

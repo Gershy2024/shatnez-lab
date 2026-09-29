@@ -52,7 +52,7 @@
   }
 
   .admin-sidebar-item {
-    @apply w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200;
+    @apply w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200;
   }
 
   .admin-sidebar-item--active {
@@ -69,6 +69,25 @@
            whitespace-nowrap cursor-pointer transition-all duration-200
            hover:ring-2 hover:ring-gold-300/50 hover:shadow-sm;
   }
+}
+
+/* Elegant thin scrollbar for sidebar */
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 /* Sidebar slide-in animation for mobile */

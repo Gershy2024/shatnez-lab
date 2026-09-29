@@ -2245,7 +2245,7 @@ export default function AdminPage() {
         } lg:translate-x-0`}
       >
         {/* Sidebar Logo */}
-        <div className="px-5 py-6 border-b border-navy-800">
+        <div className="px-5 py-4 border-b border-navy-800">
           <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
             <div className="w-9 h-9 bg-gold-500 rounded-xl flex items-center justify-center shrink-0">
               <Microscope className="w-5 h-5 text-navy-900" />
@@ -2258,7 +2258,7 @@ export default function AdminPage() {
         </div>
 
         {/* Sidebar Nav Items */}
-        <nav className={`flex-1 py-4 px-3 space-y-1 overflow-y-auto ${isRtl ? "text-right" : ""}`}>
+        <nav className={`flex-1 py-2 px-2.5 space-y-0.5 overflow-y-auto sidebar-scrollbar ${isRtl ? "text-right" : ""}`}>
           <button
             onClick={() => { setActiveAdminTab("orders"); setSidebarOpen(false); }}
             className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${

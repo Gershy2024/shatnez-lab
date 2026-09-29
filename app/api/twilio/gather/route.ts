@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest, saveAppointment, getAppointmentSettings, Appointment } from "@/lib/db";
 import { triggerOutboundCall, sendSms } from "@/lib/twilioCall";
-import { getAvailableSlots, getNyDateString, formatTime12h } from "@/lib/appointmentSlots";
+import { getAvailableSlots, getNyDateString, formatTime12h, calculateAppointmentDuration } from "@/lib/appointmentSlots";
 
 // Global cache to track calls accepted by admin during Call Screening whisper
 const acceptedScreenCalls = new Set<string>();
@@ -833,9 +833,7 @@ export async function POST(req: NextRequest) {
 
       const selectedTime = slotList[selectedIdx];
       const aptSettings = await getAppointmentSettings();
-      const minutesPerGarment = aptSettings.minutesPerGarment || 5;
-      const minDuration = aptSettings.minDuration || 10;
-      const duration = Math.max(garments * minutesPerGarment, minDuration);
+      const duration = calculateAppointmentDuration(garments, aptSettings);
 
       const aptId = `apt_${Date.now()}_${cleanPhone ? cleanPhone.slice(-4) : "0000"}`;
       const newApt: Appointment = {
