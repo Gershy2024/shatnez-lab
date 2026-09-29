@@ -567,30 +567,33 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
         {/* Right side: Search, Filter, Add & Settings buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Search box */}
-          <div className="relative flex-1 sm:w-56">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-primary-400" />
-            <input
-              type="text"
-              placeholder="Search phone or name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-primary-50 border border-primary-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-          </div>
+          {/* Search box & Status Filter (Hidden in Holidays View) */}
+          {viewMode !== "holidays" && (
+            <>
+              <div className="relative flex-1 sm:w-56">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-primary-400" />
+                <input
+                  type="text"
+                  placeholder="Search phone or name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-primary-50 border border-primary-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
 
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs bg-primary-50 border border-primary-200 rounded-xl px-2.5 py-1.5 text-navy-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="all">All Statuses</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="no-show">No-Show</option>
-          </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="text-xs bg-primary-50 border border-primary-200 rounded-xl px-2.5 py-1.5 text-navy-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="no-show">No-Show</option>
+              </select>
+            </>
+          )}
 
           {/* Add Appointment Button */}
           <button
@@ -614,7 +617,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
       </div>
 
       {/* ── Main View Content ── */}
-      {loading ? (
+      {viewMode === "holidays" ? null : loading ? (
         <div className="card p-12 bg-white text-center text-primary-500 flex flex-col items-center justify-center gap-3">
           <RefreshCw className="w-6 h-6 animate-spin text-primary-600" />
           <p className="text-sm">Loading appointments...</p>
