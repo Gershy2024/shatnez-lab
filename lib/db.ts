@@ -73,6 +73,7 @@ export interface AppointmentSettings {
   dayOverrides?: Record<string, { start: string; end: string; closed?: boolean }>;
   blackoutDates?: string[]; // "YYYY-MM-DD"
   locationText?: string;
+  adminNotificationPhone?: string; // Phone number to receive SMS notifications on new bookings
 }
 
 
@@ -1502,7 +1503,8 @@ export const DEFAULT_APPOINTMENT_SETTINGS: AppointmentSettings = {
     "6": { start: "10:00", end: "18:00", closed: true }
   },
   blackoutDates: [],
-  locationText: "14 Buchanan Rd, North Square, NY"
+  locationText: "14 Buchanan Rd, North Square, NY",
+  adminNotificationPhone: "8455524744"
 };
 
 function lsGetAppointments(): Appointment[] {

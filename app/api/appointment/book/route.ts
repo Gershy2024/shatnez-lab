@@ -76,10 +76,23 @@ export async function POST(req: NextRequest) {
 
     const smsMessage = `The Shatnez Lab: Your appointment is confirmed for ${date} at ${timeLabel} for ${garments} ${garmentWord} (${duration} mins). Location: ${location}. See you soon!`;
 
-    // Send confirmation SMS in background
+    // Send confirmation SMS in background to customer
     sendSms(cleanPhone, smsMessage).catch((smsErr) => {
       console.warn("[Appointment Book API] Failed to send confirmation SMS:", smsErr);
     });
+
+    // Send instant alert SMS to Admin
+    const adminAlertPhone = (
+      settings.adminNotificationPhone ||
+      "8455524744"
+    ).replace(/\D/g, "");
+
+    if (adminAlertPhone && adminAlertPhone.length >= 10) {
+      const adminSms = `📅 New Appointment Alert (Website)!\nDate: ${date} at ${timeLabel}\nGarments: ${garments} (${duration} mins)\nCustomer: ${customerName ? customerName.trim() : "None"} (${cleanPhone})${notes ? `\nNotes: ${notes.trim()}` : ""}`;
+      sendSms(adminAlertPhone, adminSms).catch((err) => {
+        console.warn("[Appointment Book API] Failed to send admin SMS alert:", err);
+      });
+    }
 
     return NextResponse.json({
       success: true,

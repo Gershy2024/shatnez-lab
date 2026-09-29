@@ -894,7 +894,20 @@ export async function POST(req: NextRequest) {
         const locationAddress = aptSettings.locationText || "14 Buchanan Rd, North Square, NY";
         const smsMsg = `The Shatnez Lab: Your appointment is confirmed for ${dayWord} (${dateStr}) at ${friendlyTime} for ${garments} ${garmentWord}.\nLocation: ${locationAddress}.\nPlease arrive on time. For assistance, call our 24/7 automated line. Thank you!`;
         sendSms(targetPhone, smsMsg).catch((err) =>
-          console.error("[Appointment IVR] Failed to send SMS:", err)
+          console.error("[Appointment IVR] Failed to send customer SMS:", err)
+        );
+      }
+
+      // Send instant alert SMS to Admin
+      const adminAlertPhone = (
+        aptSettings.adminNotificationPhone ||
+        "8455524744"
+      ).replace(/\D/g, "");
+
+      if (adminAlertPhone && adminAlertPhone.length >= 10) {
+        const adminSms = `📅 New Appointment Alert (Phone IVR)!\nDate: ${dateStr} at ${friendlyTime}\nGarments: ${garments} (${duration} mins)\nCaller: ${targetPhone || "Unknown"}`;
+        sendSms(adminAlertPhone, adminSms).catch((err) =>
+          console.error("[Appointment IVR] Failed to send admin SMS alert:", err)
         );
       }
 

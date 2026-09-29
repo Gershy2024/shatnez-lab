@@ -984,6 +984,25 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   />
                 </div>
 
+                {/* Admin Alert Phone for New Bookings */}
+                <div>
+                  <label className="block font-semibold text-navy-900 mb-1">
+                    {isRtl ? "מספר לקבלת התראת SMS על כל פגישה שנקבעת" : "Admin SMS Alert Number (Receive text on new bookings)"}
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="845-552-4744"
+                    value={settings.adminNotificationPhone || ""}
+                    onChange={(e) => setSettings({ ...settings, adminNotificationPhone: e.target.value })}
+                    className="w-full px-3 py-2 border border-primary-300 rounded-xl"
+                  />
+                  <p className="text-[11px] text-primary-500 mt-1">
+                    {isRtl
+                      ? "הודעת SMS תישלח למספר זה באופן אוטומטי בכל פעם שלקוח קובע פגישה באתר או בטלפון."
+                      : "You will receive an instant text notification whenever a client schedules an appointment."}
+                  </p>
+                </div>
+
                 {settingsSuccess && (
                   <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl font-semibold flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4" /> Settings updated successfully!
