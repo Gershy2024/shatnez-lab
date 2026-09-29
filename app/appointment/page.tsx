@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 import { calculateAppointmentDuration, AvailableSlot, formatTime12h } from "@/lib/appointmentSlots";
+import { getHebrewDayInfo } from "@/lib/hebrewCalendar";
 
 interface DayOption {
   dateStr: string; // YYYY-MM-DD
@@ -28,6 +29,8 @@ interface DayOption {
   dayNameEn: string;
   dayNameHe: string;
   displayDate: string; // "Sep 30"
+  hebrewDateShort: string; // "י״ט אלול"
+  parsha: string | null;
   isToday: boolean;
   isTomorrow: boolean;
 }
@@ -82,6 +85,7 @@ export default function AppointmentBookingPage() {
       const dateNum = String(d.getDate()).padStart(2, "0");
       const dateStr = `${y}-${m}-${dateNum}`;
       const dayOfWeek = d.getDay();
+      const h = getHebrewDayInfo(dateStr);
 
       list.push({
         dateStr,
@@ -89,6 +93,8 @@ export default function AppointmentBookingPage() {
         dayNameEn: dayNamesEn[dayOfWeek],
         dayNameHe: dayNamesHe[dayOfWeek],
         displayDate: `${monthNamesEn[d.getMonth()]} ${d.getDate()}`,
+        hebrewDateShort: h.hebrewDateShort,
+        parsha: h.parsha,
         isToday: i === 0,
         isTomorrow: i === 1
       });
@@ -415,6 +421,22 @@ export default function AppointmentBookingPage() {
                           {isRtl ? day.dayNameHe : day.dayNameEn}
                         </span>
                         <span className="text-xs font-bold mt-0.5">{day.displayDate}</span>
+                        <span
+                          className={`text-[10px] font-bold font-serif mt-0.5 ${
+                            isSelected ? "text-primary-100" : "text-primary-700"
+                          }`}
+                        >
+                          {day.hebrewDateShort}
+                        </span>
+                        {day.dayOfWeek === 6 && day.parsha && (
+                          <span
+                            className={`text-[9px] font-semibold truncate max-w-[85px] mt-0.5 ${
+                              isSelected ? "text-white/90" : "text-indigo-700"
+                            }`}
+                          >
+                            פרשת {day.parsha}
+                          </span>
+                        )}
                         {!isOpen && (
                           <span
                             className="text-[9px] text-rose-500 font-semibold mt-1 truncate max-w-[85px]"

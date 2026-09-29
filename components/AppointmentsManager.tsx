@@ -28,7 +28,8 @@ import {
   X,
   CalendarOff,
   Ban,
-  CalendarCheck
+  CalendarCheck,
+  BookOpen
 } from "lucide-react";
 import {
   Appointment,
@@ -43,6 +44,7 @@ import {
   DEFAULT_APPOINTMENT_SETTINGS
 } from "@/lib/db";
 import { formatTime12h, getNyDateString, calculateAppointmentDuration } from "@/lib/appointmentSlots";
+import { getHebrewDayInfo, HebrewDayInfo } from "@/lib/hebrewCalendar";
 
 interface Props {
   isRtl?: boolean;
@@ -219,10 +221,11 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
   // Holiday / Date Exception Handlers
   const openDateEditor = (dateStr: string) => {
     const existing = settings.dateOverrides?.[dateStr];
+    const hebrewInfo = getHebrewDayInfo(dateStr);
     if (existing) {
       setEditingDateException({ ...existing });
       setExceptionType(existing.closed ? "closed" : (existing.start ? "custom" : "regular"));
-      setExceptionLabel(existing.label || "");
+      setExceptionLabel(existing.label || hebrewInfo.primaryHoliday || "");
       setExceptionStart(existing.start || "10:00");
       setExceptionEnd(existing.end || "14:00");
     } else {
@@ -230,10 +233,10 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
       setEditingDateException({
         date: dateStr,
         closed: isBlackout || true,
-        label: ""
+        label: hebrewInfo.primaryHoliday || ""
       });
       setExceptionType("closed");
-      setExceptionLabel("");
+      setExceptionLabel(hebrewInfo.primaryHoliday || "");
       setExceptionStart("10:00");
       setExceptionEnd("14:00");
     }
@@ -307,11 +310,13 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
       const prevDate = prevMonthDays - i;
       const prevM = String(month === 0 ? 12 : month).padStart(2, "0");
       const prevY = month === 0 ? year - 1 : year;
+      const dateStr = `${prevY}-${prevM}-${String(prevDate).padStart(2, "0")}`;
       days.push({
         dayNumber: prevDate,
-        dateStr: `${prevY}-${prevM}-${String(prevDate).padStart(2, "0")}`,
+        dateStr,
         isCurrentMonth: false,
-        dayOfWeek: (firstDayIndex - 1 - i + 7) % 7
+        dayOfWeek: (firstDayIndex - 1 - i + 7) % 7,
+        hebrew: getHebrewDayInfo(dateStr)
       });
     }
 
@@ -324,7 +329,8 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
         dayNumber: d,
         dateStr,
         isCurrentMonth: true,
-        dayOfWeek
+        dayOfWeek,
+        hebrew: getHebrewDayInfo(dateStr)
       });
     }
 
@@ -334,15 +340,34 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
     for (let nextD = 1; nextD <= remaining; nextD++) {
       const nextM = String(month === 11 ? 1 : month + 2).padStart(2, "0");
       const nextY = month === 11 ? year + 1 : year;
+      const dateStr = `${nextY}-${nextM}-${String(nextD).padStart(2, "0")}`;
       days.push({
         dayNumber: nextD,
-        dateStr: `${nextY}-${nextM}-${String(nextD).padStart(2, "0")}`,
+        dateStr,
         isCurrentMonth: false,
-        dayOfWeek: (days.length) % 7
+        dayOfWeek: (days.length) % 7,
+        hebrew: getHebrewDayInfo(dateStr)
       });
     }
 
     return days;
+  }, [holidayMonth]);
+
+  const hebrewMonthRange = useMemo(() => {
+    const year = holidayMonth.getFullYear();
+    const month = holidayMonth.getMonth();
+    const curM = String(month + 1).padStart(2, "0");
+    const firstDateStr = `${year}-${curM}-01`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const lastDateStr = `${year}-${curM}-${String(lastDay).padStart(2, "0")}`;
+
+    const hFirst = getHebrewDayInfo(firstDateStr);
+    const hLast = getHebrewDayInfo(lastDateStr);
+
+    if (hFirst.hebrewMonth === hLast.hebrewMonth) {
+      return `${hFirst.hebrewMonth} ${hFirst.hebrewYear}`;
+    }
+    return `${hFirst.hebrewMonth} - ${hLast.hebrewMonth} ${hLast.hebrewYear}`;
   }, [holidayMonth]);
 
   const handleSaveSettings = async () => {
@@ -614,8 +639,28 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
         /* ── Calendar / Timeline Schedule View ── */
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-primary-600 px-1">
-            <span>
-              Showing <strong>{filteredAppointments.length}</strong> appointments for <strong>{selectedDate}</strong>
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span>
+                Showing <strong>{filteredAppointments.length}</strong> appointments for <strong>{selectedDate}</strong>
+              </span>
+              {(() => {
+                const h = getHebrewDayInfo(selectedDate);
+                return (
+                  <span className="inline-flex flex-wrap items-center gap-1.5 text-navy-900 font-serif font-bold">
+                    <span>• {h.hebrewDateFull}</span>
+                    {h.parsha && (
+                      <span className="font-sans text-[10px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                        פרשת {h.parsha}
+                      </span>
+                    )}
+                    {h.primaryHoliday && (
+                      <span className="font-sans text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                        🕯️ {h.primaryHoliday}
+                      </span>
+                    )}
+                  </span>
+                );
+              })()}
             </span>
             <span className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1">
@@ -862,9 +907,14 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                 <ChevronLeft className="w-5 h-5" />
               </button>
 
-              <span className="px-3 text-sm font-bold text-navy-900 min-w-[130px] text-center">
-                {holidayMonth.toLocaleString("en-US", { month: "long", year: "numeric" })}
-              </span>
+              <div className="px-3 min-w-[160px] text-center flex flex-col items-center">
+                <span className="text-sm font-bold text-navy-900 leading-tight">
+                  {holidayMonth.toLocaleString("en-US", { month: "long", year: "numeric" })}
+                </span>
+                <span className="text-[11px] font-bold text-primary-600 mt-0.5">
+                  {hebrewMonthRange}
+                </span>
+              </div>
 
               <button
                 type="button"
@@ -883,13 +933,13 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
           {/* Monthly Calendar Grid */}
           <div className="card p-6 bg-white border border-primary-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-navy-900 uppercase tracking-wider">
                   {isRtl ? "לחץ על יום כדי לשנות סטטוס (פתוח / סגור לחג)" : "Click on any day to set holiday / closure status"}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                   <span className="text-primary-600">{isRtl ? "פתוח כרגיל" : "Regular Open"}</span>
@@ -929,34 +979,81 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     key={cell.dateStr}
                     type="button"
                     onClick={() => openDateEditor(cell.dateStr)}
-                    className={`min-h-[90px] p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all group relative ${
+                    className={`min-h-[105px] p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all group relative ${
                       !cell.isCurrentMonth
-                        ? "opacity-30 bg-primary-50/30 border-dashed border-primary-200"
+                        ? "opacity-35 bg-primary-50/30 border-dashed border-primary-200"
                         : isClosed
                         ? "bg-rose-50/80 border-rose-300 hover:border-rose-500 hover:shadow-md"
                         : hasCustomHours
                         ? "bg-amber-50/80 border-amber-300 hover:border-amber-500 hover:shadow-md"
                         : isSaturday
-                        ? "bg-slate-50 border-slate-200 text-slate-500"
+                        ? "bg-indigo-50/30 border-indigo-100/80 text-navy-900"
                         : isWeekdayClosed
                         ? "bg-primary-50/60 border-primary-200 text-primary-400"
                         : "bg-white border-primary-200 hover:border-primary-400 hover:bg-primary-50/50 hover:shadow-sm"
                     }`}
                   >
-                    <div className="flex items-center justify-between w-full">
-                      <span className={`text-sm font-extrabold ${cell.isCurrentMonth ? "text-navy-900" : "text-primary-400"}`}>
-                        {cell.dayNumber}
-                      </span>
-                      {isClosed ? (
-                        <span className="w-2 h-2 rounded-full bg-rose-500" />
-                      ) : hasCustomHours ? (
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      ) : !isSaturday && !isWeekdayClosed ? (
-                        <span className="w-2 h-2 rounded-full bg-emerald-500/60" />
-                      ) : null}
+                    {/* Top Row: Gregorian Day & Hebrew Day */}
+                    <div className="flex items-start justify-between w-full">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-sm font-extrabold ${cell.isCurrentMonth ? "text-navy-900" : "text-primary-400"}`}>
+                          {cell.dayNumber}
+                        </span>
+                        {cell.hebrew?.isRoshChodesh && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs">
+                            ר״ח
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-xs font-bold font-serif ${
+                            cell.isCurrentMonth ? "text-primary-700" : "text-primary-400"
+                          }`}
+                          title={cell.hebrew?.hebrewDateFull}
+                        >
+                          {cell.hebrew?.hebrewDay === "א׳"
+                            ? `${cell.hebrew?.hebrewDay} ${cell.hebrew?.hebrewMonth}`
+                            : cell.hebrew?.hebrewDay}
+                        </span>
+                        {isClosed ? (
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                        ) : hasCustomHours ? (
+                          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                        ) : !isSaturday && !isWeekdayClosed ? (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500/60 shrink-0" />
+                        ) : null}
+                      </div>
                     </div>
 
-                    <div className="mt-1 w-full overflow-hidden">
+                    {/* Middle: Hebrew Holiday & Parsha */}
+                    <div className="my-1 space-y-1 w-full overflow-hidden">
+                      {/* Shabbat Parsha */}
+                      {isSaturday && cell.hebrew?.parsha && (
+                        <div
+                          className="bg-indigo-100/80 border border-indigo-200 text-indigo-950 text-[10px] font-bold px-1.5 py-0.5 rounded-lg truncate flex items-center gap-1 shadow-2xs"
+                          title={`פרשת ${cell.hebrew.parsha}`}
+                        >
+                          <BookOpen className="w-3 h-3 text-indigo-700 shrink-0" />
+                          <span className="truncate">פרשת {cell.hebrew.parsha}</span>
+                        </div>
+                      )}
+
+                      {/* Jewish Holidays (if any on this day) */}
+                      {cell.hebrew?.holidays && cell.hebrew.holidays.length > 0 && (
+                        <div
+                          className="bg-amber-100/90 border border-amber-300 text-amber-950 text-[10px] font-bold px-1.5 py-0.5 rounded-lg truncate flex items-center gap-1 shadow-2xs"
+                          title={cell.hebrew.holidays.join(", ")}
+                        >
+                          <span className="text-[10px] leading-none">🕯️</span>
+                          <span className="truncate">{cell.hebrew.holidays.join(", ")}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom: Lab Open/Closed Status */}
+                    <div className="w-full overflow-hidden">
                       {isClosed ? (
                         <div className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md truncate">
                           ⛔ {exception?.label || (isRtl ? "חג / סגור" : "Closed")}
@@ -966,17 +1063,13 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                           🕒 {exception.start}-{exception.end}
                         </div>
                       ) : isSaturday ? (
-                        <span className="text-[10px] text-slate-400 font-semibold">{isRtl ? "שבת" : "Shabbos"}</span>
+                        <span className="text-[10px] text-indigo-900/60 font-semibold block">{isRtl ? "שבת קודש" : "Shabbos"}</span>
                       ) : isWeekdayClosed ? (
-                        <span className="text-[10px] text-primary-400 font-medium italic">{isRtl ? "סגור" : "Closed"}</span>
+                        <span className="text-[10px] text-primary-400 font-medium italic block">{isRtl ? "סגור" : "Closed"}</span>
                       ) : (
-                        <span className="text-[10px] text-emerald-600 font-medium">{isRtl ? "פתוח כרגיל" : "Open"}</span>
+                        <span className="text-[10px] text-emerald-600 font-medium block">{isRtl ? "פתוח כרגיל" : "Open"}</span>
                       )}
                     </div>
-
-                    <span className="text-[9px] text-primary-400 group-hover:text-primary-700 opacity-0 group-hover:opacity-100 transition-opacity self-end">
-                      {isRtl ? "ערוך" : "Edit"}
-                    </span>
                   </button>
                 );
               })}
@@ -1061,96 +1154,148 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
       {/* ── Date Exception / Holiday Editor Modal ── */}
       <AnimatePresence>
-        {editingDateException && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-primary-200"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-primary-100 mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs">
-                    <CalendarOff className="w-4 h-4" />
+        {editingDateException && (() => {
+          const modalHebrewInfo = getHebrewDayInfo(editingDateException.date);
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-primary-200"
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-primary-100 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs">
+                      <CalendarOff className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-navy-900">
+                        {isRtl ? "הגדרת יום / חג לתאריך" : "Configure Date Exception"}
+                      </h3>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-primary-500 font-mono font-semibold">
+                          {editingDateException.date}
+                        </span>
+                        <span className="text-xs font-bold text-navy-900 font-serif">
+                          • {modalHebrewInfo.hebrewDateFull}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-navy-900">
-                      {isRtl ? "הגדרת יום / חג לתאריך" : "Configure Date Exception"}
-                    </h3>
-                    <p className="text-xs text-primary-500 font-mono font-semibold">
-                      {editingDateException.date}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setEditingDateException(null)}
-                  className="p-1 text-primary-400 hover:text-primary-700 rounded-lg"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4 text-xs">
-                {/* Exception Type Radio */}
-                <div className="space-y-2">
-                  <label className="block font-bold text-navy-900">
-                    {isRtl ? "סטטוס התאריך" : "Day Status"}
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setExceptionType("regular")}
-                      className={`p-2.5 rounded-xl border font-bold text-center transition-all ${
-                        exceptionType === "regular"
-                          ? "bg-emerald-500 text-white border-emerald-600 shadow-sm"
-                          : "bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100"
-                      }`}
-                    >
-                      {isRtl ? "פתוח כרגיל" : "Regular Open"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setExceptionType("closed")}
-                      className={`p-2.5 rounded-xl border font-bold text-center transition-all ${
-                        exceptionType === "closed"
-                          ? "bg-rose-500 text-white border-rose-600 shadow-sm"
-                          : "bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100"
-                      }`}
-                    >
-                      {isRtl ? "סגור / חג" : "Holiday / Closed"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setExceptionType("custom")}
-                      className={`p-2.5 rounded-xl border font-bold text-center transition-all ${
-                        exceptionType === "custom"
-                          ? "bg-amber-500 text-white border-amber-600 shadow-sm"
-                          : "bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100"
-                      }`}
-                    >
-                      {isRtl ? "שעות מיוחדות" : "Custom Hours"}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setEditingDateException(null)}
+                    className="p-1 text-primary-400 hover:text-primary-700 rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
-                {/* Holiday / Event Name */}
-                {exceptionType !== "regular" && (
-                  <div>
-                    <label className="block font-semibold text-navy-900 mb-1">
-                      {isRtl ? "שם החג / סיבת הסגירה" : "Holiday Name or Closure Reason"}
+                <div className="space-y-4 text-xs">
+                  {/* Hebrew Date & Parsha Banner */}
+                  <div className="bg-primary-50/80 border border-primary-200/80 rounded-2xl p-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-navy-900 block font-serif">
+                        {modalHebrewInfo.hebrewDateFull}
+                      </span>
+                      <span className="text-[11px] text-primary-600 font-medium">
+                        {modalHebrewInfo.parsha ? `פרשת ${modalHebrewInfo.parsha}` : ""}
+                        {modalHebrewInfo.primaryHoliday ? ` • ${modalHebrewInfo.primaryHoliday}` : ""}
+                      </span>
+                    </div>
+                    {modalHebrewInfo.isRoshChodesh && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        ראש חודש
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Exception Type Radio */}
+                  <div className="space-y-2">
+                    <label className="block font-bold text-navy-900">
+                      {isRtl ? "סטטוס התאריך" : "Day Status"}
                     </label>
-                    <input
-                      type="text"
-                      placeholder={isRtl ? "למשל: ראש השנה, ערב סוכות, חופשה..." : "e.g. Rosh Hashanah, Vacation..."}
-                      value={exceptionLabel}
-                      onChange={(e) => setExceptionLabel(e.target.value)}
-                      className="w-full px-3 py-2 border border-primary-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                    />
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExceptionType("regular")}
+                        className={`p-2.5 rounded-xl border font-bold text-center transition-all ${
+                          exceptionType === "regular"
+                            ? "bg-emerald-500 text-white border-emerald-600 shadow-sm"
+                            : "bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100"
+                        }`}
+                      >
+                        {isRtl ? "פתוח כרגיל" : "Regular Open"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExceptionType("closed")}
+                        className={`p-2.5 rounded-xl border font-bold text-center transition-all ${
+                          exceptionType === "closed"
+                            ? "bg-rose-500 text-white border-rose-600 shadow-sm"
+                            : "bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100"
+                        }`}
+                      >
+                        {isRtl ? "סגור / חג" : "Holiday / Closed"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExceptionType("custom")}
+                        className={`p-2.5 rounded-xl border font-bold text-center transition-all ${
+                          exceptionType === "custom"
+                            ? "bg-amber-500 text-white border-amber-600 shadow-sm"
+                            : "bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100"
+                        }`}
+                      >
+                        {isRtl ? "שעות מיוחדות" : "Custom Hours"}
+                      </button>
+                    </div>
                   </div>
-                )}
+
+                  {/* Holiday / Event Name */}
+                  {exceptionType !== "regular" && (
+                    <div>
+                      <label className="block font-semibold text-navy-900 mb-1">
+                        {isRtl ? "שם החג / סיבת הסגירה" : "Holiday Name or Closure Reason"}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={isRtl ? "למשל: ראש השנה, ערב סוכות, חופשה..." : "e.g. Rosh Hashanah, Vacation..."}
+                        value={exceptionLabel}
+                        onChange={(e) => setExceptionLabel(e.target.value)}
+                        className="w-full px-3 py-2 border border-primary-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                      />
+
+                      {/* Fast selection chips */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {modalHebrewInfo.holidays.map((h) => (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => setExceptionLabel(h)}
+                            className="px-2.5 py-1 rounded-lg bg-amber-100/90 hover:bg-amber-200 text-amber-950 border border-amber-300 text-[11px] font-bold transition-colors"
+                          >
+                            🕯️ {h}
+                          </button>
+                        ))}
+                        {(isRtl
+                          ? ["ערב חג", "חג", "צום", "חול המועד", "חופשה"]
+                          : ["Holiday", "Eve of Holiday", "Fast Day", "Chol HaMoed", "Vacation"]
+                        ).map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setExceptionLabel(tag)}
+                            className="px-2 py-1 rounded-lg bg-primary-100 hover:bg-primary-200 text-primary-700 text-[10px] font-semibold transition-colors"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                 {/* Custom Hours inputs */}
                 {exceptionType === "custom" && (
@@ -1195,7 +1340,8 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
               </div>
             </motion.div>
           </div>
-        )}
+        );
+      })()}
       </AnimatePresence>
 
       {/* ── Add Appointment Modal ── */}
