@@ -140,7 +140,7 @@ export async function getAvailableSlots(
   // Calculate required duration using custom tiered rule
   const count = Math.max(1, Math.min(garmentsCount, settings.maxGarments || 10));
   const duration = calculateAppointmentDuration(count, settings);
-  const buffer = settings.bufferMinutes || 5;
+  const buffer = typeof settings.bufferMinutes === "number" ? settings.bufferMinutes : 0;
 
   // Retrieve existing active appointments for this date
   const existingApts = await getAppointmentsForDate(dateStr);

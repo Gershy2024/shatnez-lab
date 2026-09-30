@@ -74,7 +74,7 @@ export interface AppointmentSettings {
   minutesPerGarment: number; // default 5
   minDuration: number; // default 10
   maxGarments: number; // default 10
-  bufferMinutes: number; // default 5
+  bufferMinutes: number; // default 0
   startHour: string; // default "10:00"
   endHour: string; // default "18:00"
   daysOfWeek: number[]; // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri
@@ -1498,7 +1498,7 @@ export const DEFAULT_APPOINTMENT_SETTINGS: AppointmentSettings = {
   minutesPerGarment: 5,
   minDuration: 10,
   maxGarments: 10,
-  bufferMinutes: 5,
+  bufferMinutes: 0,
   startHour: "10:00",
   endHour: "18:00",
   daysOfWeek: [0, 1, 2, 3, 4], // Sunday to Thursday

@@ -1630,15 +1630,16 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     </div>
 
                     <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Buffer Between Visits</label>
+                      <label className="block text-primary-600 mb-1 font-medium">Buffer Between Visits (Minutes)</label>
                       <input
                         type="number"
                         min={0}
                         max={30}
-                        value={settings.bufferMinutes || 5}
-                        onChange={(e) =>
-                          setSettings({ ...settings, bufferMinutes: parseInt(e.target.value, 10) || 0 })
-                        }
+                        value={settings.bufferMinutes !== undefined && !isNaN(settings.bufferMinutes) ? settings.bufferMinutes : 0}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          setSettings({ ...settings, bufferMinutes: isNaN(val) ? 0 : Math.max(0, val) });
+                        }}
                         className="w-full px-3 py-2 border border-primary-300 rounded-xl"
                       />
                     </div>
