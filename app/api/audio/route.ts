@@ -96,13 +96,19 @@ export async function GET(req: NextRequest) {
     console.log(`[Audio API] Successfully retrieved Base64 data (length: ${base64Data.length}). Decoding to binary...`);
     const buffer = Buffer.from(base64Data, "base64");
 
-    return new Response(buffer, {
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Length": buffer.length.toString(),
-        "Cache-Control": "public, max-age=86400, s-maxage=86400",
-      },
-    });
+    const isDownload = url.searchParams.get("download") === "true" || url.searchParams.get("download") === "1";
+    const headers: Record<string, string> = {
+      "Content-Type": "audio/mpeg",
+      "Content-Length": buffer.length.toString(),
+      "Cache-Control": "public, max-age=86400, s-maxage=86400",
+    };
+
+    if (isDownload) {
+      const cleanFileName = `${name.replace(/[^a-zA-Z0-9_-]/g, "_")}.mp3`;
+      headers["Content-Disposition"] = `attachment; filename="${cleanFileName}"`;
+    }
+
+    return new Response(buffer, { headers });
   } catch (error: any) {
     console.error("[Audio API] Unexpected error serving audio file:", error);
     return new Response(`Error serving audio file: ${error.message || error}`, { status: 500 });

@@ -1647,6 +1647,31 @@ export default function AdminPage() {
     showToast(isRtl ? `הקישור הועתק ללוח ויכול לשמש ב-Twilio!` : `Link copied to clipboard for use in Twilio!`, "success");
   };
 
+  const handleDownloadAudio = async (name: string) => {
+    try {
+      const fileName = `${name.toLowerCase().trim()}.mp3`;
+      const url = `/api/audio?name=${encodeURIComponent(name.toLowerCase().trim())}&download=true`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch audio file");
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(a);
+
+      showToast(isRtl ? `הקובץ ${fileName} יורד כעת` : `Downloading ${fileName}...`, "info");
+    } catch (err) {
+      console.error("Error downloading audio:", err);
+      window.open(`/api/audio?name=${encodeURIComponent(name.toLowerCase().trim())}&download=true`, "_blank");
+    }
+  };
+
   const handleToggleAnnouncement = async (active: boolean) => {
     setAnnouncementActive(active);
     try {
@@ -5936,6 +5961,14 @@ export default function AdminPage() {
                                 </span>
                               </div>
                               <div className={`flex items-center gap-1 ${isRtl ? "flex-row-reverse" : ""}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAudio(file.name)}
+                                  className="p-1.5 rounded-lg text-primary-600 hover:text-navy-900 hover:bg-primary-100 transition-all shrink-0"
+                                  title={isRtl ? "הורד קובץ שמע" : "Download audio file"}
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
                                 <label
                                   className={`p-1.5 rounded-lg text-gold-500 hover:text-gold-600 hover:bg-gold-50 transition-all shrink-0 cursor-pointer block ${
                                     isReplacingName === file.name ? "opacity-50 cursor-not-allowed" : ""
