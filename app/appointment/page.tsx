@@ -146,17 +146,7 @@ export default function AppointmentBookingPage() {
     }
   }, [upcomingDays, selectedDate]);
 
-  // If user selected date in week 2, make sure tab is on week 2
-  useEffect(() => {
-    if (selectedDate && upcomingDays.length > 7) {
-      const idx = upcomingDays.findIndex((d) => d.dateStr === selectedDate);
-      if (idx >= 7 && weekTab !== 1) {
-        setWeekTab(1);
-      } else if (idx >= 0 && idx < 7 && weekTab !== 0) {
-        setWeekTab(0);
-      }
-    }
-  }, [selectedDate, upcomingDays, weekTab]);
+
 
   // Fetch available slots when selectedDate or garmentsCount changes
   useEffect(() => {
