@@ -708,7 +708,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                         {friendlyTime}
                       </div>
                       <span className="text-xs text-primary-500 font-medium">
-                        ({apt.duration || 15} mins)
+                        ({apt.duration || 5} mins)
                       </span>
                     </div>
 
@@ -812,7 +812,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                       <td className="py-3 px-4 font-semibold text-navy-900 whitespace-nowrap">
                         {apt.date} • {friendlyTime}
                         <span className="block text-[10px] text-primary-400 font-normal">
-                          {apt.duration || 15} mins duration
+                          {apt.duration || 5} mins duration
                         </span>
                       </td>
 
@@ -1637,9 +1637,9 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   <h4 className="font-bold text-navy-900 uppercase tracking-wider text-[11px] text-primary-600">
                     Timing & Calculation Rules
                   </h4>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Minutes per Garment (4+)</label>
+                      <label className="block text-primary-600 mb-1 font-medium">Minutes / Garment (4+)</label>
                       <input
                         type="number"
                         min={1}
@@ -1667,7 +1667,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     </div>
 
                     <div>
-                      <label className="block text-primary-600 mb-1 font-medium">Buffer Between Visits (Minutes)</label>
+                      <label className="block text-primary-600 mb-1 font-medium">Buffer Between Visits</label>
                       <input
                         type="number"
                         min={0}
@@ -1676,6 +1676,21 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                         onChange={(e) => {
                           const val = parseInt(e.target.value, 10);
                           setSettings({ ...settings, bufferMinutes: isNaN(val) ? 0 : Math.max(0, val) });
+                        }}
+                        className="w-full px-3 py-2 border border-primary-300 rounded-xl"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-primary-600 mb-1 font-medium">Slot Interval (Minutes)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={settings.slotInterval !== undefined && !isNaN(settings.slotInterval) ? settings.slotInterval : 5}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          setSettings({ ...settings, slotInterval: isNaN(val) ? 5 : Math.max(1, val) });
                         }}
                         className="w-full px-3 py-2 border border-primary-300 rounded-xl"
                       />

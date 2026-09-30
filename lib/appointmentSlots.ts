@@ -156,8 +156,8 @@ export async function getAvailableSlots(
     minAllowedStartMins = Math.max(startMins, currentMins + 30);
   }
 
-  // Determine candidate slot interval: align to 15-minute intervals
-  const interval = 15;
+  // Determine candidate slot interval: align to 5-minute intervals (or settings.slotInterval)
+  const interval = settings.slotInterval || 5;
   const availableSlots: AvailableSlot[] = [];
 
   // Round minAllowedStartMins up to nearest interval
