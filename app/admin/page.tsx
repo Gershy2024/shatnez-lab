@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
-import { motion, AnimatePresence, useDragControls } from "framer-motion";
-import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot, Calendar } from "lucide-react";
+import { motion, AnimatePresence, useDragControls, Reorder } from "framer-motion";
+import { Lock, Plus, Trash2, Save, X, Package, Search, LogOut, Printer, Volume2, Copy, Music, FileAudio, Play, Pause, FileText, Network, Webhook, Sliders, CreditCard, RefreshCw, Download, Archive, ArchiveRestore, Upload, Send, BarChart3, Menu, CheckCircle2, XCircle, Clock, DollarSign, TrendingUp, TrendingDown, Sparkles, Bot, Calendar, GripVertical, ArrowUpDown, ChevronUp, ChevronDown, RotateCcw, Check } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import PrintCard from "@/components/PrintCard";
@@ -535,6 +535,35 @@ function DeliveryRequestCard({ request, isRtl, onUpdate, onDelete, onCall }: Del
   );
 }
 
+type AdminTabType =
+  | "orders"
+  | "ai_assistant"
+  | "appointments"
+  | "deliveries"
+  | "livechat"
+  | "voicemails"
+  | "audio"
+  | "calls"
+  | "analytics"
+  | "archive"
+  | "settings"
+  | "billing";
+
+const DEFAULT_TAB_ORDER: AdminTabType[] = [
+  "orders",
+  "ai_assistant",
+  "appointments",
+  "deliveries",
+  "livechat",
+  "voicemails",
+  "audio",
+  "calls",
+  "analytics",
+  "archive",
+  "settings",
+  "billing"
+];
+
 export default function AdminPage() {
   const { t, isRtl } = useLanguage();
   const dragControls = useDragControls();
@@ -652,7 +681,152 @@ export default function AdminPage() {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const [adminNotes, setAdminNotes] = useState("");
-  const [activeAdminTab, setActiveAdminTab] = useState<"orders" | "voicemails" | "audio" | "settings" | "calls" | "archive" | "analytics" | "billing" | "deliveries" | "appointments" | "livechat" | "ai_assistant">("orders");
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminTabType>("orders");
+  const [tabOrder, setTabOrder] = useState<AdminTabType[]>(DEFAULT_TAB_ORDER);
+  const [isReorderingTabs, setIsReorderingTabs] = useState(false);
+
+  // Load customized sidebar tab order from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("shatnez_admin_tab_order");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const validTabs = parsed.filter((t) => DEFAULT_TAB_ORDER.includes(t as AdminTabType)) as AdminTabType[];
+          const missingTabs = DEFAULT_TAB_ORDER.filter((t) => !validTabs.includes(t));
+          setTabOrder([...validTabs, ...missingTabs]);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const handleUpdateTabOrder = (newOrder: AdminTabType[]) => {
+    setTabOrder(newOrder);
+    try {
+      localStorage.setItem("shatnez_admin_tab_order", JSON.stringify(newOrder));
+    } catch {}
+  };
+
+  const moveTab = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= tabOrder.length) return;
+    const newOrder = [...tabOrder];
+    const temp = newOrder[index];
+    newOrder[index] = newOrder[targetIndex];
+    newOrder[targetIndex] = temp;
+    handleUpdateTabOrder(newOrder);
+  };
+
+  const resetTabOrder = () => {
+    handleUpdateTabOrder(DEFAULT_TAB_ORDER);
+  };
+
+  const getSidebarTabInfo = (id: AdminTabType) => {
+    switch (id) {
+      case "orders":
+        return {
+          label: isRtl ? "ניהול הזמנות" : "Orders",
+          icon: <Package className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      case "ai_assistant":
+        return {
+          label: isRtl ? "עוזר AI למנהל" : "AI Assistant",
+          icon: <Sparkles className="w-4 h-4 shrink-0 text-gold-400" />,
+          badge: (
+            <span className="ms-auto bg-gold-500/20 text-gold-400 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+              AI
+            </span>
+          )
+        };
+      case "appointments":
+        return {
+          label: isRtl ? "תורים ופגישות" : "Appointments",
+          icon: <Calendar className="w-4 h-4 shrink-0 text-primary-400" />,
+          badge: null
+        };
+      case "deliveries": {
+        const count = deliveries.filter((d) => d.status === "pending").length;
+        return {
+          label: isRtl ? "איסוף ומשלוחים" : "Pick up & Delivery",
+          icon: <MapPin className="w-4 h-4 shrink-0" />,
+          badge: count > 0 ? (
+            <span className="ms-auto bg-gold-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {count}
+            </span>
+          ) : null
+        };
+      }
+      case "livechat": {
+        const count = liveChatSessions.filter(
+          (s) => s.status !== "closed" && s.messages && s.messages.length > 0
+        ).length;
+        return {
+          label: isRtl ? "צ'אט חי באתר" : "Website Live Chat",
+          icon: <MessageSquare className="w-4 h-4 shrink-0 text-gold-400" />,
+          badge: count > 0 ? (
+            <span className="ms-auto bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">
+              {count}
+            </span>
+          ) : null
+        };
+      }
+      case "voicemails": {
+        const count = voicemails.filter((v) => !v.read).length;
+        return {
+          label: isRtl ? "הודעות ותא קולי" : "Voicemails",
+          icon: <Volume2 className="w-4 h-4 shrink-0" />,
+          badge: count > 0 ? (
+            <span className="ms-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {count}
+            </span>
+          ) : null
+        };
+      }
+      case "audio":
+        return {
+          label: isRtl ? "שמע IVR" : "IVR Audio",
+          icon: <FileAudio className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      case "calls":
+        return {
+          label: isRtl ? "יומן שיחות" : "Call Logs",
+          icon: <PhoneCall className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      case "analytics":
+        return {
+          label: isRtl ? "אנליטיקה" : "Analytics",
+          icon: <BarChart3 className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      case "archive":
+        return {
+          label: isRtl ? "ארכיון" : "Archive",
+          icon: <Archive className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      case "settings":
+        return {
+          label: isRtl ? "הגדרות" : "Settings",
+          icon: <Settings className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      case "billing":
+        return {
+          label: isRtl ? "חיוב ועלויות" : "Billing & Costs",
+          icon: <CreditCard className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+      default:
+        return {
+          label: id,
+          icon: <Package className="w-4 h-4 shrink-0" />,
+          badge: null
+        };
+    }
+  };
   const [analyticsSubTab, setAnalyticsSubTab] = useState<"orders" | "calls" | "all">("orders");
   const [showAiModal, setShowAiModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2244,158 +2418,149 @@ export default function AdminPage() {
           sidebarOpen ? "translate-x-0" : isRtl ? "translate-x-full" : "-translate-x-full"
         } lg:translate-x-0`}
       >
-        {/* Sidebar Logo */}
-        <div className="px-5 py-4 border-b border-navy-800">
-          <div className={`flex items-center gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
-            <div className="w-9 h-9 bg-gold-500 rounded-xl flex items-center justify-center shrink-0">
-              <Microscope className="w-5 h-5 text-navy-900" />
+        {/* Sidebar Logo & Customize Order Button */}
+        <div className="px-4 py-3.5 border-b border-navy-800 flex items-center justify-between">
+          <div className={`flex items-center gap-2.5 ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+            <div className="w-8 h-8 bg-gold-500 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+              <Microscope className="w-4 h-4 text-navy-900" />
             </div>
-            <div className={isRtl ? "text-right" : ""}>
+            <div>
               <h2 className="font-bold text-sm text-white leading-tight">The Shatnez Lab</h2>
               <p className="text-[10px] text-navy-400">{isRtl ? "לוח בקרה" : "Admin Dashboard"}</p>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsReorderingTabs(!isReorderingTabs)}
+            title={isReorderingTabs ? (isRtl ? "סיים התאמה" : "Done customizing") : (isRtl ? "התאם סדר טאבים" : "Customize tab order")}
+            className={`p-1.5 rounded-lg text-xs transition-colors flex items-center gap-1 ${
+              isReorderingTabs
+                ? "bg-gold-500 text-navy-950 font-bold shadow-sm"
+                : "text-navy-400 hover:text-white hover:bg-navy-800"
+            }`}
+          >
+            {isReorderingTabs ? (
+              <Check className="w-4 h-4" />
+            ) : (
+              <ArrowUpDown className="w-4 h-4" />
+            )}
+          </button>
         </div>
 
-        {/* Sidebar Nav Items */}
-        <nav className={`flex-1 py-2 px-2.5 space-y-0.5 overflow-y-auto sidebar-scrollbar ${isRtl ? "text-right" : ""}`}>
-          <button
-            onClick={() => { setActiveAdminTab("orders"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "orders" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <Package className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "ניהול הזמנות" : "Orders"}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("ai_assistant"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "ai_assistant" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <Sparkles className="w-4 h-4 shrink-0 text-gold-400" />
-            <span>{isRtl ? "עוזר AI למנהל" : "AI Assistant"}</span>
-            <span className="ms-auto bg-gold-500/20 text-gold-400 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-              AI
+        {/* Reordering Controls Banner */}
+        {isReorderingTabs && (
+          <div className="mx-2.5 mt-2 px-2.5 py-1.5 bg-navy-800/90 border border-gold-500/30 rounded-xl flex items-center justify-between text-xs animate-fade-in">
+            <span className="text-[11px] text-gold-400 font-semibold flex items-center gap-1">
+              <GripVertical className="w-3.5 h-3.5 text-gold-400" />
+              {isRtl ? "גרור או הזז בחצים" : "Drag or move with arrows"}
             </span>
-          </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={resetTabOrder}
+                title={isRtl ? "אפס סדר לברירת מחדל" : "Reset to default"}
+                className="p-1 text-navy-400 hover:text-white hover:bg-navy-700/60 rounded transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsReorderingTabs(false)}
+                className="px-2 py-0.5 text-[10px] font-bold bg-gold-500 text-navy-950 rounded hover:bg-gold-400 transition-colors"
+              >
+                {isRtl ? "סיום" : "Done"}
+              </button>
+            </div>
+          </div>
+        )}
 
-          <button
-            onClick={() => { setActiveAdminTab("appointments"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "appointments" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
+        {/* Reorderable Sidebar Nav Items */}
+        <nav className={`flex-1 py-2 px-2.5 overflow-y-auto sidebar-scrollbar ${isRtl ? "text-right" : ""}`}>
+          <Reorder.Group
+            axis="y"
+            values={tabOrder}
+            onReorder={handleUpdateTabOrder}
+            className="space-y-0.5 list-none p-0 m-0"
           >
-            <Calendar className="w-4 h-4 shrink-0 text-primary-400" />
-            <span>{isRtl ? "תורים ופגישות" : "Appointments"}</span>
-          </button>
+            {tabOrder.map((tabId, index) => {
+              const info = getSidebarTabInfo(tabId);
+              const isActive = activeAdminTab === tabId;
 
-          <button
-            onClick={() => { setActiveAdminTab("deliveries"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "deliveries" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <MapPin className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "איסוף ומשלוחים" : "Pick up & Delivery"}</span>
-            {deliveries.filter(d => d.status === "pending").length > 0 && (
-              <span className="ms-auto bg-gold-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                {deliveries.filter(d => d.status === "pending").length}
-              </span>
-            )}
-          </button>
+              return (
+                <Reorder.Item
+                  key={tabId}
+                  value={tabId}
+                  className="relative group select-none list-none"
+                >
+                  <div
+                    onClick={() => {
+                      setActiveAdminTab(tabId);
+                      setSidebarOpen(false);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={`admin-sidebar-item cursor-pointer flex items-center justify-between ${
+                      isRtl ? "flex-row-reverse" : ""
+                    } ${
+                      isActive
+                        ? "admin-sidebar-item--active"
+                        : "admin-sidebar-item--inactive"
+                    }`}
+                  >
+                    <div className={`flex items-center gap-2.5 min-w-0 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      {/* Drag Handle */}
+                      <span
+                        className={`p-0.5 rounded transition-opacity cursor-grab active:cursor-grabbing ${
+                          isReorderingTabs
+                            ? "opacity-100 text-gold-400"
+                            : "opacity-0 group-hover:opacity-60 text-navy-400 hover:text-white"
+                        }`}
+                        title={isRtl ? "גרור לשינוי סדר" : "Drag to reorder"}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <GripVertical className="w-3.5 h-3.5 shrink-0" />
+                      </span>
+                      {info.icon}
+                      <span className="truncate text-sm font-medium">{info.label}</span>
+                    </div>
 
-          <button
-            onClick={() => { setActiveAdminTab("livechat"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "livechat" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 shrink-0 text-gold-400" />
-            <span>{isRtl ? "צ'אט חי באתר" : "Website Live Chat"}</span>
-            {liveChatSessions.filter(s => s.status !== "closed" && s.messages && s.messages.length > 0).length > 0 && (
-              <span className="ms-auto bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">
-                {liveChatSessions.filter(s => s.status !== "closed" && s.messages && s.messages.length > 0).length}
-              </span>
-            )}
-          </button>
+                    <div className={`flex items-center gap-1.5 shrink-0 ${isRtl ? "flex-row-reverse" : ""}`}>
+                      {/* Badges when not reordering */}
+                      {!isReorderingTabs && info.badge}
 
-          <button
-            onClick={() => { setActiveAdminTab("voicemails"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "voicemails" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <Volume2 className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "הודעות ותא קולי" : "Voicemails"}</span>
-            {voicemails.filter(v => !v.read).length > 0 && (
-              <span className="ms-auto bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                {voicemails.filter(v => !v.read).length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("audio"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "audio" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <FileAudio className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "שמע IVR" : "IVR Audio"}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("calls"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "calls" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <PhoneCall className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "יומן שיחות" : "Call Logs"}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("analytics"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "analytics" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "אנליטיקה" : "Analytics"}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("archive"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "archive" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <Archive className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "ארכיון" : "Archive"}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("settings"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "settings" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <Settings className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "הגדרות" : "Settings"}</span>
-          </button>
-
-          <button
-            onClick={() => { setActiveAdminTab("billing"); setSidebarOpen(false); }}
-            className={`admin-sidebar-item ${isRtl ? "flex-row-reverse" : ""} ${
-              activeAdminTab === "billing" ? "admin-sidebar-item--active" : "admin-sidebar-item--inactive"
-            }`}
-          >
-            <CreditCard className="w-4 h-4 shrink-0" />
-            <span>{isRtl ? "חיוב ועלויות" : "Billing & Costs"}</span>
-          </button>
+                      {/* Up/Down buttons when in reorder mode */}
+                      {isReorderingTabs && (
+                        <div
+                          className="flex items-center gap-0.5 bg-navy-950/80 p-0.5 rounded-lg border border-navy-700/60"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => moveTab(index, "up")}
+                            title={isRtl ? "הזז למעלה" : "Move up"}
+                            className="p-1 rounded text-navy-300 hover:text-gold-400 hover:bg-navy-800 disabled:opacity-25 disabled:hover:text-navy-300 disabled:hover:bg-transparent transition-colors"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === tabOrder.length - 1}
+                            onClick={() => moveTab(index, "down")}
+                            title={isRtl ? "הזז למטה" : "Move down"}
+                            className="p-1 rounded text-navy-300 hover:text-gold-400 hover:bg-navy-800 disabled:opacity-25 disabled:hover:text-navy-300 disabled:hover:bg-transparent transition-colors"
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Reorder.Item>
+              );
+            })}
+          </Reorder.Group>
         </nav>
 
         {/* Twilio Cost Sidebar Widget */}
