@@ -53,6 +53,12 @@ interface DayOption {
 
 type TimePeriodFilter = "all" | "morning" | "afternoon" | "evening";
 
+// Normalizes address string to ensure proper "New Square, NY" capitalization
+function normalizeAddress(addr: string): string {
+  if (!addr) return "14 Buchanan Rd, New Square, NY";
+  return addr.replace(/\bnew square\b/gi, "New Square").replace(/\bnorth square\b/gi, "New Square");
+}
+
 export default function AppointmentBookingPage() {
   const { isRtl, language } = useLanguage();
 
@@ -72,7 +78,7 @@ export default function AppointmentBookingPage() {
   const [weekTab, setWeekTab] = useState<0 | 1>(0); // 0 = first 7 days, 1 = next 7 days
 
   // Settings
-  const [labAddress, setLabAddress] = useState<string>("14 Buchanan Rd, North Square, NY");
+  const [labAddress, setLabAddress] = useState<string>("14 Buchanan Rd, New Square, NY");
   const [systemEnabled, setSystemEnabled] = useState<boolean>(true);
   const [dayOverrides, setDayOverrides] = useState<Record<string, any>>({});
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([0, 1, 2, 3, 4, 5]);
@@ -167,7 +173,7 @@ export default function AppointmentBookingPage() {
         if (!isMounted) return;
         if (data.success) {
           setAvailableSlots(data.slots || []);
-          if (data.settings?.locationText) setLabAddress(data.settings.locationText);
+          if (data.settings?.locationText) setLabAddress(normalizeAddress(data.settings.locationText));
           if (data.settings?.dayOverrides) setDayOverrides(data.settings.dayOverrides);
           if (data.settings?.daysOfWeek) setDaysOfWeek(data.settings.daysOfWeek);
           if (data.settings?.blackoutDates) setBlackoutDates(data.settings.blackoutDates);
@@ -225,6 +231,29 @@ export default function AppointmentBookingPage() {
     if (timeFilter === "evening") return categorizedSlots.evening;
     return availableSlots;
   }, [availableSlots, categorizedSlots, timeFilter]);
+
+  // Group displayed slots by hour (e.g., "10:00 AM", "6:00 PM") to avoid an overwhelming wall
+  const groupedHourlySlots = useMemo(() => {
+    const groups: { hourLabel: string; hour: number; slots: AvailableSlot[] }[] = [];
+    const map = new Map<string, { hourLabel: string; hour: number; slots: AvailableSlot[] }>();
+
+    displayedSlots.forEach((slot) => {
+      const hour = parseInt(slot.time.split(":")[0], 10);
+      const ampm = hour >= 12 ? "PM" : "AM";
+      const h12 = hour % 12 || 12;
+      const hourKey = `${hour}`;
+      const hourLabel = `${h12}:00 ${ampm}`;
+
+      if (!map.has(hourKey)) {
+        const item = { hourLabel, hour, slots: [] };
+        map.set(hourKey, item);
+        groups.push(item);
+      }
+      map.get(hourKey)!.slots.push(slot);
+    });
+
+    return groups;
+  }, [displayedSlots]);
 
   // Selected Day Details for summary
   const selectedDayOption = useMemo(() => {
@@ -318,7 +347,7 @@ export default function AppointmentBookingPage() {
         setConfirmedDetails({
           ...data.appointment,
           timeLabel: data.timeLabel || formatTime12h(selectedTime).label,
-          location: data.location || labAddress,
+          location: normalizeAddress(data.location || labAddress),
           dateOption: selectedDayOption
         });
         setSubmitSuccess(true);
@@ -339,7 +368,6 @@ export default function AppointmentBookingPage() {
   // Google Calendar URL generator
   const getGoogleCalendarUrl = () => {
     if (!confirmedDetails) return "#";
-    const dateClean = confirmedDetails.date.replace(/-/g, "");
     const [h, m] = (confirmedDetails.time || "12:00").split(":");
     const startHour = String(h).padStart(2, "0");
     const startMin = String(m).padStart(2, "0");
@@ -368,7 +396,7 @@ export default function AppointmentBookingPage() {
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(labAddress)}`;
 
   return (
-    <div className={`min-h-screen bg-[#fafaf9] py-10 px-4 sm:px-6 lg:px-8 ${isRtl ? "rtl" : "ltr"}`}>
+    <div className={`min-h-screen bg-[#f8f9fa] py-10 px-4 sm:px-6 lg:px-8 ${isRtl ? "rtl" : "ltr"}`}>
       <div className="max-w-6xl mx-auto space-y-10">
         {/* Luxury Hero Header */}
         <div className="text-center max-w-3xl mx-auto">
@@ -388,9 +416,9 @@ export default function AppointmentBookingPage() {
           </p>
 
           {/* Trust Highlights Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8 pt-6 border-t border-slate-200/80">
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-slate-200/70 shadow-xs">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8 pt-6 border-t border-slate-200">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               <div className="text-left rtl:text-right">
@@ -403,8 +431,8 @@ export default function AppointmentBookingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-slate-200/70 shadow-xs">
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>
               <div className="text-left rtl:text-right">
@@ -417,8 +445,8 @@ export default function AppointmentBookingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-slate-200/70 shadow-xs">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                 <Phone className="w-4 h-4" />
               </div>
               <div className="text-left rtl:text-right">
@@ -431,8 +459,8 @@ export default function AppointmentBookingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-slate-200/70 shadow-xs">
-              <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
                 <MapPin className="w-4 h-4" />
               </div>
               <div className="text-left rtl:text-right">
@@ -440,7 +468,7 @@ export default function AppointmentBookingPage() {
                   {isRtl ? "מיקום נוח" : "Prime Location"}
                 </p>
                 <p className="text-[11px] text-slate-500 leading-tight">
-                  North Square, NY
+                  New Square, NY
                 </p>
               </div>
             </div>
@@ -554,15 +582,25 @@ export default function AppointmentBookingPage() {
         {/* 2-Column Luxury Booking Flow */}
         {!submitSuccess && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left / Main Column: The Interactive Stepper Form */}
-            <div className="lg:col-span-8 space-y-6">
-              <form onSubmit={handleSubmitBooking} className="space-y-6">
+            {/* Left / Main Column: Stepper with Vertical Process Line */}
+            <div className="lg:col-span-8 relative">
+              {/* Subtle Vertical Progress Guide Line connecting Step 1 to 4 */}
+              <div
+                className="hidden sm:block absolute top-12 bottom-12 left-[44px] rtl:left-auto rtl:right-[44px] w-0.5 bg-gradient-to-b from-navy-900 via-slate-300 to-slate-200 z-0 pointer-events-none"
+                aria-hidden="true"
+              />
+
+              <form onSubmit={handleSubmitBooking} className="space-y-6 relative z-10">
                 {/* STEP 1: DATE SELECTION */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-5">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-navy-900 text-gold-300 flex items-center justify-center font-extrabold text-sm shadow-xs">
-                        1
+                      <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
+                        {selectedDate ? (
+                          <Check className="w-4 h-4 text-gold-400 stroke-[3]" />
+                        ) : (
+                          "1"
+                        )}
                       </div>
                       <div>
                         <h2 className="font-extrabold text-navy-900 text-lg">
@@ -601,7 +639,7 @@ export default function AppointmentBookingPage() {
                     </div>
                   </div>
 
-                  {/* Day Cards Grid */}
+                  {/* Day Cards Grid - High visual hierarchy with subtle selected state */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
                     {displayedDays.map((day) => {
                       const status = getDayStatus(day);
@@ -614,72 +652,60 @@ export default function AppointmentBookingPage() {
                           type="button"
                           disabled={!isOpen}
                           onClick={() => setSelectedDate(day.dateStr)}
-                          className={`p-3 min-h-[110px] rounded-2xl flex flex-col items-center justify-between transition-all border text-center relative group ${
+                          className={`p-3 min-h-[114px] rounded-2xl flex flex-col items-center justify-between transition-all text-center relative group ${
                             isSelected
-                              ? "bg-navy-900 text-white border-navy-900 shadow-md ring-2 ring-navy-900/20 scale-[1.02]"
+                              ? "bg-white text-navy-900 border-2 border-navy-900 shadow-md ring-4 ring-navy-900/5 scale-[1.02]"
                               : isOpen
-                              ? "bg-white text-navy-900 border-slate-200 hover:border-slate-400 hover:shadow-sm hover:bg-slate-50/70"
-                              : "bg-slate-50/80 text-slate-400 border-slate-200/60 cursor-not-allowed opacity-65"
+                              ? "bg-white text-navy-900 border border-slate-200 hover:border-slate-400 hover:shadow-xs hover:bg-slate-50/60"
+                              : "bg-slate-50 text-slate-400 border border-slate-200/60 cursor-not-allowed opacity-60"
                           }`}
                         >
+                          {/* Selected check indicator badge */}
+                          {isSelected && (
+                            <div className="absolute -top-1.5 -right-1.5 rtl:-right-auto rtl:-left-1.5 w-5 h-5 rounded-full bg-navy-900 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
+                          )}
+
                           {/* Relative Today / Tomorrow indicator */}
                           <div className="h-4 flex items-center justify-center">
                             {day.isToday && (
-                              <span
-                                className={`text-[9px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full ${
-                                  isSelected
-                                    ? "bg-gold-500 text-navy-900 font-black"
-                                    : "bg-amber-100 text-amber-800"
-                                }`}
-                              >
+                              <span className="text-[9px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200/60">
                                 {isRtl ? "היום" : "Today"}
                               </span>
                             )}
                             {day.isTomorrow && (
-                              <span
-                                className={`text-[9px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full ${
-                                  isSelected
-                                    ? "bg-white/20 text-white"
-                                    : "bg-blue-50 text-blue-700"
-                                }`}
-                              >
+                              <span className="text-[9px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
                                 {isRtl ? "מחר" : "Tomorrow"}
                               </span>
                             )}
                           </div>
 
-                          {/* Day & Date */}
+                          {/* Day & Gregorian Date (Primary Focus) */}
                           <div className="my-1">
-                            <span className="text-xs font-bold block uppercase tracking-wide opacity-80">
+                            <span className="text-xs font-bold text-slate-700 block uppercase tracking-wide">
                               {isRtl ? day.dayNameHe : day.dayNameEn}
                             </span>
-                            <span className="text-sm font-extrabold tracking-tight mt-0.5 block">
+                            <span className="text-base font-black text-navy-900 tracking-tight mt-0.5 block">
                               {day.displayDate}
                             </span>
-                            <span
-                              className={`text-[11px] font-bold font-serif block mt-0.5 ${
-                                isSelected ? "text-gold-300" : "text-slate-600"
-                              }`}
-                            >
+                            {/* Secondary Hebrew Date in subtle lighter gray as requested */}
+                            <span className="text-[11px] font-medium text-slate-400 font-serif block mt-0.5">
                               {day.hebrewDateShort}
                             </span>
                           </div>
 
-                          {/* Holiday / Parsha / Closed status badge - NO TRUNCATION */}
+                          {/* Holiday / Parsha / Closed status badge */}
                           <div className="w-full flex items-center justify-center min-h-[18px]">
                             {day.dayOfWeek === 6 && (
-                              <span
-                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none ${
-                                  isSelected ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-700"
-                                }`}
-                              >
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md leading-none bg-indigo-50 text-indigo-700 border border-indigo-100">
                                 {day.parsha ? `פרשת ${day.parsha}` : isRtl ? "שבת" : "Shabbos"}
                               </span>
                             )}
 
                             {day.dayOfWeek !== 6 && !isOpen && (
                               <span
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none bg-rose-50 text-rose-600 border border-rose-100"
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md leading-none bg-rose-50 text-rose-600 border border-rose-100"
                                 title={status.label || undefined}
                               >
                                 {status.label || (isRtl ? "סגור" : "Closed")}
@@ -688,11 +714,7 @@ export default function AppointmentBookingPage() {
 
                             {day.dayOfWeek !== 6 && isOpen && status.label && (
                               <span
-                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md leading-none ${
-                                  isSelected
-                                    ? "bg-gold-500/20 text-gold-300"
-                                    : "bg-amber-50 text-amber-800 border border-amber-200"
-                                }`}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md leading-none bg-amber-50 text-amber-800 border border-amber-200"
                                 title={status.label}
                               >
                                 {status.label}
@@ -705,19 +727,19 @@ export default function AppointmentBookingPage() {
                   </div>
                 </div>
 
-                {/* STEP 2: NUMBER OF GARMENTS */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-5">
+                {/* STEP 2: NUMBER OF GARMENTS (Streamlined Stepper Only) */}
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-navy-900 text-gold-300 flex items-center justify-center font-extrabold text-sm shadow-xs">
-                        2
+                      <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
+                        <Check className="w-4 h-4 text-gold-400 stroke-[3]" />
                       </div>
                       <div>
                         <h2 className="font-extrabold text-navy-900 text-lg">
                           {isRtl ? "כמות בגדים לבדיקה" : "Number of Garments"}
                         </h2>
                         <p className="text-xs text-slate-500">
-                          {isRtl ? "חישוב זמן אוטומטי בהתאם למספר הפריטים" : "Inspection time is adjusted dynamically"}
+                          {isRtl ? "קבעו את כמות הבגדים שתרצו להביא לבדיקה" : "Adjust the quantity of garments you plan to bring"}
                         </p>
                       </div>
                     </div>
@@ -730,56 +752,47 @@ export default function AppointmentBookingPage() {
                     </div>
                   </div>
 
-                  {/* Garment Selector: Stepper + Pills */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center bg-slate-100 rounded-2xl p-1 border border-slate-200 shadow-inner">
-                        <button
-                          type="button"
-                          onClick={() => setGarmentsCount((prev) => Math.max(1, prev - 1))}
-                          disabled={garmentsCount <= 1}
-                          className="w-10 h-10 rounded-xl bg-white text-navy-900 flex items-center justify-center hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed shadow-xs transition-all"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
+                  {/* Clean Stepper Control without redundant pill buttons */}
+                  <div className="p-4 sm:p-6 rounded-2xl bg-slate-50 border border-slate-200/70 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center bg-white rounded-2xl p-1.5 border border-slate-200 shadow-xs">
+                      <button
+                        type="button"
+                        onClick={() => setGarmentsCount((prev) => Math.max(1, prev - 1))}
+                        disabled={garmentsCount <= 1}
+                        className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-navy-900 flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
+                        title={isRtl ? "הפחת בגד" : "Decrease garments"}
+                      >
+                        <Minus className="w-5 h-5 stroke-[2.5]" />
+                      </button>
 
-                        <div className="w-14 text-center">
-                          <span className="text-xl font-black text-navy-900">{garmentsCount}</span>
+                      <div className="min-w-[110px] px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <Shirt className="w-5 h-5 text-primary-600" />
+                          <span className="text-3xl font-black text-navy-900">{garmentsCount}</span>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setGarmentsCount((prev) => Math.min(20, prev + 1))}
-                          disabled={garmentsCount >= 20}
-                          className="w-10 h-10 rounded-xl bg-white text-navy-900 flex items-center justify-center hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed shadow-xs transition-all"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                        <span className="text-[11px] font-bold text-slate-500 block leading-tight mt-0.5">
+                          {garmentsCount === 1
+                            ? isRtl
+                              ? "בגד אחד"
+                              : "Garment"
+                            : isRtl
+                            ? "בגדים"
+                            : "Garments"}
+                        </span>
                       </div>
 
-                      {/* Quick preset chips */}
-                      <div className="flex flex-wrap gap-1.5 flex-1">
-                        {[1, 2, 3, 4, 5, 6, 8, 10].map((num) => {
-                          const isSelected = garmentsCount === num;
-                          return (
-                            <button
-                              key={num}
-                              type="button"
-                              onClick={() => setGarmentsCount(num)}
-                              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${
-                                isSelected
-                                  ? "bg-navy-900 text-white border-navy-900 shadow-xs ring-2 ring-navy-900/10"
-                                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-400 hover:bg-slate-50"
-                              }`}
-                            >
-                              {num} {num === 1 ? (isRtl ? "בגד" : "item") : isRtl ? "בגדים" : "items"}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGarmentsCount((prev) => Math.min(20, prev + 1))}
+                        disabled={garmentsCount >= 20}
+                        className="w-12 h-12 rounded-xl bg-navy-900 hover:bg-navy-800 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 shadow-xs cursor-pointer"
+                        title={isRtl ? "הוסף בגד" : "Increase garments"}
+                      >
+                        <Plus className="w-5 h-5 stroke-[2.5]" />
+                      </button>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
+                    <div className="flex items-center gap-2 text-xs text-slate-500 text-center sm:text-left rtl:sm:text-right">
                       <Info className="w-4 h-4 text-slate-400 shrink-0" />
                       <span>
                         {isRtl
@@ -790,12 +803,16 @@ export default function AppointmentBookingPage() {
                   </div>
                 </div>
 
-                {/* STEP 3: AVAILABLE TIME SLOTS */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-5">
+                {/* STEP 3: AVAILABLE TIME SLOTS (Hourly Blocks & Scrollable Container) */}
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-navy-900 text-gold-300 flex items-center justify-center font-extrabold text-sm shadow-xs">
-                        3
+                      <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
+                        {selectedTime ? (
+                          <Check className="w-4 h-4 text-gold-400 stroke-[3]" />
+                        ) : (
+                          "3"
+                        )}
                       </div>
                       <div>
                         <h2 className="font-extrabold text-navy-900 text-lg">
@@ -824,7 +841,7 @@ export default function AppointmentBookingPage() {
 
                   {/* Time of Day Filter Tabs */}
                   {availableSlots.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pb-1 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-slate-100">
                       <button
                         type="button"
                         onClick={() => setTimeFilter("all")}
@@ -887,7 +904,7 @@ export default function AppointmentBookingPage() {
                     </div>
                   )}
 
-                  {/* Slots Content Area */}
+                  {/* Slots Content Area: Grouped by Hour in a Fixed Scrollable Container */}
                   {loadingSlots ? (
                     <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500">
                       <div className="w-8 h-8 border-3 border-navy-900 border-t-transparent rounded-full animate-spin" />
@@ -908,52 +925,73 @@ export default function AppointmentBookingPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-                      {displayedSlots.map((slot) => {
-                        const isSelected = selectedTime === slot.time;
-                        return (
-                          <button
-                            key={slot.time}
-                            type="button"
-                            onClick={() => setSelectedTime(slot.time)}
-                            className={`py-3 px-3.5 rounded-2xl border transition-all flex items-center justify-between group ${
-                              isSelected
-                                ? "bg-navy-900 text-white border-navy-900 shadow-md ring-2 ring-navy-900/20 scale-[1.02]"
-                                : "bg-white text-navy-900 border-slate-200 hover:border-slate-400 hover:shadow-xs hover:bg-slate-50"
-                            }`}
-                          >
-                            <div className="text-left rtl:text-right">
-                              <span className="text-sm font-extrabold block leading-tight">{slot.label}</span>
-                              <span
-                                className={`text-[10px] font-semibold block mt-0.5 ${
-                                  isSelected ? "text-gold-300" : "text-slate-400"
-                                }`}
-                              >
-                                {slot.duration} {isRtl ? "דקות" : "mins"}
-                              </span>
-                            </div>
+                    <div className="max-h-[380px] overflow-y-auto pr-1.5 space-y-5">
+                      {groupedHourlySlots.map((group) => (
+                        <div key={group.hourLabel} className="space-y-2">
+                          {/* Hour Header Divider */}
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>{group.hourLabel}</span>
+                            <div className="h-px bg-slate-200/80 flex-1" />
+                            <span className="text-[11px] font-semibold text-slate-400">
+                              {group.slots.length} {isRtl ? "זמנים" : "slots"}
+                            </span>
+                          </div>
 
-                            <div
-                              className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                                isSelected
-                                  ? "bg-gold-500 text-navy-900"
-                                  : "bg-slate-100 text-transparent group-hover:text-slate-400"
-                              }`}
-                            >
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            </div>
-                          </button>
-                        );
-                      })}
+                          {/* Grid of 5-minute slots for this hour */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                            {group.slots.map((slot) => {
+                              const isSelected = selectedTime === slot.time;
+                              return (
+                                <button
+                                  key={slot.time}
+                                  type="button"
+                                  onClick={() => setSelectedTime(slot.time)}
+                                  className={`py-2.5 px-3 rounded-xl border transition-all flex items-center justify-between group ${
+                                    isSelected
+                                      ? "bg-navy-900 text-white border-navy-900 shadow-md ring-2 ring-navy-900/20 scale-[1.02]"
+                                      : "bg-white text-navy-900 border-slate-200 hover:border-slate-400 hover:shadow-2xs hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <div className="text-left rtl:text-right">
+                                    <span className="text-xs font-extrabold block leading-tight">{slot.label}</span>
+                                    <span
+                                      className={`text-[10px] font-semibold block mt-0.5 ${
+                                        isSelected ? "text-gold-300" : "text-slate-400"
+                                      }`}
+                                    >
+                                      {slot.duration} {isRtl ? "דק'" : "mins"}
+                                    </span>
+                                  </div>
+
+                                  <div
+                                    className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                                      isSelected
+                                        ? "bg-gold-500 text-navy-900"
+                                        : "bg-slate-100 text-transparent group-hover:text-slate-400"
+                                    }`}
+                                  >
+                                    <Check className="w-3 h-3 stroke-[3]" />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
 
                 {/* STEP 4: CONTACT & NOTES */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200/80 space-y-5">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-navy-900 text-gold-300 flex items-center justify-center font-extrabold text-sm shadow-xs">
-                      4
+                    <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
+                      {phone.trim().length >= 10 ? (
+                        <Check className="w-4 h-4 text-gold-400 stroke-[3]" />
+                      ) : (
+                        "4"
+                      )}
                     </div>
                     <div>
                       <h2 className="font-extrabold text-navy-900 text-lg">
@@ -1067,7 +1105,7 @@ export default function AppointmentBookingPage() {
             {/* Right / Side Column: Sticky Luxury Summary & Lab Details */}
             <div className="lg:col-span-4 sticky top-6 space-y-6">
               {/* Dynamic Appointment Summary Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-5">
+              <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 space-y-5">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <h3 className="font-extrabold text-navy-900 text-base">
                     {isRtl ? "סיכום הפגישה שלך" : "Appointment Summary"}
@@ -1093,7 +1131,7 @@ export default function AppointmentBookingPage() {
                             {selectedDayOption ? `${selectedDayOption.dayNameEn}, ${selectedDayOption.displayDate}` : selectedDate}
                           </strong>
                           {selectedDayOption?.hebrewDateShort && (
-                            <span className="text-xs text-slate-600 font-serif block">
+                            <span className="text-xs text-slate-500 font-serif block">
                               {selectedDayOption.hebrewDateShort}
                             </span>
                           )}
@@ -1175,7 +1213,7 @@ export default function AppointmentBookingPage() {
               </div>
 
               {/* Lab Quality & Standards Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+              <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 space-y-4">
                 <div className="flex items-center gap-2 text-navy-900 font-extrabold text-sm">
                   <Award className="w-4 h-4 text-gold-500" />
                   <span>{isRtl ? "סטנדרט מעבדה מקצועי" : "Laboratory Standards"}</span>
