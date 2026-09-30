@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar as CalendarIcon,
@@ -84,9 +85,11 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
   const [newGarments, setNewGarments] = useState(1);
   const [newNotes, setNewNotes] = useState("");
   const [savingNewApt, setSavingNewApt] = useState(false);
+  const [isClientMounted, setIsClientMounted] = useState(false);
 
   // Subscribe to real-time appointments
   useEffect(() => {
+    setIsClientMounted(true);
     let mounted = true;
     const unsubscribe = subscribeToAppointments((list) => {
       if (mounted) {
@@ -108,6 +111,11 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
       unsubscribe();
     };
   }, []);
+
+  const renderPortal = (children: React.ReactNode) => {
+    if (!isClientMounted || typeof document === "undefined") return null;
+    return createPortal(children, document.body);
+  };
 
   // Filtered appointments
   const filteredAppointments = useMemo(() => {
@@ -1156,17 +1164,26 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
       )}
 
       {/* ── Date Exception / Holiday Editor Modal ── */}
-      <AnimatePresence>
-        {editingDateException && (() => {
-          const modalHebrewInfo = getHebrewDayInfo(editingDateException.date);
-          return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
+      {renderPortal(
+        <AnimatePresence>
+          {editingDateException && (() => {
+            const modalHebrewInfo = getHebrewDayInfo(editingDateException.date);
+            return (
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-primary-200"
+                key="date-exception-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm"
               >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                  transition={{ duration: 0.18 }}
+                  className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-primary-200"
+                >
                 <div className="flex items-center justify-between pb-3 border-b border-primary-100 mb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs">
@@ -1342,21 +1359,31 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                 </div>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         );
       })()}
-      </AnimatePresence>
+        </AnimatePresence>
+      )}
 
       {/* ── Add Appointment Modal ── */}
-      <AnimatePresence>
-        {showAddModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
+      {renderPortal(
+        <AnimatePresence>
+          {showAddModal && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-primary-200"
+              key="add-apt-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm"
             >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                transition={{ duration: 0.18 }}
+                className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-primary-200"
+              >
               <div className="flex items-center justify-between pb-3 border-b border-primary-100 mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
@@ -1471,20 +1498,30 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                 </div>
               </form>
             </motion.div>
-          </div>
+          </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
+      )}
 
       {/* ── Appointment Settings Modal / Drawer ── */}
-      <AnimatePresence>
-        {showSettingsModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
+      {renderPortal(
+        <AnimatePresence>
+          {showSettingsModal && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-primary-200"
+              key="settings-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm"
             >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                transition={{ duration: 0.18 }}
+                className="bg-white rounded-3xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-primary-200"
+              >
               <div className="flex items-center justify-between pb-3 border-b border-primary-100 mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
@@ -1704,9 +1741,10 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                 </div>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>
+      )}
     </div>
   );
 }
