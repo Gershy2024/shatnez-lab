@@ -386,8 +386,11 @@ export default function AppointmentBookingPage() {
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(labAddress)}`;
 
   return (
-    <div className={`min-h-screen bg-[#f8f9fa] py-10 px-4 sm:px-6 lg:px-8 ${isRtl ? "rtl" : "ltr"}`}>
-      <div className="max-w-6xl mx-auto space-y-10">
+    <div className={`min-h-screen bg-[#FAF8F5] py-10 px-4 sm:px-6 lg:px-8 relative ${isRtl ? "rtl" : "ltr"}`}>
+      {/* Subtle Warm Ambient Glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(218,206,186,0.25),rgba(255,255,255,0))] pointer-events-none" />
+
+      <div className="max-w-6xl mx-auto space-y-10 relative z-10">
         {/* Luxury Hero Header */}
         <div className="text-center max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-navy-900 text-gold-300 text-xs font-semibold tracking-wider mb-4 shadow-sm border border-navy-800">
@@ -406,8 +409,8 @@ export default function AppointmentBookingPage() {
           </p>
 
           {/* Trust Highlights Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8 pt-6 border-t border-slate-200">
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8 pt-6 border-t border-[#eae5dc]">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-[#eae5dc] shadow-[0_2px_12px_-2px_rgba(0,0,0,0.04)] hover:shadow-sm hover:border-[#dad3c4] transition-all">
               <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-4 h-4" />
               </div>
@@ -421,7 +424,7 @@ export default function AppointmentBookingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-[#eae5dc] shadow-[0_2px_12px_-2px_rgba(0,0,0,0.04)] hover:shadow-sm hover:border-[#dad3c4] transition-all">
               <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>
@@ -435,7 +438,7 @@ export default function AppointmentBookingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-[#eae5dc] shadow-[0_2px_12px_-2px_rgba(0,0,0,0.04)] hover:shadow-sm hover:border-[#dad3c4] transition-all">
               <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                 <Phone className="w-4 h-4" />
               </div>
@@ -449,7 +452,7 @@ export default function AppointmentBookingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-[#eae5dc] shadow-[0_2px_12px_-2px_rgba(0,0,0,0.04)] hover:shadow-sm hover:border-[#dad3c4] transition-all">
               <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
                 <MapPin className="w-4 h-4" />
               </div>
@@ -576,13 +579,13 @@ export default function AppointmentBookingPage() {
             <div className="lg:col-span-8 relative">
               {/* Subtle Vertical Progress Guide Line connecting Step 1 to 4 */}
               <div
-                className="hidden sm:block absolute top-12 bottom-12 left-[44px] rtl:left-auto rtl:right-[44px] w-0.5 bg-gradient-to-b from-navy-900 via-slate-300 to-slate-200 z-0 pointer-events-none"
+                className="hidden sm:block absolute top-12 bottom-12 left-[44px] rtl:left-auto rtl:right-[44px] w-0.5 bg-gradient-to-b from-navy-900 via-[#dad3c4] to-[#eae5dc] z-0 pointer-events-none"
                 aria-hidden="true"
               />
 
               <form onSubmit={handleSubmitBooking} className="space-y-6 relative z-10">
                 {/* STEP 1: DATE SELECTION */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.05)] border border-[#eae5dc] space-y-5 hover:border-[#dad3c4] transition-all">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
@@ -603,14 +606,14 @@ export default function AppointmentBookingPage() {
                     </div>
 
                     {/* Week 1 / Week 2 Segmented Control */}
-                    <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto text-xs font-bold">
+                    <div className="inline-flex p-1 bg-[#f2eee5] rounded-xl border border-[#e4ded2] self-start sm:self-auto text-xs font-bold">
                       <button
                         type="button"
                         onClick={() => setWeekTab(0)}
-                        className={`px-3 py-1.5 rounded-lg transition-all ${
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                           weekTab === 0
                             ? "bg-white text-navy-900 shadow-xs"
-                            : "text-slate-500 hover:text-navy-900"
+                            : "text-slate-600 hover:text-navy-900 hover:bg-white/50"
                         }`}
                       >
                         {isRtl ? "7 ימים קרובים" : "Upcoming 7 Days"}
@@ -618,10 +621,10 @@ export default function AppointmentBookingPage() {
                       <button
                         type="button"
                         onClick={() => setWeekTab(1)}
-                        className={`px-3 py-1.5 rounded-lg transition-all ${
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                           weekTab === 1
                             ? "bg-white text-navy-900 shadow-xs"
-                            : "text-slate-500 hover:text-navy-900"
+                            : "text-slate-600 hover:text-navy-900 hover:bg-white/50"
                         }`}
                       >
                         {isRtl ? "שבוע הבא" : "Next Week"}
@@ -642,12 +645,12 @@ export default function AppointmentBookingPage() {
                           type="button"
                           disabled={!isOpen}
                           onClick={() => setSelectedDate(day.dateStr)}
-                          className={`p-3 min-h-[114px] rounded-2xl flex flex-col items-center justify-between transition-all text-center relative group ${
+                          className={`p-3 min-h-[114px] rounded-2xl flex flex-col items-center justify-between transition-all text-center relative group cursor-pointer ${
                             isSelected
                               ? "bg-white text-navy-900 border-2 border-navy-900 shadow-md ring-4 ring-navy-900/5 scale-[1.02]"
                               : isOpen
-                              ? "bg-white text-navy-900 border border-slate-200 hover:border-slate-400 hover:shadow-xs hover:bg-slate-50/60"
-                              : "bg-slate-50 text-slate-400 border border-slate-200/60 cursor-not-allowed opacity-60"
+                              ? "bg-white text-navy-900 border border-[#eae5dc] hover:border-[#cfc7b8] hover:shadow-xs hover:bg-[#fcfbf9]"
+                              : "bg-[#f7f5f0] text-slate-400 border border-[#eae5dc]/60 cursor-not-allowed opacity-60"
                           }`}
                         >
                           {/* Selected check indicator badge */}
@@ -718,7 +721,7 @@ export default function AppointmentBookingPage() {
                 </div>
 
                 {/* STEP 2: NUMBER OF GARMENTS (Streamlined Stepper Only) */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.05)] border border-[#eae5dc] space-y-5 hover:border-[#dad3c4] transition-all">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
@@ -743,13 +746,13 @@ export default function AppointmentBookingPage() {
                   </div>
 
                   {/* Clean Stepper Control without redundant pill buttons */}
-                  <div className="p-4 sm:p-6 rounded-2xl bg-slate-50 border border-slate-200/70 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center bg-white rounded-2xl p-1.5 border border-slate-200 shadow-xs">
+                  <div className="p-4 sm:p-6 rounded-2xl bg-[#fcfbf9] border border-[#eae5dc] flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center bg-white rounded-2xl p-1.5 border border-[#eae5dc] shadow-xs">
                       <button
                         type="button"
                         onClick={() => setGarmentsCount((prev) => Math.max(1, prev - 1))}
                         disabled={garmentsCount <= 1}
-                        className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-navy-900 flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
+                        className="w-12 h-12 rounded-xl bg-[#f2eee5] hover:bg-[#e7e1d5] text-navy-900 flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 cursor-pointer"
                         title={isRtl ? "הפחת בגד" : "Decrease garments"}
                       >
                         <Minus className="w-5 h-5 stroke-[2.5]" />
@@ -794,7 +797,7 @@ export default function AppointmentBookingPage() {
                 </div>
 
                 {/* STEP 3: AVAILABLE TIME SLOTS (Hourly Blocks & Scrollable Container) */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.05)] border border-[#eae5dc] space-y-5 hover:border-[#dad3c4] transition-all">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
@@ -831,14 +834,14 @@ export default function AppointmentBookingPage() {
 
                   {/* Time of Day Filter Tabs */}
                   {availableSlots.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-[#eae5dc]">
                       <button
                         type="button"
                         onClick={() => setTimeFilter("all")}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           timeFilter === "all"
                             ? "bg-navy-900 text-white shadow-xs"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            : "bg-[#f2eee5] text-slate-600 hover:bg-[#e7e1d5]"
                         }`}
                       >
                         {isRtl ? "כל השעות" : "All Slots"} ({availableSlots.length})
@@ -848,10 +851,10 @@ export default function AppointmentBookingPage() {
                         <button
                           type="button"
                           onClick={() => setTimeFilter("morning")}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             timeFilter === "morning"
                               ? "bg-navy-900 text-white shadow-xs"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              : "bg-[#f2eee5] text-slate-700 hover:bg-[#e7e1d5]"
                           }`}
                         >
                           <Sunrise className="w-3.5 h-3.5 text-amber-500" />
@@ -864,10 +867,10 @@ export default function AppointmentBookingPage() {
                         <button
                           type="button"
                           onClick={() => setTimeFilter("afternoon")}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             timeFilter === "afternoon"
                               ? "bg-navy-900 text-white shadow-xs"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              : "bg-[#f2eee5] text-slate-700 hover:bg-[#e7e1d5]"
                           }`}
                         >
                           <Sun className="w-3.5 h-3.5 text-amber-600" />
@@ -880,10 +883,10 @@ export default function AppointmentBookingPage() {
                         <button
                           type="button"
                           onClick={() => setTimeFilter("evening")}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             timeFilter === "evening"
                               ? "bg-navy-900 text-white shadow-xs"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              : "bg-[#f2eee5] text-slate-700 hover:bg-[#e7e1d5]"
                           }`}
                         >
                           <Moon className="w-3.5 h-3.5 text-indigo-500" />
@@ -922,7 +925,7 @@ export default function AppointmentBookingPage() {
                           <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span>{group.hourLabel}</span>
-                            <div className="h-px bg-slate-200/80 flex-1" />
+                            <div className="h-px bg-[#eae5dc] flex-1" />
                             <span className="text-[11px] font-semibold text-slate-400">
                               {group.slots.length} {isRtl ? "זמנים" : "slots"}
                             </span>
@@ -937,10 +940,10 @@ export default function AppointmentBookingPage() {
                                   key={slot.time}
                                   type="button"
                                   onClick={() => setSelectedTime(slot.time)}
-                                  className={`py-2.5 px-3 rounded-xl border transition-all flex items-center justify-between group ${
+                                  className={`py-2.5 px-3 rounded-xl border transition-all flex items-center justify-between group cursor-pointer ${
                                     isSelected
                                       ? "bg-navy-900 text-white border-navy-900 shadow-md ring-2 ring-navy-900/20 scale-[1.02]"
-                                      : "bg-white text-navy-900 border-slate-200 hover:border-slate-400 hover:shadow-2xs hover:bg-slate-50"
+                                      : "bg-white text-navy-900 border-[#eae5dc] hover:border-[#dad3c4] hover:shadow-sm hover:bg-[#fcfbf9]"
                                   }`}
                                 >
                                   <div className="text-left rtl:text-right">
@@ -958,7 +961,7 @@ export default function AppointmentBookingPage() {
                                     className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
                                       isSelected
                                         ? "bg-gold-500 text-navy-900"
-                                        : "bg-slate-100 text-transparent group-hover:text-slate-400"
+                                        : "bg-[#f2eee5] text-transparent group-hover:text-slate-400"
                                     }`}
                                   >
                                     <Check className="w-3 h-3 stroke-[3]" />
@@ -974,7 +977,7 @@ export default function AppointmentBookingPage() {
                 </div>
 
                 {/* STEP 4: CONTACT & NOTES */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xs border border-slate-200/80 space-y-5 hover:border-slate-300 transition-colors">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.05)] border border-[#eae5dc] space-y-5 hover:border-[#dad3c4] transition-all">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-navy-900 text-white flex items-center justify-center font-extrabold text-sm shadow-xs ring-4 ring-white shrink-0">
                       {phone.trim().length >= 10 ? (
@@ -1006,7 +1009,7 @@ export default function AppointmentBookingPage() {
                           placeholder="845-552-4744"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                          className="w-full pl-10 pr-3.5 rtl:pl-3.5 rtl:pr-10 py-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-navy-900 focus:border-navy-900 focus:outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 rtl:pl-3.5 rtl:pr-10 py-3 bg-[#fcfbf9] border border-[#dad3c4] rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-navy-900/10 focus:border-navy-900 focus:outline-none transition-all"
                         />
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1">
@@ -1025,7 +1028,7 @@ export default function AppointmentBookingPage() {
                           placeholder={isRtl ? "למשל: מנדי קליין" : "e.g. Mendy Klein"}
                           value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
-                          className="w-full pl-10 pr-3.5 rtl:pl-3.5 rtl:pr-10 py-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-navy-900 focus:border-navy-900 focus:outline-none transition-all"
+                          className="w-full pl-10 pr-3.5 rtl:pl-3.5 rtl:pr-10 py-3 bg-[#fcfbf9] border border-[#dad3c4] rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-navy-900/10 focus:border-navy-900 focus:outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -1046,7 +1049,7 @@ export default function AppointmentBookingPage() {
                         }
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        className="w-full pl-10 pr-3.5 rtl:pl-3.5 rtl:pr-10 py-3 bg-white border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-navy-900 focus:border-navy-900 focus:outline-none transition-all"
+                        className="w-full pl-10 pr-3.5 rtl:pl-3.5 rtl:pr-10 py-3 bg-[#fcfbf9] border border-[#dad3c4] rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-navy-900/10 focus:border-navy-900 focus:outline-none transition-all"
                       />
                     </div>
                   </div>
@@ -1095,8 +1098,8 @@ export default function AppointmentBookingPage() {
             {/* Right / Side Column: Sticky Luxury Summary & Lab Details */}
             <div className="lg:col-span-4 sticky top-6 space-y-6">
               {/* Dynamic Appointment Summary Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 space-y-5">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.05)] border border-[#eae5dc] space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-[#eae5dc]">
                   <h3 className="font-extrabold text-navy-900 text-base">
                     {isRtl ? "סיכום הפגישה שלך" : "Appointment Summary"}
                   </h3>
@@ -1108,7 +1111,7 @@ export default function AppointmentBookingPage() {
                 <div className="space-y-4 text-sm">
                   {/* Date Item */}
                   <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#f7f4ee] text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
                       <CalendarIcon className="w-4 h-4 text-navy-800" />
                     </div>
                     <div>
@@ -1136,7 +1139,7 @@ export default function AppointmentBookingPage() {
 
                   {/* Time & Duration Item */}
                   <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#f7f4ee] text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
                       <Clock className="w-4 h-4 text-navy-800" />
                     </div>
                     <div>
@@ -1157,7 +1160,7 @@ export default function AppointmentBookingPage() {
 
                   {/* Garments Item */}
                   <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#f7f4ee] text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
                       <Shirt className="w-4 h-4 text-navy-800" />
                     </div>
                     <div>
@@ -1177,8 +1180,8 @@ export default function AppointmentBookingPage() {
                   </div>
 
                   {/* Location Item */}
-                  <div className="flex items-start gap-3 pt-3 border-t border-slate-100">
-                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="flex items-start gap-3 pt-3 border-t border-[#eae5dc]">
+                    <div className="w-9 h-9 rounded-xl bg-[#f7f4ee] text-navy-900 flex items-center justify-center shrink-0 mt-0.5">
                       <MapPin className="w-4 h-4 text-navy-800" />
                     </div>
                     <div>
@@ -1203,7 +1206,7 @@ export default function AppointmentBookingPage() {
               </div>
 
               {/* Lab Quality & Standards Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 space-y-4">
+              <div className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.05)] border border-[#eae5dc] space-y-4">
                 <div className="flex items-center gap-2 text-navy-900 font-extrabold text-sm">
                   <Award className="w-4 h-4 text-gold-500" />
                   <span>{isRtl ? "סטנדרט מעבדה מקצועי" : "Laboratory Standards"}</span>
@@ -1236,7 +1239,7 @@ export default function AppointmentBookingPage() {
                   </li>
                 </ul>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <div className="pt-3 border-t border-[#eae5dc] flex items-center justify-between text-xs text-slate-500">
                   <span>{isRtl ? "שאלות או שינוי מועד?" : "Need to reschedule?"}</span>
                   <a href="tel:8455524744" className="font-bold text-navy-900 hover:text-primary-600">
                     845-552-4744
