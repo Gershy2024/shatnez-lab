@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, getAllVoicemails, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest, sanitizeCustomerName, extractPhoneNumbers, getOrderPhoneNumbers } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getNextOrderId, getAllOrders, saveOrder, getAdminSettings, saveVoicemail, getAllVoicemails, logCallEvent, getAdminState, saveAdminState, clearAdminState, logSmsMessage, getAllCalls, getRecentCalls, getRecentSmsMessages, getTwilioBalance, saveDeliveryRequest, sanitizeCustomerName, extractPhoneNumbers, getOrderPhoneNumbers, getAllAppointments, getAppointmentSettings } from "@/lib/db";
+import { getAvailableSlots, getNyDateString } from "@/lib/appointmentSlots";
+import { getHebrewDayInfo } from "@/lib/hebrewCalendar";
 import { triggerOutboundCall, sendSms, triggerCallBridge } from "@/lib/twilioCall";
 import { findChatSessionByShortId, addChatMessage } from "@/lib/liveChat";
 import nodemailer from "nodemailer";
@@ -127,9 +129,8 @@ async function evaluateCustomerSms(
   if (apiKey) {
     const modelsToTry = [
       "gemini-2.5-flash",
-      "gemini-2.0-flash",
-      "gemini-1.5-flash",
-      "gemini-1.5-pro"
+      "gemini-flash-latest",
+      "gemini-3.8-flash"
     ];
 
     const ordersContext = orders.map(o => ({
@@ -179,34 +180,40 @@ Respond with a JSON object ONLY, matching this schema:
 }`;
 
     for (const model of modelsToTry) {
-      try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(geminiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 1200, thinkingConfig: { thinkingBudget: 0 } }
-          })
-        });
+      for (const attemptThinking of [true, false]) {
+        try {
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const genConfig: any = { temperature: 0.1, maxOutputTokens: 1200 };
+          if (attemptThinking) {
+            genConfig.thinkingConfig = { thinkingBudget: 0 };
+          }
+          const response = await fetch(geminiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: genConfig
+            })
+          });
 
-        if (response.ok) {
-          const resData = await response.json();
-          let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          aiText = aiText.replace(/```json/gi, "").replace(/```/g, "").trim();
-          const parsed = JSON.parse(aiText);
-          console.log(`[Twilio Studio SMS AI] Customer evaluation from ${model}:`, JSON.stringify(parsed));
-          return {
-            isOrderStatusOnly: parsed.is_order_status_only === true,
-            requestedCallback: parsed.requested_callback === true || parsed.intent_category === "callback_request",
-            intentCategory: parsed.intent_category || (parsed.is_order_status_only ? "order_status" : "callback_request"),
-            customerName: parsed.customer_name || undefined,
-            detectedOrderId: parsed.detected_order_id || detectedOrderId,
-            summary: parsed.summary || (parsed.is_order_status_only ? "Checking order status" : "Customer inquiry / question")
-          };
+          if (response.ok) {
+            const resData = await response.json();
+            let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            aiText = aiText.replace(/```json/gi, "").replace(/```/g, "").trim();
+            const parsed = JSON.parse(aiText);
+            console.log(`[Twilio Studio SMS AI] Customer evaluation from ${model} (thinking=${attemptThinking}):`, JSON.stringify(parsed));
+            return {
+              isOrderStatusOnly: parsed.is_order_status_only === true,
+              requestedCallback: parsed.requested_callback === true || parsed.intent_category === "callback_request",
+              intentCategory: parsed.intent_category || (parsed.is_order_status_only ? "order_status" : "callback_request"),
+              customerName: parsed.customer_name || undefined,
+              detectedOrderId: parsed.detected_order_id || detectedOrderId,
+              summary: parsed.summary || (parsed.is_order_status_only ? "Checking order status" : "Customer inquiry / question")
+            };
+          }
+        } catch (e) {
+          console.warn(`[Twilio Studio SMS AI] Model ${model} (thinking=${attemptThinking}) failed:`, e);
         }
-      } catch (e) {
-        console.warn(`[Twilio Studio SMS AI] Model ${model} failed:`, e);
       }
     }
   }
@@ -1622,6 +1629,36 @@ async function handleRequest(req: NextRequest) {
             const balanceData = await getTwilioBalance();
             const balanceStr = balanceData ? `${balanceData.balance} ${balanceData.currency}` : "Unavailable";
 
+            // Load live appointments & calendar data
+            const todayNy = getNyDateString(0);
+            const tomorrowNy = getNyDateString(1);
+            let aptSettings: any = null;
+            let allAppointmentsList: any[] = [];
+            let todaySlotsList: any[] = [];
+            let tomorrowSlotsList: any[] = [];
+            let todayHebrew: any = null;
+            let tomorrowHebrew: any = null;
+
+            try {
+              aptSettings = await getAppointmentSettings();
+              allAppointmentsList = await getAllAppointments();
+              todayHebrew = getHebrewDayInfo(todayNy.dateStr);
+              tomorrowHebrew = getHebrewDayInfo(tomorrowNy.dateStr);
+              if (aptSettings?.enabled) {
+                todaySlotsList = await getAvailableSlots(todayNy.dateStr, 1, aptSettings);
+                tomorrowSlotsList = await getAvailableSlots(tomorrowNy.dateStr, 1, aptSettings);
+              }
+            } catch (aptErr) {
+              console.warn("[Twilio Studio SMS AI] Error loading appointment data for prompt:", aptErr);
+            }
+
+            const todayApts = allAppointmentsList.filter(a => a.date === todayNy.dateStr && a.status !== "cancelled");
+            const tomorrowApts = allAppointmentsList.filter(a => a.date === tomorrowNy.dateStr && a.status !== "cancelled");
+            const upcomingApts = allAppointmentsList
+              .filter(a => a.date >= todayNy.dateStr && a.status !== "cancelled")
+              .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+              .slice(0, 15);
+
             // Format recent voicemails (first 10)
             const recentVoicemails = voicemailsList.slice(0, 10).map(v => {
               let timeStr = "";
@@ -1705,6 +1742,50 @@ ${JSON.stringify(smsList.map(s => {
 Here is the list of actual recorded voicemails in the system (most recent first):
 ${JSON.stringify(recentVoicemails)}
 
+Calendar & Hebrew Dates:
+- Today: ${todayNy.dateStr} (${todayHebrew?.hebrewDateFull || ""}${todayHebrew?.primaryHoliday ? ` - ${todayHebrew.primaryHoliday}` : ""}${todayHebrew?.parsha ? ` - פרשת ${todayHebrew.parsha}` : ""})
+- Tomorrow: ${tomorrowNy.dateStr} (${tomorrowHebrew?.hebrewDateFull || ""}${tomorrowHebrew?.primaryHoliday ? ` - ${tomorrowHebrew.primaryHoliday}` : ""})
+
+Today's Scheduled Appointments:
+${todayApts.length > 0 ? JSON.stringify(todayApts.map(a => ({
+  time: a.time,
+  customerName: a.customerName || "Customer",
+  phone: a.phone,
+  garments: a.garmentsCount,
+  duration: `${a.duration || 5} min`,
+  status: a.status,
+  location: a.location || "14 Buchanan Rd",
+  notes: a.notes || ""
+}))) : "None booked for today."}
+
+Today's Available Open Timeslots (for 1 garment):
+${!aptSettings?.enabled ? "Appointment system is currently disabled." : (todaySlotsList.length > 0 ? todaySlotsList.map(s => s.label).join(", ") : "No open slots remaining for today (day may be closed, fully booked, or past operational hours).")}
+
+Tomorrow's Scheduled Appointments:
+${tomorrowApts.length > 0 ? JSON.stringify(tomorrowApts.map(a => ({
+  time: a.time,
+  customerName: a.customerName || "Customer",
+  phone: a.phone,
+  garments: a.garmentsCount,
+  duration: `${a.duration || 5} min`,
+  status: a.status,
+  location: a.location || "14 Buchanan Rd"
+}))) : "None booked for tomorrow."}
+
+Tomorrow's Available Open Timeslots:
+${!aptSettings?.enabled ? "Appointment system is currently disabled." : (tomorrowSlotsList.length > 0 ? tomorrowSlotsList.map(s => s.label).join(", ") : "No open slots available tomorrow (day may be closed or fully booked).")}
+
+Upcoming Booked Appointments (next 7 days):
+${upcomingApts.length > 0 ? JSON.stringify(upcomingApts.map(a => ({
+  date: a.date,
+  time: a.time,
+  customerName: a.customerName || "Customer",
+  phone: a.phone,
+  garments: a.garmentsCount,
+  status: a.status,
+  location: a.location || "14 Buchanan Rd"
+}))) : "No upcoming appointments."}
+
 The admin's message: "${inputMsg}"
 
 You must respond with a JSON object ONLY, matching this schema:
@@ -1761,51 +1842,78 @@ Guidelines:
 14. SENDING VOICEMAILS / AUDIO FILES: If the admin asks you to send them a voicemail or audio file (e.g. "send me the voicemail", "send me the audio", "שלח לי את ההודעה הקולית ב-SMS", "send recording"):
 - Look at the "Recent Recorded Voicemails" list.
 - If no recorded voicemail exists (or none for the requested date/caller), explain to the admin that no recorded voicemail exists to send (explain that the caller hung up without leaving an audio message).
-- If an actual recorded voicemail exists, you can set action="send_sms", customerPhone=fromPhone, message="Voicemail from " + vm.phone + " (" + vm.duration + "s):", and mediaUrl="${origin}/api/audio?url=" + encodeURIComponent(vm.url). This sends the actual audio file directly into their SMS thread as an MMS!`;
+- If an actual recorded voicemail exists, you can set action="send_sms", customerPhone=fromPhone, message="Voicemail from " + vm.phone + " (" + vm.duration + "s):", and mediaUrl="${origin}/api/audio?url=" + encodeURIComponent(vm.url). This sends the actual audio file directly into their SMS thread as an MMS!
+15. APPOINTMENTS & SCHEDULING:
+You have complete, live real-time access to all scheduled appointments, bookings, and available open timeslots for today, tomorrow, and upcoming dates!
+- If the admin asks about available appointments or open slots for today, tomorrow, or a specific date (e.g. "Any appointments available for today?", "Are there open slots today?", "מתי יש פגישות פנויות היום?", "האם יש פגישות פנויות?", "מתי יש תורים?"):
+  - Set action="none".
+  - Look at "Today's Available Open Timeslots" (or tomorrow's if asked).
+  - If open slots exist, list them clearly in "adminReply" (e.g., "Yes! We have available slots today at: 10:00 AM, 10:30 AM, 11:00 AM...").
+  - If no open slots are left (or if the lab is closed for a holiday/weekend), clearly state that there are no remaining open slots today, and mention tomorrow's open slots if any are available.
+- If the admin asks who is coming, who booked, or what appointments exist (e.g. "Who has an appointment today?", "Do I have any appointments today?", "מי קבע פגישה להיום?", "איזה פגישות יש היום?"):
+  - Set action="none".
+  - Check "Today's Scheduled Appointments".
+  - If there are appointments, list each one with time, customer name, phone, garment count, and location.
+  - If no appointments are booked, state "There are no appointments scheduled for today."
+- Answer in the same language the admin used (English or Hebrew).`;
 
             const modelsToTry = [
               "gemini-2.5-flash",
-              "gemini-3.1-flash-lite",
-              "gemini-3.5-flash-lite",
-              "gemini-3.1-pro-preview",
-              "gemini-flash-latest"
+              "gemini-flash-latest",
+              "gemini-3.8-flash"
             ];
 
             let aiJson: any = null;
 
             for (const model of modelsToTry) {
-              try {
-                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                const geminiResponse = await fetch(geminiUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                      temperature: 0.1,
-                      response_mime_type: "application/json",
-                      thinkingConfig: { thinkingBudget: 0 }
-                    }
-                  })
-                });
+              const attempts = [
+                { thinkingConfig: { thinkingBudget: 0 } },
+                { thinkingConfig: undefined }
+              ];
 
-                if (geminiResponse.ok) {
-                  const resData = await geminiResponse.json();
-                  let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                  const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-                  if (jsonMatch) {
-                    aiJson = JSON.parse(jsonMatch[0]);
-                  } else if (aiText) {
-                    aiJson = JSON.parse(aiText.replace(/```json/i, "").replace(/```/g, "").trim());
+              for (const attempt of attempts) {
+                try {
+                  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                  const genConfig: any = {
+                    temperature: 0.1,
+                    response_mime_type: "application/json"
+                  };
+                  if (attempt.thinkingConfig) {
+                    genConfig.thinkingConfig = attempt.thinkingConfig;
                   }
-                  console.log(`[Twilio Studio SMS AI] Gemini (${model}) interpreted action:`, JSON.stringify(aiJson));
-                  break;
-                } else {
-                  console.warn(`[Twilio Studio SMS AI] Model ${model} returned status: ${geminiResponse.status}`);
+
+                  const geminiResponse = await fetch(geminiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      contents: [{ parts: [{ text: prompt }] }],
+                      generationConfig: genConfig
+                    })
+                  });
+
+                  if (geminiResponse.ok) {
+                    const resData = await geminiResponse.json();
+                    let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                      aiJson = JSON.parse(jsonMatch[0]);
+                    } else if (aiText) {
+                      aiJson = JSON.parse(aiText.replace(/```json/i, "").replace(/```/g, "").trim());
+                    }
+                    if (aiJson) {
+                      console.log(`[Twilio Studio SMS AI] Gemini (${model}, thinking=${Boolean(attempt.thinkingConfig)}) interpreted action:`, JSON.stringify(aiJson));
+                      break;
+                    }
+                  } else {
+                    const errText = await geminiResponse.text().catch(() => "");
+                    console.warn(`[Twilio Studio SMS AI] Model ${model} (thinking=${Boolean(attempt.thinkingConfig)}) returned status: ${geminiResponse.status} - ${errText.slice(0, 150)}`);
+                  }
+                } catch (modelErr) {
+                  console.warn(`[Twilio Studio SMS AI] Error calling model ${model} (thinking=${Boolean(attempt.thinkingConfig)}):`, modelErr);
                 }
-              } catch (modelErr) {
-                console.warn(`[Twilio Studio SMS AI] Error calling model ${model}:`, modelErr);
               }
+
+              if (aiJson) break;
             }
 
             if (aiJson) {
@@ -2048,10 +2156,10 @@ Guidelines:
                     replyMessage: `Failed to initiate bridge call: ${bridgeResult.error || "Unknown error"}`
                   });
                 }
-              } else if (aiJson.adminReply) {
+              } else {
                 return jsonResponse({
                   success: true,
-                  replyMessage: aiJson.adminReply
+                  replyMessage: aiJson.adminReply || "I processed your request, but have no additional details to report."
                 });
               }
             }
