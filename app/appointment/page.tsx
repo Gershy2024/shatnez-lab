@@ -483,8 +483,14 @@ export default function AppointmentBookingPage() {
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                   <span className="text-slate-500 font-medium">{isRtl ? "כמות בגדים ומשך" : "Garments & Duration"}</span>
                   <strong className="text-navy-900">
-                    {confirmedDetails.garmentsCount} {confirmedDetails.garmentsCount === 1 ? "garment" : "garments"}{" "}
-                    ({confirmedDetails.duration} mins)
+                    {confirmedDetails.garmentsCount === 1
+                      ? isRtl
+                        ? "בגד 1"
+                        : "1 garment"
+                      : isRtl
+                      ? `${confirmedDetails.garmentsCount} בגדים`
+                      : `${confirmedDetails.garmentsCount} garments`}{" "}
+                    ({confirmedDetails.duration} {isRtl ? "דקות" : "mins"})
                   </strong>
                 </div>
 
@@ -1131,7 +1137,13 @@ export default function AppointmentBookingPage() {
                         {isRtl ? "כמות בגדים" : "Garments Count"}
                       </span>
                       <strong className="text-navy-900 font-bold block">
-                        {garmentsCount} {garmentsCount === 1 ? (isRtl ? "בגד אחד" : "1 Garment") : (isRtl ? `${garmentsCount} בגדים` : `${garmentsCount} Garments`)}
+                        {garmentsCount === 1
+                          ? isRtl
+                            ? "בגד 1"
+                            : "1 Garment"
+                          : isRtl
+                          ? `${garmentsCount} בגדים`
+                          : `${garmentsCount} Garments`}
                       </strong>
                     </div>
                   </div>
