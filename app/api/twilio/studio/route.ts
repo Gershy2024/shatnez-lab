@@ -1807,12 +1807,12 @@ You must respond with a JSON object ONLY, matching this schema:
 
 Guidelines:
 1. If the admin is asking a question (e.g. "who called me?", "how many orders are ready?", "did order 102 get tested?", "what order number is 8459251395?", "Did you trigger automated call for order 100020?"), analyze the data, match orders/callers, set action="none" and put the detailed answer in "adminReply" (in the language they asked, Hebrew or English).
-2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "Send another robocall for order number 100077", "send robocall for order 100077", "send another call to 100077", "send another reminder call", "send robocall to swartz", "trigger authoring notification call for costomer 8459251395", "trigger outbound call for 100063", "so now trigger", "trigger outgoing call that order is ready for pickup", "שלח עוד רובוקול להזמנה 100077", "שלח עוד שיחה", "שלח עוד תזכורת", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"):
+2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "can you make another ready phone notivation for number 100121", "Make another notification phone call for order number 100120", "Send another robocall for order number 100077", "send robocall for order 100077", "send another call to 100077", "send another reminder call", "send robocall to swartz", "trigger authoring notification call for costomer 8459251395", "trigger outbound call for 100063", "so now trigger", "trigger outgoing call that order is ready for pickup", "שלח עוד רובוקול להזמנה 100077", "שלח עוד שיחה", "שלח עוד תזכורת", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"):
    - Set action="trigger_call".
    - Match the target order by orderId, customer phone number (e.g. 8459251395), or customer name from the active orders list.
    - Set "orderId" to the matched order's ID.
    - Set "customerPhone" to the matched order's phone number or the phone provided by the admin.
-   - Note that "authoring" is often a speech-to-text / autocorrect typo for "outbound" or "outgoing". "costomer" is a typo for "customer".
+   - Note that speech-to-text / autocorrect typos are very common: "notivation" = "notification", "authoring" = "outbound", "costomer" = "customer", "resent" = "recent".
    - Confirm in "adminReply" that you are initiating the automated order ready call.
    - You HAVE full capability to trigger automated customer calls.
 3. If they want to update an order (e.g. "set order 102 to ready", "102 clean", "His phone number is 8453620850", "change phone of Swartz to 845-362-0850", "עדכן את 105 לנמסר", "המספר שלו הוא 8453620850"):
@@ -1833,7 +1833,8 @@ Guidelines:
    Set action="bridge_call", set customerPhone (find it from orders or recent callers if they specify a customer name like "גליק"), and optionally set customerName and orderId if associated with a matched order.
 7. If the admin sends digits in shortcut update format (e.g. "100063 4 1 1 1" or "102 4 1 1 1"):
    Interpret as: orderId=first digits, status (1=received, 2=testing, 3=review, 4=ready, 5=delivered, 6=issue), result (1=Clean, 2=Shatnez Found, 3=Call to Discuss), location (1=Buchanan, 2=Clinton), notify (1=triggerCall true, 2=triggerCall false). Set action="update_order".
-8. If the intent is ambiguous, set action="none" and ask clarifying questions in "adminReply".
+8. IF YOU ARE UNSURE OR INTENT IS AMBIGUOUS:
+   Set action="none". Proactively use your AI intelligence in "adminReply" to politely ask the admin what they want, guessing their likely intention (e.g., "Hey Boss! I didn't quite catch that. Did you want me to trigger an order ready call, check recent calls, or update an order? Please let me know what you need!"). Never leave them without a clear, conversational answer.
 9. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
 10. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
 11. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
@@ -1859,8 +1860,9 @@ You have complete, live real-time access to all scheduled appointments, bookings
 
             const modelsToTry = [
               "gemini-2.5-flash",
-              "gemini-flash-latest",
-              "gemini-3.8-flash"
+              "gemini-3.5-flash",
+              "gemini-3.5-flash-lite",
+              "gemini-3.1-flash-lite"
             ];
 
             let aiJson: any = null;
@@ -2173,7 +2175,7 @@ You have complete, live real-time access to all scheduled appointments, bookings
         console.warn(`[Twilio Studio SMS] AI assistant unavailable. Running fallback CLI command parser for: "${inputMsg}"`);
 
         let cmd = inputWord;
-        if (["אחרונים", "אחרונות"].includes(cmd)) cmd = "recent";
+        if (["אחרונים", "אחרונות", "resent"].includes(cmd)) cmd = "recent";
         else if (["הוסף", "הזן", "חדש"].includes(cmd)) cmd = "add";
         else if (["עדכן", "ערוך"].includes(cmd)) cmd = "update";
         else if (["send", "text", "שלח", "מסרון"].includes(cmd)) {
@@ -2185,15 +2187,18 @@ You have complete, live real-time access to all scheduled appointments, bookings
         }
         else if (["עזרה", "מנהל", "היי", "hi"].includes(cmd)) cmd = "help";
 
-        if (/(robocall|רובוקול)/i.test(inputMsg) || /(trigger\s*(a\s*)?(call|robocall|outbound)|send\s*(another\s*|a\s*)?(call|robocall)|הפעל\s*שיחה|שלח\s*.*(שיחה|רובוקול))/i.test(inputMsg)) {
+        if (
+          /(robocall|רובוקול)/i.test(inputMsg) ||
+          /(trigger\s*(a\s*)?(call|robocall|outbound)|send\s*(another\s*|a\s*)?(call|robocall|notification|notivation)|make\s*(another\s*|a\s*)?(ready\s*)?(notification|notivation)?\s*(phone\s*)?call|ready\s*phone\s*(notification|notivation)|הפעל\s*שיחה|שלח\s*.*(שיחה|רובוקול))/i.test(inputMsg)
+        ) {
           cmd = "trigger";
         }
 
         if (
           cmd === "what" ||
-          /(last|recent|missed|incoming)\s*(call|calls|caller|callers)/i.test(inputMsg) ||
+          /(last|recent|resent|missed|incoming)\s*(call|calls|caller|callers)/i.test(inputMsg) ||
           /(who\s*called|מי\s*התקשר|מי\s*צלצל|שיחה\s*אחרונה|שיחות\s*אחרונות|שיחות\s*שפוספסו)/i.test(inputMsg) ||
-          /(what\s*was\s*(the\s*)?(last|recent)\s*(incoming\s*|missed\s*)?(call|calls))/i.test(inputMsg)
+          /(what\s*was\s*(the\s*)?(last|recent|resent)\s*(incoming\s*|missed\s*)?(call|calls))/i.test(inputMsg)
         ) {
           if (/(order|orders|הזמנה|הזמנות)/i.test(inputMsg)) {
             cmd = "recent_orders";
@@ -2298,7 +2303,7 @@ You have complete, live real-time access to all scheduled appointments, bookings
           }
           // Search parts for order ID or customer name if not matched by regex
           if (!order) {
-            const potentialArgs = parts.filter(p => !["trigger", "send", "another", "robocall", "call", "for", "order", "number", "הפעל", "שלח", "עוד", "שיחה", "רובוקול", "להזמנה", "מספר"].includes(p.toLowerCase()));
+            const potentialArgs = parts.filter(p => !["trigger", "send", "make", "another", "robocall", "notification", "phone", "call", "for", "order", "number", "הפעל", "שלח", "עוד", "שיחה", "רובוקול", "להזמנה", "מספר"].includes(p.toLowerCase()));
             for (const arg of potentialArgs) {
               const cleaned = arg.replace(/\D/g, "");
               if (cleaned.length >= 4 && cleaned.length <= 6) {
@@ -2755,20 +2760,23 @@ You have complete, live real-time access to all scheduled appointments, bookings
           return jsonResponse({ success: true, replyMessage: adminReply });
         }
 
-        // Fallback Help Menu (only shown if no CLI command matched)
-        const prefix = isPinProvided ? pin + " " : "";
-        const offlineNote = apiKey ? "(AI assistant is currently offline/unavailable - using basic commands)\n\n" : "";
-        adminReply += `${offlineNote}Admin SMS Menu:\n\n` +
-          `1. guided add: ${prefix}add\n` +
-          `2. guided update: ${prefix}update\n` +
-          `3. cancel flow: cancel\n\n` +
-          `One-shot commands:\n` +
-          `- ${prefix}trigger [ID or Phone]\n` +
-          `- ${prefix}recent calls\n` +
-          `- ${prefix}recent orders\n` +
-          `- ${prefix}sms [Phone] [Message]\n` +
-          `- ${prefix}add [ID] [Phone] [Loc 1-2]\n` +
-          `- ${prefix}update [ID] [Stat 1-6] [Res 1-3] [Loc 1-2] [Call 1-2]`;
+        // Fallback Help / Clarification
+        if (apiKey) {
+          adminReply += "I'm not sure what you'd like me to do with that message. Did you want to trigger a ready notification call for an order, check recent calls, or update an order? Please let me know what you need!";
+        } else {
+          const prefix = isPinProvided ? pin + " " : "";
+          adminReply += `Admin SMS Menu:\n\n` +
+            `1. guided add: ${prefix}add\n` +
+            `2. guided update: ${prefix}update\n` +
+            `3. cancel flow: cancel\n\n` +
+            `One-shot commands:\n` +
+            `- ${prefix}trigger [ID or Phone]\n` +
+            `- ${prefix}recent calls\n` +
+            `- ${prefix}recent orders\n` +
+            `- ${prefix}sms [Phone] [Message]\n` +
+            `- ${prefix}add [ID] [Phone] [Loc 1-2]\n` +
+            `- ${prefix}update [ID] [Stat 1-6] [Res 1-3] [Loc 1-2] [Call 1-2]`;
+        }
 
         return jsonResponse({
           success: true,

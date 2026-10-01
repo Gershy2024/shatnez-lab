@@ -326,13 +326,24 @@ export async function getNextOrderId(): Promise<string> {
 }
 
 
+export function cleanUndefined<T extends Record<string, any>>(obj: T): T {
+  const result: any = {};
+  for (const key of Object.keys(obj)) {
+    if (obj[key] !== undefined) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
+}
+
 export async function saveOrder(order: Order): Promise<void> {
   if (order.customerName) {
     order.customerName = sanitizeCustomerName(order.customerName, order.phone);
   }
   if (isConfigured && db) {
     try {
-      await setDoc(doc(db, ORDERS_COLLECTION, order.id), order);
+      const cleaned = cleanUndefined(order);
+      await setDoc(doc(db, ORDERS_COLLECTION, order.id), cleaned);
       return;
     } catch (e) {
       console.error("Firestore saveOrder failed:", e);
@@ -1339,7 +1350,7 @@ export async function saveDeliveryRequest(request: DeliveryRequest): Promise<voi
         id: docId,
         isDelivery: true
       };
-      await setDoc(doc(db, ORDERS_COLLECTION, docId), dataToSave);
+      await setDoc(doc(db, ORDERS_COLLECTION, docId), cleanUndefined(dataToSave));
       return;
     } catch (e) {
       console.error("Firestore saveDeliveryRequest failed:", e);
@@ -1546,7 +1557,7 @@ export async function saveAppointment(appointment: Appointment): Promise<void> {
         id: docId,
         isAppointment: true
       };
-      await setDoc(doc(db, ORDERS_COLLECTION, docId), dataToSave);
+      await setDoc(doc(db, ORDERS_COLLECTION, docId), cleanUndefined(dataToSave));
       return;
     } catch (e) {
       console.error("Firestore saveAppointment failed:", e);
