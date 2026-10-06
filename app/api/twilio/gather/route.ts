@@ -891,26 +891,45 @@ export async function POST(req: NextRequest) {
 
       // Send SMS confirmation if customer has a valid phone number
       const targetPhone = cleanPhone || fromPhoneNumber;
-      if (targetPhone && targetPhone.replace(/\D/g, "").length >= 10) {
+      const twilioFrom = (settings.twilioPhoneNumber || "").replace(/\D/g, "");
+      const smsPromises: Promise<any>[] = [];
+
+      if (targetPhone && targetPhone.replace(/\D/g, "").length >= 10 && targetPhone.replace(/\D/g, "") !== twilioFrom) {
         const locationAddress = aptSettings.locationText || "14 Buchanan Rd, North Square, NY";
         const smsMsg = `The Shatnez Lab: Your appointment is confirmed for ${dayWord} (${dateStr}) at ${friendlyTime} for ${garments} ${garmentWord}.\nLocation: ${locationAddress}.\nPlease arrive on time. For assistance, call our 24/7 automated line. Thank you!`;
-        sendSms(targetPhone, smsMsg).catch((err) =>
-          console.error("[Appointment IVR] Failed to send customer SMS:", err)
+        smsPromises.push(
+          sendSms(targetPhone, smsMsg)
+            .then((res) => console.log(`[Appointment IVR] Customer SMS result:`, res))
+            .catch((err) => console.error("[Appointment IVR] Failed to send customer SMS:", err))
         );
       }
 
-      // Send instant alert SMS to Admin
-      const adminAlertPhone = (
-        aptSettings.adminNotificationPhone ||
-        "8455524744"
-      ).replace(/\D/g, "");
+      // Send instant alert SMS to Admin (awaited)
+      const candidateAdminPhones = new Set<string>();
+      if (aptSettings.adminNotificationPhone) {
+        candidateAdminPhones.add(aptSettings.adminNotificationPhone.replace(/\D/g, ""));
+      }
+      if (settings.forwardingNumber) {
+        candidateAdminPhones.add(settings.forwardingNumber.replace(/\D/g, ""));
+      }
+      candidateAdminPhones.add("8455524744");
 
-      if (adminAlertPhone && adminAlertPhone.length >= 10) {
-        const adminSms = `📅 New Appointment Alert (Phone IVR)!\nDate: ${dateStr} at ${friendlyTime}\nGarments: ${garments} (${duration} mins)\nCaller: ${targetPhone || "Unknown"}`;
-        sendSms(adminAlertPhone, adminSms).catch((err) =>
-          console.error("[Appointment IVR] Failed to send admin SMS alert:", err)
+      const validAdminPhones = Array.from(candidateAdminPhones).filter(
+        (p) => p.length >= 10 && p !== twilioFrom
+      );
+
+      const adminSms = `📅 New Appointment Alert (Phone IVR)!\nDate: ${dateStr} at ${friendlyTime}\nGarments: ${garments} (${duration} mins)\nCaller: ${targetPhone || "Unknown"}`;
+
+      for (const admPhone of validAdminPhones) {
+        smsPromises.push(
+          sendSms(admPhone, adminSms)
+            .then((res) => console.log(`[Appointment IVR] Admin SMS to ${admPhone} result:`, res))
+            .catch((err) => console.error(`[Appointment IVR] Failed to send admin SMS to ${admPhone}:`, err))
         );
       }
+
+      // Await all SMS dispatches so serverless runtime won't kill them
+      await Promise.allSettled(smsPromises);
 
       const confirmSpoken = `Thank you! Your appointment is confirmed for ${dayWord} at ${friendlyTime} for ${garments} ${garmentWord}. A confirmation text message has been sent to your phone. We look forward to seeing you at 14 Buchanan Road. Goodbye.`;
 

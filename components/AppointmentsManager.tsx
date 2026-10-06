@@ -30,7 +30,9 @@ import {
   CalendarOff,
   Ban,
   CalendarCheck,
-  BookOpen
+  BookOpen,
+  Globe,
+  ShieldCheck
 } from "lucide-react";
 import {
   Appointment,
@@ -84,6 +86,8 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
   const [newTime, setNewTime] = useState("10:00");
   const [newGarments, setNewGarments] = useState(1);
   const [newNotes, setNewNotes] = useState("");
+  const [newSource, setNewSource] = useState<"phone" | "admin" | "web">("phone");
+  const [sendConfirmationSms, setSendConfirmationSms] = useState(true);
   const [savingNewApt, setSavingNewApt] = useState(false);
   const [isClientMounted, setIsClientMounted] = useState(false);
 
@@ -410,15 +414,42 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
         status: "scheduled",
         notes: newNotes.trim(),
         createdAt: Date.now(),
-        source: "admin"
+        source: newSource
       };
 
       await saveAppointment(apt);
+
+      // If SMS confirmation was requested, dispatch through serverless notification endpoint
+      if (sendConfirmationSms && newPhone.trim()) {
+        try {
+          await fetch("/api/appointment/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone: newPhone.trim(),
+              customerName: newName.trim(),
+              date: newDate,
+              time: newTime,
+              garmentsCount: newGarments,
+              duration,
+              notes: newNotes.trim(),
+              source: newSource,
+              sendCustomerSms: true,
+              sendAdminSms: true
+            })
+          });
+        } catch (smsErr) {
+          console.warn("Failed to dispatch appointment notification SMS:", smsErr);
+        }
+      }
+
       setShowAddModal(false);
       setNewPhone("");
       setNewName("");
       setNewNotes("");
       setNewGarments(1);
+      setNewSource("phone");
+      setSendConfirmationSms(true);
     } catch (e) {
       console.error("Failed to save appointment:", e);
     } finally {
@@ -652,8 +683,14 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
           <div className="flex items-center justify-between text-xs text-primary-600 px-1">
             <span className="flex flex-wrap items-center gap-1.5">
               <span>
-                Showing <strong>{filteredAppointments.length}</strong> appointments for <strong>{selectedDate}</strong>
+                {isRtl ? "מציג" : "Showing"} <strong>{filteredAppointments.length}</strong> {isRtl ? "פגישות לתאריך" : "appointments for"} <strong>{selectedDate}</strong>
               </span>
+              {selectedDate === todayStr && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-xs border border-amber-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                  <span>{isRtl ? "תורי היום!" : "Today's Schedule!"}</span>
+                </span>
+              )}
               {(() => {
                 const h = getHebrewDayInfo(selectedDate);
                 return (
@@ -690,26 +727,35 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
             {filteredAppointments.map((apt) => {
               const { label: friendlyTime } = formatTime12h(apt.time);
               const conf = statusConfig[apt.status] || statusConfig.scheduled;
+              const isToday = apt.date === todayStr;
 
               return (
                 <div
                   key={apt.id}
-                  className={`card p-5 bg-white border rounded-2xl shadow-sm transition-all hover:shadow-md ${
-                    apt.status === "scheduled"
+                  className={`card p-5 bg-white border rounded-2xl shadow-sm transition-all hover:shadow-md relative overflow-hidden ${
+                    isToday
+                      ? "border-amber-400 ring-2 ring-amber-400/25 bg-gradient-to-b from-amber-50/25 via-white to-white"
+                      : apt.status === "scheduled"
                       ? "border-blue-200 bg-gradient-to-b from-white to-blue-50/20"
                       : "border-primary-100"
                   }`}
                 >
                   {/* Top: Time & Status */}
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <div className="p-2 rounded-xl bg-primary-100 text-primary-800 font-bold text-sm flex items-center gap-1.5">
                         <Clock className="w-4 h-4 text-primary-600" />
                         {friendlyTime}
                       </div>
                       <span className="text-xs text-primary-500 font-medium">
-                        ({apt.duration || 5} mins)
+                        ({apt.duration || 5} {isRtl ? "דק'" : "mins"})
                       </span>
+                      {isToday && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-xs border border-amber-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                          <span>{isRtl ? "היום!" : "TODAY!"}</span>
+                        </span>
+                      )}
                     </div>
 
                     <select
@@ -717,10 +763,10 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                       onChange={(e) => handleStatusChange(apt.id, e.target.value as any)}
                       className={`text-xs font-semibold rounded-full px-2.5 py-1 border transition-all ${conf.bg}`}
                     >
-                      <option value="scheduled">Scheduled</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="no-show">No-Show</option>
+                      <option value="scheduled">{isRtl ? "מתוזמן" : "Scheduled"}</option>
+                      <option value="completed">{isRtl ? "הושלם" : "Completed"}</option>
+                      <option value="cancelled">{isRtl ? "בוטל" : "Cancelled"}</option>
+                      <option value="no-show">{isRtl ? "לא הגיע" : "No-Show"}</option>
                     </select>
                   </div>
 
@@ -728,7 +774,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   <div className="space-y-1.5 mb-4">
                     <div className="flex items-center gap-2 text-sm font-bold text-navy-900">
                       <User className="w-4 h-4 text-primary-400 shrink-0" />
-                      <span>{apt.customerName || "Customer (In-person)"}</span>
+                      <span>{apt.customerName || (isRtl ? "לקוח (פרונטלי)" : "Customer (In-person)")}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-primary-600">
@@ -737,10 +783,10 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                         className="flex items-center gap-1.5 hover:text-primary-800 font-medium"
                       >
                         <Phone className="w-3.5 h-3.5 text-primary-400" />
-                        {apt.phone || "No Phone"}
+                        {apt.phone || (isRtl ? "אין טלפון" : "No Phone")}
                       </a>
                       <span className="bg-primary-100 text-primary-800 font-semibold px-2 py-0.5 rounded-md text-[11px]">
-                        {apt.garmentsCount} {apt.garmentsCount === 1 ? "garment" : "garments"}
+                        {apt.garmentsCount} {apt.garmentsCount === 1 ? (isRtl ? "בגד" : "garment") : (isRtl ? "בגדים" : "garments")}
                       </span>
                     </div>
 
@@ -753,29 +799,44 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
                   {/* Footer actions */}
                   <div className="flex items-center justify-between pt-3 border-t border-primary-100 text-xs">
-                    <span className="text-[11px] text-primary-400">
-                      Via {apt.source === "phone" ? "Automated Phone Line" : "Admin"}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {apt.source === "phone" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                          <Phone className="w-3 h-3 text-sky-600" />
+                          <span>{isRtl ? "ע״י טלפון" : "Via Phone Line"}</span>
+                        </span>
+                      ) : apt.source === "web" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <Globe className="w-3 h-3 text-indigo-600" />
+                          <span>{isRtl ? "דרך האתר" : "Via Website"}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          <ShieldCheck className="w-3 h-3 text-purple-600" />
+                          <span>{isRtl ? "ע״י מנהל" : "Via Admin"}</span>
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-1.5">
                       <a
                         href={`sms:${apt.phone}`}
                         className="p-1.5 text-primary-500 hover:text-primary-800 hover:bg-primary-50 rounded-lg transition-all"
-                        title="Send SMS"
+                        title={isRtl ? "שלח SMS" : "Send SMS"}
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
                       </a>
                       <a
                         href={`tel:${apt.phone}`}
                         className="p-1.5 text-primary-500 hover:text-primary-800 hover:bg-primary-50 rounded-lg transition-all"
-                        title="Call Customer"
+                        title={isRtl ? "התקשר ללקוח" : "Call Customer"}
                       >
                         <PhoneCall className="w-3.5 h-3.5" />
                       </a>
                       <button
                         onClick={() => handleDelete(apt.id)}
-                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all"
-                        title="Delete"
+                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                        title={isRtl ? "מחק פגישה" : "Delete"}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -790,34 +851,42 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
         /* ── List / Table View ── */
         <div className="card overflow-hidden bg-white border border-primary-200 shadow-sm rounded-2xl">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left rtl:text-right text-xs">
               <thead className="bg-primary-50 border-b border-primary-200 text-primary-700 uppercase tracking-wider font-semibold">
                 <tr>
-                  <th className="py-3 px-4">Date & Time</th>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">Phone</th>
-                  <th className="py-3 px-4">Garments</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Source</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">{isRtl ? "תאריך ושעה" : "Date & Time"}</th>
+                  <th className="py-3 px-4">{isRtl ? "לקוח" : "Customer"}</th>
+                  <th className="py-3 px-4">{isRtl ? "טלפון" : "Phone"}</th>
+                  <th className="py-3 px-4">{isRtl ? "בגדים" : "Garments"}</th>
+                  <th className="py-3 px-4">{isRtl ? "סטטוס" : "Status"}</th>
+                  <th className="py-3 px-4">{isRtl ? "מקור הזמנה" : "Source"}</th>
+                  <th className="py-3 px-4 text-right rtl:text-left">{isRtl ? "פעולות" : "Actions"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-primary-100">
                 {filteredAppointments.map((apt) => {
                   const { label: friendlyTime } = formatTime12h(apt.time);
                   const conf = statusConfig[apt.status] || statusConfig.scheduled;
+                  const isToday = apt.date === todayStr;
 
                   return (
-                    <tr key={apt.id} className="hover:bg-primary-50/50 transition-colors">
+                    <tr key={apt.id} className={`hover:bg-primary-50/50 transition-colors ${isToday ? "bg-amber-50/30" : ""}`}>
                       <td className="py-3 px-4 font-semibold text-navy-900 whitespace-nowrap">
-                        {apt.date} • {friendlyTime}
+                        <div className="flex items-center gap-2">
+                          <span>{apt.date} • {friendlyTime}</span>
+                          {isToday && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs">
+                              {isRtl ? "היום" : "Today"}
+                            </span>
+                          )}
+                        </div>
                         <span className="block text-[10px] text-primary-400 font-normal">
-                          {apt.duration || 5} mins duration
+                          {apt.duration || 5} {isRtl ? "דקות משך" : "mins duration"}
                         </span>
                       </td>
 
                       <td className="py-3 px-4 font-medium text-navy-800">
-                        {apt.customerName || "In-person Customer"}
+                        {apt.customerName || (isRtl ? "לקוח (פרונטלי)" : "In-person Customer")}
                       </td>
 
                       <td className="py-3 px-4">
@@ -830,7 +899,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-navy-900">{apt.garmentsCount}</span> items
+                        <span className="font-semibold text-navy-900">{apt.garmentsCount}</span> {isRtl ? "פריטים" : "items"}
                       </td>
 
                       <td className="py-3 px-4">
@@ -839,14 +908,31 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                           onChange={(e) => handleStatusChange(apt.id, e.target.value as any)}
                           className={`text-xs font-semibold rounded-full px-2.5 py-0.5 border ${conf.bg}`}
                         >
-                          <option value="scheduled">Scheduled</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                          <option value="no-show">No-Show</option>
+                          <option value="scheduled">{isRtl ? "מתוזמן" : "Scheduled"}</option>
+                          <option value="completed">{isRtl ? "הושלם" : "Completed"}</option>
+                          <option value="cancelled">{isRtl ? "בוטל" : "Cancelled"}</option>
+                          <option value="no-show">{isRtl ? "לא הגיע" : "No-Show"}</option>
                         </select>
                       </td>
 
-                      <td className="py-3 px-4 text-primary-500 capitalize">{apt.source || "phone"}</td>
+                      <td className="py-3 px-4">
+                        {apt.source === "phone" ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                            <Phone className="w-3 h-3 text-sky-600" />
+                            <span>{isRtl ? "ע״י טלפון" : "Via Phone"}</span>
+                          </span>
+                        ) : apt.source === "web" ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <Globe className="w-3 h-3 text-indigo-600" />
+                            <span>{isRtl ? "דרך האתר" : "Via Web"}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            <ShieldCheck className="w-3 h-3 text-purple-600" />
+                            <span>{isRtl ? "ע״י מנהל" : "Via Admin"}</span>
+                          </span>
+                        )}
+                      </td>
 
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
@@ -1389,11 +1475,18 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
                     <CalendarIcon className="w-4 h-4" />
                   </div>
-                  <h3 className="text-base font-bold text-navy-900">Schedule In-Person Appointment</h3>
+                  <div>
+                    <h3 className="text-base font-bold text-navy-900">
+                      {isRtl ? "קביעת פגישה חדשה במעבדה" : "Schedule In-Person Appointment"}
+                    </h3>
+                    <p className="text-[11px] text-primary-500">
+                      {isRtl ? "הזנת תור עבור לקוח שהתקשר או הגיע" : "Enter appointment for caller or walk-in client"}
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowAddModal(false)}
-                  className="p-1 text-primary-400 hover:text-primary-700 rounded-lg"
+                  className="p-1 text-primary-400 hover:text-primary-700 rounded-lg cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1401,7 +1494,9 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
               <form onSubmit={handleAddAppointment} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-navy-900 mb-1">Customer Phone Number *</label>
+                  <label className="block font-semibold text-navy-900 mb-1">
+                    {isRtl ? "מספר טלפון של הלקוח לקבלת SMS *" : "Customer Phone Number *"}
+                  </label>
                   <input
                     type="tel"
                     required
@@ -1413,10 +1508,12 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-navy-900 mb-1">Customer Name (Optional)</label>
+                  <label className="block font-semibold text-navy-900 mb-1">
+                    {isRtl ? "שם הלקוח (אופציונלי)" : "Customer Name (Optional)"}
+                  </label>
                   <input
                     type="text"
-                    placeholder="e.g. John Doe"
+                    placeholder={isRtl ? "למשל: מנדי קליין" : "e.g. Mendy Klein"}
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     className="w-full px-3 py-2 border border-primary-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:outline-none"
@@ -1425,7 +1522,9 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-navy-900 mb-1">Date *</label>
+                    <label className="block font-semibold text-navy-900 mb-1">
+                      {isRtl ? "תאריך *" : "Date *"}
+                    </label>
                     <input
                       type="date"
                       required
@@ -1436,7 +1535,9 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-navy-900 mb-1">Time (24h) *</label>
+                    <label className="block font-semibold text-navy-900 mb-1">
+                      {isRtl ? "שעה (24h) *" : "Time (24h) *"}
+                    </label>
                     <input
                       type="time"
                       required
@@ -1449,10 +1550,11 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
                 <div>
                   <label className="block font-semibold text-navy-900 mb-1">
-                    Number of Garments: <strong>{newGarments}</strong>
+                    {isRtl ? "כמות בגדים לבדיקה: " : "Number of Garments: "}
+                    <strong>{newGarments}</strong>
                     <span className="text-primary-500 font-normal">
                       {" "}
-                      (Calculated duration: {calculateAppointmentDuration(newGarments, settings)} mins)
+                      ({isRtl ? "משך מחושב:" : "Calculated duration:"} {calculateAppointmentDuration(newGarments, settings)} {isRtl ? "דק'" : "mins"})
                     </span>
                   </label>
                   <input
@@ -1464,19 +1566,63 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     className="w-full accent-primary-600"
                   />
                   <div className="flex justify-between text-[10px] text-primary-400 mt-0.5">
-                    <span>1 garment</span>
-                    <span>{settings.maxGarments || 10} garments</span>
+                    <span>1 {isRtl ? "בגד" : "garment"}</span>
+                    <span>{settings.maxGarments || 10} {isRtl ? "בגדים" : "garments"}</span>
                   </div>
                 </div>
 
+                {/* Source Selection (How the client booked) */}
                 <div>
-                  <label className="block font-semibold text-navy-900 mb-1">Notes / Instructions</label>
+                  <label className="block font-semibold text-navy-900 mb-1">
+                    {isRtl ? "איך הוזמנה הפגישה? (מקור)" : "Booking Channel (Source)"}
+                  </label>
+                  <select
+                    value={newSource}
+                    onChange={(e) => setNewSource(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-primary-300 rounded-xl bg-white font-semibold text-navy-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  >
+                    <option value="phone">
+                      {isRtl ? "📞 ע״י טלפון (הלקוח חייג לקו / מענה קולי)" : "📞 Via Phone Line (Caller / IVR)"}
+                    </option>
+                    <option value="web">
+                      {isRtl ? "🌐 דרך האתר (הזמנה אונליין)" : "🌐 Via Website (Online Booking)"}
+                    </option>
+                    <option value="admin">
+                      {isRtl ? "🛡️ ע״י מנהל (הזנה ידנית במערכת)" : "🛡️ Via Admin (Manual Entry)"}
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-navy-900 mb-1">
+                    {isRtl ? "הערות / הנחיות מיוחדות" : "Notes / Instructions"}
+                  </label>
                   <textarea
                     rows={2}
-                    placeholder="Specific questions, suits, or rush request..."
+                    placeholder={isRtl ? "למשל: חליפת צמר, מעיל חורף..." : "Specific questions, suits, or rush request..."}
                     value={newNotes}
                     onChange={(e) => setNewNotes(e.target.value)}
                     className="w-full px-3 py-2 border border-primary-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* SMS Confirmation Checkbox */}
+                <div className="p-3 rounded-2xl bg-primary-50/80 border border-primary-200 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="font-bold text-navy-900 block text-xs">
+                      {isRtl ? "שלח אישור SMS ללקוח והתראה למנהל" : "Send SMS Confirmation & Admin Alert"}
+                    </span>
+                    <span className="text-[11px] text-primary-500 block">
+                      {isRtl
+                        ? "הלקוח יקבל SMS מיידי עם פרטי התור והכתובת"
+                        : "Sends instant text details to customer and an alert to admin"}
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={sendConfirmationSms}
+                    onChange={(e) => setSendConfirmationSms(e.target.checked)}
+                    className="w-4 h-4 accent-primary-600 rounded cursor-pointer shrink-0"
                   />
                 </div>
 
@@ -1484,16 +1630,27 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="px-4 py-2 border border-primary-300 rounded-xl text-primary-700 hover:bg-primary-50 font-semibold"
+                    className="px-4 py-2 border border-primary-300 rounded-xl text-primary-700 hover:bg-primary-50 font-semibold cursor-pointer"
                   >
-                    Cancel
+                    {isRtl ? "ביטול" : "Cancel"}
                   </button>
                   <button
                     type="submit"
                     disabled={savingNewApt}
-                    className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-semibold shadow-sm disabled:opacity-50"
+                    className="px-5 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-bold shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-2"
                   >
-                    {savingNewApt ? "Saving..." : "Confirm Booking"}
+                    {savingNewApt && (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    )}
+                    <span>
+                      {savingNewApt
+                        ? isRtl
+                          ? "שומר..."
+                          : "Saving..."
+                        : isRtl
+                        ? "אשר ושמור פגישה"
+                        : "Confirm Booking"}
+                    </span>
                   </button>
                 </div>
               </form>
