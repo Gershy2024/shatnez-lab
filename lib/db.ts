@@ -665,6 +665,16 @@ export async function logCallEvent(
             record.duration = `${diffSeconds}s`;
           }
         }
+
+        const isRepresentativeAction = action && (
+          action.toLowerCase().includes("representative") || 
+          action.toLowerCase().includes("forwarded") || 
+          action.toLowerCase().includes("screening") ||
+          action.toLowerCase().includes("נציג")
+        );
+        if (isRepresentativeAction && status === "active") {
+          record.timestamp = Date.now();
+        }
       } else {
         // New CallSid: check if there's a temporary ID call log in the last 15 minutes to merge with
         let mergedActions: string[] = action ? [action] : ["Call started"];
@@ -708,7 +718,7 @@ export async function logCallEvent(
           phone: cleanPhone,
           timestamp: originalTimestamp,
           actions: mergedActions,
-          status: status || "active",
+          status: status || "completed",
           duration: duration || "",
           direction: mergedDirection,
           orderId: mergedOrderId,
@@ -754,6 +764,16 @@ export async function logCallEvent(
         record.duration = `${diffSeconds}s`;
       }
     }
+
+    const isRepresentativeAction = action && (
+      action.toLowerCase().includes("representative") || 
+      action.toLowerCase().includes("forwarded") || 
+      action.toLowerCase().includes("screening") ||
+      action.toLowerCase().includes("נציג")
+    );
+    if (isRepresentativeAction && status === "active") {
+      record.timestamp = Date.now();
+    }
     calls[idx] = record;
   } else {
     let mergedActions: string[] = action ? [action] : ["Call started"];
@@ -794,7 +814,7 @@ export async function logCallEvent(
       phone: cleanPhone,
       timestamp: originalTimestamp,
       actions: mergedActions,
-      status: status || "active",
+      status: status || "completed",
       duration: duration || "",
       direction: mergedDirection,
       orderId: mergedOrderId,

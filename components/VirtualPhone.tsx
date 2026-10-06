@@ -696,7 +696,21 @@ export default function VirtualPhone({
   };
 
   // Check if there is an active inbound call right now (for UI alert / popup)
-  const activeInboundCall = calls.find(c => c.status === "active" && Date.now() - c.timestamp < 90000 && c.direction !== "outbound");
+  const activeInboundCall = calls.find(
+    (c) =>
+      c.status === "active" &&
+      Date.now() - c.timestamp < 90000 &&
+      c.direction !== "outbound" &&
+      c.actions.some((act) => {
+        const a = act.toLowerCase();
+        return (
+          a.includes("representative") ||
+          a.includes("forwarded") ||
+          a.includes("screening") ||
+          a.includes("נציג")
+        );
+      })
+  );
 
   return (
     <div className={`w-full max-w-6xl mx-auto rounded-3xl overflow-hidden flex flex-col h-[min(680px,calc(100vh-80px))] max-h-[88vh] font-sans transition-colors duration-300 border ${
@@ -962,7 +976,19 @@ export default function VirtualPhone({
                   const isSelected = selectedCallId === c.id;
                   const isOutbound = c.direction === "outbound" || c.actions.some(act => act.toLowerCase().includes("outbound"));
                   const isMissed = c.status === "voicemail" || c.actions.some(act => act.toLowerCase().includes("voicemail"));
-                  const isLive = c.status === "active" && Date.now() - c.timestamp < 120000;
+                  const isLive =
+                    c.status === "active" &&
+                    Date.now() - c.timestamp < 120000 &&
+                    (c.direction === "outbound" ||
+                      c.actions.some((act) => {
+                        const a = act.toLowerCase();
+                        return (
+                          a.includes("representative") ||
+                          a.includes("forwarded") ||
+                          a.includes("screening") ||
+                          a.includes("נציג")
+                        );
+                      }));
                   
                   // Match contact in CRM
                   const crmMatch = getCrmMatch(c.phone);

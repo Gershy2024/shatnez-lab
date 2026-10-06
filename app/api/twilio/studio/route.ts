@@ -390,7 +390,7 @@ async function handleRequest(req: NextRequest) {
     // ─── 0.0 LOG CALL START ───
     if (action === "log_call_start") {
       console.log(`[Twilio Studio API] Logging call start for CallSid: ${callSid}, Phone: ${phone}`);
-      await logCallEvent(callSid, phone, "Call started", "active");
+      await logCallEvent(callSid, phone, "Call started", "completed");
       const settings = await getAdminSettings();
       const hasAnnouncement = Boolean(settings.announcementActive);
       const audioName = (settings.announcementAudioName || "announcement").toLowerCase().trim();
@@ -518,7 +518,7 @@ async function handleRequest(req: NextRequest) {
       console.log(`[Twilio Studio API] check_hours: isWithinHours=${isWithinHours}, forwardingTo=${formattedNum}, callerId=${callerId}, currentNYTime=${nyTime.toISOString()}`);
 
       if (isWithinHours) {
-        await logCallEvent(callSid, phone || callerId, "Forwarded to Representative", "completed");
+        await logCallEvent(callSid, phone || callerId, "Forwarded to Representative", "active");
       } else {
         await logCallEvent(callSid, phone || callerId, "Redirected to Voicemail (Outside Hours)", "voicemail");
       }

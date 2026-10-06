@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (callSid) {
-    await logCallEvent(callSid, fromPhoneNumber, "Welcome Menu", "active");
+    await logCallEvent(callSid, fromPhoneNumber, "Welcome Menu", "completed");
   }
 
   const origin = `https://${req.headers.get("host")}`;

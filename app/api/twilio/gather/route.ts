@@ -484,7 +484,7 @@ export async function POST(req: NextRequest) {
         const formattedNum = formatDialNumber(num);
         console.log(`[Twilio IVR Log] Forwarding to: ${formattedNum} with Call Screening (within business hours)`);
         
-        await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative (Call Screening)", "completed");
+        await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative (Call Screening)", "active");
 
         const callerIdAttr = (settings.callerIdType === "twilio" && settings.twilioPhoneNumber)
           ? ` callerId="${settings.twilioPhoneNumber}"`
@@ -532,7 +532,7 @@ export async function POST(req: NextRequest) {
       const formattedNum = formatDialNumber(num);
       console.log(`[Twilio IVR Log] office_forward_call step triggered: Forwarding to ${formattedNum} with Call Screening`);
       
-      await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative (Call Screening)", "completed");
+      await logCallEvent(callSid, fromPhoneNumber, "Forwarded to Representative (Call Screening)", "active");
 
       const callerIdAttr = (settings.callerIdType === "twilio" && settings.twilioPhoneNumber)
         ? ` callerId="${settings.twilioPhoneNumber}"`
@@ -605,6 +605,7 @@ export async function POST(req: NextRequest) {
       // If call was accepted by pressing 1 AND bridged with duration > 0, hang up cleanly when finished
       if (wasAccepted && dialDuration > 0) {
         console.log(`[Twilio IVR Log] Call was successfully accepted and concluded. Hanging up.`);
+        await logCallEvent(callSid, fromPhoneNumber, "Call concluded with Representative", "completed", `${dialDuration}s`);
         return xmlResponse(`<Hangup />`);
       }
 

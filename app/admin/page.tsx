@@ -676,6 +676,11 @@ export default function AdminPage() {
   const [manualCallPhone, setManualCallPhone] = useState("");
   const [manualCallOrderId, setManualCallOrderId] = useState("");
   const [callPromptData, setCallPromptData] = useState<{orderId: string, phone: string, phone2?: string} | null>(null);
+  const [showResendNotificationModal, setShowResendNotificationModal] = useState(false);
+  const [resendNotificationOrderId, setResendNotificationOrderId] = useState("");
+  const [resendNotificationPhone, setResendNotificationPhone] = useState("");
+  const [resendNotificationPhone2, setResendNotificationPhone2] = useState("");
+  const [isSendingResendCall, setIsSendingResendCall] = useState(false);
   const [activeBlueprintTab, setActiveBlueprintTab] = useState("flow");
   const [isCardFlipped, setIsCardFlipped] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -1007,7 +1012,21 @@ export default function AdminPage() {
     return 'bg-gray-50 text-gray-600 border border-gray-200';
   };
   
-  const activeInboundCall = calls.find(c => c.status === "active" && Date.now() - c.timestamp < 90000 && c.direction !== "outbound");
+  const activeInboundCall = calls.find(
+    (c) =>
+      c.status === "active" &&
+      Date.now() - c.timestamp < 90000 &&
+      c.direction !== "outbound" &&
+      c.actions.some((act) => {
+        const a = act.toLowerCase();
+        return (
+          a.includes("representative") ||
+          a.includes("forwarded") ||
+          a.includes("screening") ||
+          a.includes("נציג")
+        );
+      })
+  );
   const [notifications, setNotifications] = useState<{ id: string; message: string; type: "success" | "error" | "info" }[]>([]);
 
   const getCallAnalytics = () => {
@@ -1973,6 +1992,58 @@ export default function AdminPage() {
       showToast(isRtl ? "שגיאה בשליחת השיחה" : "Error sending call", "error");
     } finally {
       setCallPromptData(null);
+    }
+  };
+
+  const handleOpenResendNotificationModal = (order?: Order) => {
+    if (order) {
+      setResendNotificationOrderId(order.id);
+      setResendNotificationPhone(order.phone || "");
+      setResendNotificationPhone2(order.phone2 || "");
+    } else {
+      setResendNotificationOrderId("");
+      setResendNotificationPhone("");
+      setResendNotificationPhone2("");
+    }
+    setShowResendNotificationModal(true);
+  };
+
+  const handleSendNotificationCall = async () => {
+    if (!resendNotificationOrderId) {
+      showToast(isRtl ? "אנא בחר הזמנה לשליחת השיחה!" : "Please select an order for the call!", "error");
+      return;
+    }
+    if (!resendNotificationPhone && !resendNotificationPhone2) {
+      showToast(isRtl ? "אנא הזן מספר טלפון תקין לחיוג!" : "Please enter a valid phone number to call!", "error");
+      return;
+    }
+
+    try {
+      setIsSendingResendCall(true);
+      showToast(isRtl ? "שולח שיחת הודעה קולית אוטומטית..." : "Sending automated notification call...", "info");
+      
+      const res = await fetch("/api/twilio/trigger-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: resendNotificationOrderId,
+          phone: resendNotificationPhone,
+          phone2: resendNotificationPhone2
+        })
+      });
+
+      if (res.ok) {
+        showToast(isRtl ? "שיחת ההודעה נשלחה בהצלחה ללקוח!" : "Notification call sent successfully!", "success");
+        setShowResendNotificationModal(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(isRtl ? `שגיאה בשליחת השיחה: ${err.error || ""}` : `Error sending call: ${err.error || ""}`, "error");
+      }
+    } catch (err) {
+      console.error("Error triggering notification call:", err);
+      showToast(isRtl ? "שגיאה בשליחת השיחה" : "Error sending call", "error");
+    } finally {
+      setIsSendingResendCall(false);
     }
   };
 
@@ -3274,6 +3345,14 @@ export default function AdminPage() {
             {showAddForm ? (isRtl ? "ביטול" : "Cancel") : t("add_new_order")}
           </button>
           <button
+            onClick={() => handleOpenResendNotificationModal()}
+            className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+            title={isRtl ? "שלח שיחת הודעה אוטומטית (Ready Notification Call)" : "Resend automated ready notification call"}
+          >
+            <Megaphone className="w-5 h-5 text-purple-600" />
+            {isRtl ? "שלח שיחת הודעה" : "Resend Notification Call"}
+          </button>
+          <button
             onClick={() => setShowCallModal(true)}
             className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
           >
@@ -3605,6 +3684,15 @@ export default function AdminPage() {
                           >
                             <Printer className="w-[18px] h-[18px]" />
                           </button>
+                          {(order.phone || order.phone2) && (
+                            <button
+                              onClick={() => handleOpenResendNotificationModal(order)}
+                              className="p-2 rounded-lg text-purple-600 hover:text-purple-800 hover:bg-purple-100 transition-colors"
+                              title={isRtl ? "שלח שוב שיחת הודעה אוטומטית (Resend Notification Call)" : "Resend automated ready notification call"}
+                            >
+                              <Megaphone className="w-[18px] h-[18px]" />
+                            </button>
+                          )}
                           {order.phone && (
                             <button
                               onClick={() => triggerOutboundCallFromAdmin(order.id, order.phone!)}
@@ -6171,6 +6259,177 @@ export default function AdminPage() {
                   <Phone className="w-4 h-4" />
                   {isRtl ? "כן, התקשר" : "Yes, Call"}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showResendNotificationModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-purple-100"
+            >
+              {/* Header */}
+              <div className={`p-6 border-b border-primary-100 flex items-center justify-between bg-navy-900 text-white ${isRtl ? "flex-row-reverse text-right" : ""}`}>
+                <div>
+                  <h2 className="text-xl font-bold text-purple-300 flex items-center gap-2">
+                    <Megaphone className="w-5 h-5 text-purple-400" />
+                    {isRtl ? "שליחת שיחת הודעה קולית" : "Resend Notification Call"}
+                  </h2>
+                  <p className="text-xs text-navy-300 mt-1">
+                    {isRtl 
+                      ? "המערכת תחייג אוטומטית ללקוח ותשמיע את הודעת 'ההזמנה מוכנה לאיסוף' המותאמת למיקום."
+                      : "The system will automatically call the customer and play the order ready announcement."}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowResendNotificationModal(false);
+                    setResendNotificationOrderId("");
+                    setResendNotificationPhone("");
+                    setResendNotificationPhone2("");
+                  }}
+                  className="p-2 rounded-full hover:bg-navy-800 text-navy-300 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className={`p-6 space-y-4 ${isRtl ? "text-right" : ""}`}>
+                <div>
+                  <label className="block text-sm font-semibold text-navy-800 mb-1">
+                    {isRtl ? "בחר הזמנה לשליחת ההודעה:" : "Select Order for Notification:"}
+                  </label>
+                  <select
+                    value={resendNotificationOrderId}
+                    onChange={(e) => {
+                      const oId = e.target.value;
+                      setResendNotificationOrderId(oId);
+                      const selectedOrder = orders.find(o => o.id === oId);
+                      if (selectedOrder) {
+                        setResendNotificationPhone(selectedOrder.phone || "");
+                        setResendNotificationPhone2(selectedOrder.phone2 || "");
+                      } else {
+                        setResendNotificationPhone("");
+                        setResendNotificationPhone2("");
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl border border-primary-200 bg-primary-50/50 focus:ring-2 focus:ring-purple-400 focus:outline-none text-sm ${isRtl ? "text-right" : ""}`}
+                  >
+                    <option value="">{isRtl ? "-- בחר הזמנה --" : "-- Select Order --"}</option>
+                    {orders.filter(o => !o.archived && (o.phone || o.phone2)).map(o => (
+                      <option key={o.id} value={o.id}>
+                        #{o.id} - {o.customerName || "Customer"} ({[o.phone, o.phone2].filter(Boolean).join(" / ")}) - {statusOptions.find(opt => opt.value === o.status)?.label || o.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Selected Order Summary Card */}
+                {(() => {
+                  const currentOrder = orders.find(o => o.id === resendNotificationOrderId);
+                  if (!currentOrder) return null;
+                  return (
+                    <div className="p-3.5 bg-purple-50/80 rounded-2xl border border-purple-100 space-y-2 text-xs">
+                      <div className={`flex items-center justify-between ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <span className="font-bold text-navy-900 text-sm">{currentOrder.customerName || currentOrder.id}</span>
+                        <span className="font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                          #{currentOrder.id}
+                        </span>
+                      </div>
+                      <div className={`flex items-center gap-2 text-navy-700 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <MapPin className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        <span>{isRtl ? "מיקום איסוף:" : "Pickup Location:"} <strong>{currentOrder.location || "14 Buchanan Rd"}</strong></span>
+                      </div>
+                      <div className={`flex items-center gap-2 text-navy-700 ${isRtl ? "flex-row-reverse" : ""}`}>
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{isRtl ? "סטטוס:" : "Status:"} <strong>{statusOptions.find(opt => opt.value === currentOrder.status)?.label || currentOrder.status}</strong></span>
+                        {currentOrder.result && <span>({currentOrder.result})</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Target Phone Numbers */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-navy-800 mb-1">
+                      {isRtl ? "מספר טלפון ראשי לחיוג:" : "Primary Phone to Call:"}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        value={resendNotificationPhone}
+                        onChange={(e) => setResendNotificationPhone(e.target.value)}
+                        placeholder="845..."
+                        className={`w-full px-3 py-2 ${isRtl ? "pr-9 pl-3 text-right" : "pl-9 pr-3 text-left"} rounded-xl border border-primary-200 focus:ring-2 focus:ring-purple-400 focus:outline-none text-sm font-mono`}
+                      />
+                      <Phone className={`w-4 h-4 text-primary-400 absolute top-2.5 ${isRtl ? "right-3" : "left-3"}`} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-navy-800 mb-1">
+                      {isRtl ? "מספר טלפון נוסף (אופציונלי):" : "Secondary Phone (Optional):"}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        value={resendNotificationPhone2}
+                        onChange={(e) => setResendNotificationPhone2(e.target.value)}
+                        placeholder={isRtl ? "מספר נוסף..." : "Optional 2nd phone..."}
+                        className={`w-full px-3 py-2 ${isRtl ? "pr-9 pl-3 text-right" : "pl-9 pr-3 text-left"} rounded-xl border border-primary-200 focus:ring-2 focus:ring-purple-400 focus:outline-none text-sm font-mono`}
+                      />
+                      <Phone className={`w-4 h-4 text-primary-400 absolute top-2.5 ${isRtl ? "right-3" : "left-3"}`} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info Note */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 flex items-start gap-2">
+                  <Volume2 className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                  <span>
+                    {isRtl 
+                      ? "השיחה מתבצעת אוטומטית. במידה והלקוח אינו עונה, המערכת משאירה הודעה ברורה בתא הקולי עם פרטי האיסוף."
+                      : "The call is placed automatically. If unanswered, a clear voicemail message is left with pickup details."}
+                  </span>
+                </div>
+
+                {/* Actions */}
+                <div className={`pt-2 flex items-center gap-3 ${isRtl ? "flex-row-reverse" : ""}`}>
+                  <button
+                    onClick={() => {
+                      setShowResendNotificationModal(false);
+                      setResendNotificationOrderId("");
+                      setResendNotificationPhone("");
+                      setResendNotificationPhone2("");
+                    }}
+                    className="flex-1 py-2.5 px-4 rounded-xl border border-primary-200 text-navy-700 font-semibold hover:bg-primary-50 transition-colors"
+                  >
+                    {isRtl ? "ביטול" : "Cancel"}
+                  </button>
+                  <button
+                    onClick={handleSendNotificationCall}
+                    disabled={isSendingResendCall || !resendNotificationOrderId || (!resendNotificationPhone && !resendNotificationPhone2)}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold shadow-lg shadow-purple-600/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    {isSendingResendCall ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{isRtl ? "שולח שיחה..." : "Sending Call..."}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Megaphone className="w-4 h-4" />
+                        <span>{isRtl ? "שלח שיחת הודעה עכשיו" : "Send Call Now"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
