@@ -1746,7 +1746,24 @@ Available Statuses: "received", "testing", "review", "ready", "delivered", "issu
 Available Results: "Clean / No Shatnez", "Shatnez Found", "Call to Discuss"
 
 Here is the current list of active orders in the system:
-${JSON.stringify(activeOrders.map(o => ({ id: o.id, name: o.customerName, phone: o.phone, status: o.status, result: o.result, location: o.location, dateReceived: o.dateReceived })))}
+${JSON.stringify(activeOrders.map(o => {
+  const lastLog = o.callLogs && o.callLogs.length > 0 ? o.callLogs[o.callLogs.length - 1] : null;
+  return {
+    id: o.id,
+    name: o.customerName,
+    phone: o.phone,
+    status: o.status,
+    result: o.result,
+    location: o.location,
+    dateReceived: o.dateReceived,
+    callNotificationStatus: lastLog ? {
+      status: lastLog.status,
+      answeredBy: lastLog.answeredBy || (lastLog.status === "completed" ? "human" : lastLog.status),
+      duration: lastLog.duration || "N/A",
+      timestamp: lastLog.timestamp
+    } : "No notification call placed yet"
+  };
+}))}
 
 Here are the recent callers:
 ${JSON.stringify(uniqueCallers)}
@@ -1903,10 +1920,19 @@ You have complete, live real-time access to all scheduled appointments, bookings
   - Check "Today's Scheduled Appointments".
   - If there are appointments, list each one with time, customer name, phone, garment count, and location.
   - If no appointments are booked, state "There are no appointments scheduled for today."
-- Answer in the same language the admin used (English or Hebrew).`;
+- Answer in the same language the admin used (English or Hebrew).
+16. NOTIFICATION CALL RESULTS & OUTCOMES:
+If the admin asks whether an automated notification / ready robocall went through, passed, or failed (e.g. "did the call go through for order 100123?", "what was the call result for order 100123?", "did they answer the ready call?", "האם השיחה עברה להזמנה 100123?", "מה התוצאה של החיוג?"):
+- Look at the order's "callNotificationStatus" in the active orders list, or check recent callers / calls list.
+- If the call was answered by a customer/human (status: "completed", answeredBy: "human"), answer: "The ready call for Order #[ID] was answered by the customer (Answered)."
+- If it went to voicemail (answeredBy starts with "machine" or "voicemail"), answer: "The ready call for Order #[ID] reached customer voicemail and left a message (Left on Voicemail)."
+- If it was not answered, busy, or failed (status: "no-answer", "busy", or "failed"), answer: "The ready call for Order #[ID] did not go through (Result: [No Answer / Busy / Failed])."
+- If no call has been made yet, answer: "No notification call has been placed yet for Order #[ID]."`;
 
             const modelsToTry = [
               "gemini-2.5-flash",
+              "gemini-2.0-flash",
+              "gemini-1.5-flash",
               "gemini-2.5-flash-lite",
               "gemini-flash-latest"
             ];

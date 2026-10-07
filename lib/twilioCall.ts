@@ -54,8 +54,11 @@ export async function triggerOutboundCall(customerPhone: string | string[], orde
       
       // Status callbacks to log if the call was answered, went to voicemail, failed, etc.
       body.append("StatusCallback", `${origin}/api/twilio/call-status?orderId=${orderId}`);
-      body.append("StatusCallbackEvent", "completed");
       body.append("StatusCallbackMethod", "POST");
+
+      // Enable asynchronous Machine Detection: detects human vs machine in parallel with ZERO audio delay
+      body.append("MachineDetection", "Enable");
+      body.append("AsyncAmd", "true");
 
       console.log(`[Twilio Call] Initiating outbound call to ${cleanPhone} from ${fromPhone} (Order #${orderId})`);
 

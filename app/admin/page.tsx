@@ -14,7 +14,7 @@ import AppointmentsManager from "@/components/AppointmentsManager";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
 import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest, extractPhoneNumbers, getOrderPhoneNumbers, hasAudioFile, migrateLegacyAppointmentIds } from "@/lib/db";
-import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter } from "lucide-react";
+import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, Voicemail as VoicemailIcon, PhoneOff } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
 function parseTimestamp(ts: any): number {
@@ -563,6 +563,103 @@ const DEFAULT_TAB_ORDER: AdminTabType[] = [
   "settings",
   "billing"
 ];
+
+function renderOrderCallBadge(order: Order, allCalls: CallRecord[], isRtl: boolean) {
+  let lastLog: { status: string; answeredBy?: string; duration?: string; timestamp?: string } | null = null;
+  if (order.callLogs && order.callLogs.length > 0) {
+    lastLog = order.callLogs[order.callLogs.length - 1];
+  }
+
+  // Fallback to calls collection if order doesn't have callLogs saved directly
+  if (!lastLog && allCalls && allCalls.length > 0) {
+    const matchingCall = allCalls
+      .filter(c => c.orderId === order.id || c.actions?.some(a => a.includes(`Order #${order.id}`) || a.includes(order.id)))
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+    if (matchingCall) {
+      const actionsText = (matchingCall.actions || []).join(" ").toLowerCase();
+      let derivedAnsweredBy: string | undefined = undefined;
+      let derivedStatus: string = matchingCall.status;
+
+      if (matchingCall.status === "voicemail" || actionsText.includes("voicemail") || actionsText.includes("תא קולי")) {
+        derivedAnsweredBy = "machine";
+        derivedStatus = "completed";
+      } else if (actionsText.includes("answered by customer") || actionsText.includes("human") || actionsText.includes("נענה")) {
+        derivedAnsweredBy = "human";
+        derivedStatus = "completed";
+      } else if (actionsText.includes("not answered") || actionsText.includes("no-answer") || actionsText.includes("לא נענה")) {
+        derivedStatus = "no-answer";
+        derivedAnsweredBy = "no-answer";
+      } else if (actionsText.includes("busy") || actionsText.includes("תפוס")) {
+        derivedStatus = "busy";
+        derivedAnsweredBy = "busy";
+      } else if (actionsText.includes("failed") || actionsText.includes("נכשל")) {
+        derivedStatus = "failed";
+        derivedAnsweredBy = "failed";
+      } else if (matchingCall.status === "completed") {
+        derivedAnsweredBy = "human";
+      }
+
+      lastLog = {
+        status: derivedStatus,
+        answeredBy: derivedAnsweredBy,
+        duration: matchingCall.duration,
+        timestamp: new Date(matchingCall.timestamp).toISOString()
+      };
+    }
+  }
+
+  if (!lastLog) return null;
+
+  const statusLower = (lastLog.status || "").toLowerCase();
+  const answeredByLower = (lastLog.answeredBy || "").toLowerCase();
+
+  const isVm = answeredByLower.startsWith("machine") || statusLower === "voicemail";
+  const isHum = answeredByLower === "human" || (!isVm && statusLower === "completed" && answeredByLower !== "failed" && answeredByLower !== "no-answer" && answeredByLower !== "busy");
+  const isNoAnswer = statusLower === "no-answer" || answeredByLower === "no-answer";
+  const isBusy = statusLower === "busy" || answeredByLower === "busy";
+  const isFailed = statusLower === "failed" || answeredByLower === "failed";
+  const isActive = statusLower === "active" || statusLower === "in-progress" || statusLower === "ringing" || statusLower === "queued";
+
+  let statusText = lastLog.status;
+  let icon = <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
+  let textColor = "text-emerald-700";
+
+  if (isVm) {
+    statusText = isRtl ? "הושאר בתא קולי" : "Left on Voicemail";
+    icon = <VoicemailIcon className="w-3.5 h-3.5 text-blue-600 shrink-0" />;
+    textColor = "text-blue-700";
+  } else if (isHum) {
+    statusText = isRtl ? "נענה (לקוח)" : "Answered";
+    icon = <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
+    textColor = "text-emerald-700";
+  } else if (isNoAnswer) {
+    statusText = isRtl ? "לא נענה" : "No Answer";
+    icon = <PhoneOff className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
+    textColor = "text-amber-700";
+  } else if (isBusy) {
+    statusText = isRtl ? "תפוס" : "Busy";
+    icon = <PhoneOff className="w-3.5 h-3.5 text-rose-500 shrink-0" />;
+    textColor = "text-rose-700";
+  } else if (isFailed) {
+    statusText = isRtl ? "נכשל" : "Failed";
+    icon = <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />;
+    textColor = "text-red-700";
+  } else if (isActive) {
+    statusText = isRtl ? "בחיוג..." : "Calling...";
+    icon = <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />;
+    textColor = "text-amber-700";
+  }
+
+  return (
+    <div className="mt-1 flex items-center gap-1.5 text-xs whitespace-nowrap">
+      {icon}
+      <span className={`font-medium ${textColor}`}>
+        {statusText}
+      </span>
+    </div>
+  );
+}
 
 export default function AdminPage() {
   const { t, isRtl } = useLanguage();
@@ -3655,34 +3752,7 @@ export default function AdminPage() {
                               <span className="font-mono text-xs">{order.estimatedCompletion}</span>
                             </div>
                           )}
-                          {order.callLogs && order.callLogs.length > 0 && (() => {
-                            const lastLog = order.callLogs[order.callLogs.length - 1];
-                            const isVm = lastLog.answeredBy?.toLowerCase().startsWith("machine");
-                            const isHum = lastLog.answeredBy?.toLowerCase() === "human";
-                            const statusText = isVm 
-                              ? (isRtl ? "הושאר בתא קולי" : "Left on Voicemail") 
-                              : isHum 
-                              ? (isRtl ? "נענה (לקוח)" : "Answered") 
-                              : lastLog.status;
-                            return (
-                              <div className="mt-1 flex items-center gap-1.5 text-xs whitespace-nowrap">
-                                {lastLog.status === 'completed' ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                ) : lastLog.status === 'failed' ? (
-                                  <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                                ) : (
-                                  <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                )}
-                                <span className={`font-medium ${
-                                  lastLog.status === 'completed' ? 'text-emerald-700' :
-                                  lastLog.status === 'failed' ? 'text-red-700' :
-                                  'text-amber-700'
-                                }`}>
-                                  {statusText}
-                                </span>
-                              </div>
-                            );
-                          })()}
+                          {renderOrderCallBadge(order, calls, isRtl)}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-center">
@@ -4243,6 +4313,7 @@ export default function AdminPage() {
                               <span className="font-mono text-xs">{order.estimatedCompletion}</span>
                             </div>
                           )}
+                          {renderOrderCallBadge(order, calls, isRtl)}
                         </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-center">

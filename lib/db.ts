@@ -353,14 +353,24 @@ export async function getNextOrderId(): Promise<string> {
 }
 
 
-export function cleanUndefined<T extends Record<string, any>>(obj: T): T {
-  const result: any = {};
-  for (const key of Object.keys(obj)) {
-    if (obj[key] !== undefined) {
-      result[key] = obj[key];
-    }
+export function cleanUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => (typeof item === "object" && item !== null ? cleanUndefined(item) : item)) as unknown as T;
   }
-  return result;
+  if (typeof obj === "object" && !(obj instanceof Date)) {
+    const result: any = {};
+    for (const key of Object.keys(obj as any)) {
+      const val = (obj as any)[key];
+      if (val !== undefined) {
+        result[key] = typeof val === "object" && val !== null ? cleanUndefined(val) : val;
+      }
+    }
+    return result;
+  }
+  return obj;
 }
 
 export async function saveOrder(order: Order): Promise<void> {

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const priceUnit = formData.get("PriceUnit")?.toString() || "USD";
 
     const isVoicemail = answeredBy.toLowerCase().startsWith("machine");
-    const isHuman = answeredBy.toLowerCase() === "human";
+    const isHuman = answeredBy.toLowerCase() === "human" || (!isVoicemail && callStatus === "completed");
 
     console.log(`[Twilio Call Status] Order ${orderId}: status=${callStatus}, answeredBy=${answeredBy || "none"} (Duration: ${callDuration}s, Price: ${price} ${priceUnit})`);
 
@@ -28,13 +28,18 @@ export async function POST(req: NextRequest) {
 
     const order = await getOrderById(orderId);
     if (order) {
-      const callLogs = order.callLogs || [];
-      callLogs.push({
+      const logEntry: any = {
         status: callStatus,
         timestamp: new Date().toISOString(),
-        duration: callDuration,
-        answeredBy: answeredBy || undefined,
-      });
+      };
+      if (callDuration) logEntry.duration = `${callDuration}s`;
+      if (isVoicemail) logEntry.answeredBy = answeredBy || "machine";
+      else if (isHuman) logEntry.answeredBy = "human";
+      else if (answeredBy) logEntry.answeredBy = answeredBy;
+      else if (callStatus === "no-answer" || callStatus === "busy" || callStatus === "failed") logEntry.answeredBy = callStatus;
+
+      const callLogs = order.callLogs || [];
+      callLogs.push(logEntry);
       order.callLogs = callLogs;
       
       await saveOrder(order);
@@ -45,10 +50,14 @@ export async function POST(req: NextRequest) {
       let eventTitle = `Robotic Order Ready Call ended (${callStatus})`;
       if (callStatus === "completed") {
         if (isVoicemail) {
-          eventTitle = `Robotic Order Ready Call reached Voicemail (${answeredBy})`;
+          eventTitle = `Robotic Order Ready Call reached Voicemail (${answeredBy || "machine"})`;
         } else if (isHuman) {
           eventTitle = `Robotic Order Ready Call answered by Customer`;
         }
+      } else if (callStatus === "no-answer") {
+        eventTitle = `Robotic Order Ready Call not answered`;
+      } else if (callStatus === "busy") {
+        eventTitle = `Robotic Order Ready Call line busy`;
       }
 
       try {
@@ -77,13 +86,15 @@ export async function POST(req: NextRequest) {
     if (callStatus === "completed") {
       if (isVoicemail) {
         smsMessage = `Ready call for Order #${orderId} reached customer VOICEMAIL (${customerDisplay}) - message left.`;
-      } else if (isHuman) {
-        smsMessage = `Ready call for Order #${orderId} was answered by customer (${customerDisplay}).`;
       } else {
-        smsMessage = `Ready call for Order #${orderId} completed (${customerDisplay}).`;
+        smsMessage = `Ready call for Order #${orderId} was answered by customer (${customerDisplay})${callDuration ? ` (${callDuration}s)` : ""}.`;
       }
+    } else if (callStatus === "busy") {
+      smsMessage = `Ready call for Order #${orderId} was BUSY (not answered) for ${customerDisplay}.`;
+    } else if (callStatus === "no-answer") {
+      smsMessage = `Ready call for Order #${orderId} was NOT ANSWERED for ${customerDisplay}.`;
     } else {
-      smsMessage = `Ready call for Order #${orderId} was not answered (Status: ${callStatus}) for ${customerDisplay}.`;
+      smsMessage = `Ready call for Order #${orderId} ended with status: ${callStatus} for ${customerDisplay}.`;
     }
 
     // Send SMS alert to admin numbers
@@ -98,13 +109,16 @@ export async function POST(req: NextRequest) {
       adminPhonesSet.add(cleanFwd);
     }
 
+    const smsPromises: Promise<any>[] = [];
     for (const phone of Array.from(adminPhonesSet)) {
-      try {
-        await sendSms(phone, smsMessage);
-      } catch (smsErr) {
-        console.error(`[Twilio Call Status] Failed to send admin SMS alert to ${phone}:`, smsErr);
-      }
+      smsPromises.push(
+        sendSms(phone, smsMessage)
+          .then((res) => console.log(`[Twilio Call Status] Admin SMS alert to ${phone} result:`, res))
+          .catch((smsErr) => console.error(`[Twilio Call Status] Failed to send admin SMS alert to ${phone}:`, smsErr))
+      );
     }
+
+    await Promise.allSettled(smsPromises);
 
     return NextResponse.json({ success: true });
   } catch (error) {
