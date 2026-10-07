@@ -1296,6 +1296,10 @@ async function handleRequest(req: NextRequest) {
       // ─── ADMIN SMS COMMANDS CHECK ───
       const settings = await getAdminSettings();
       const pin = settings.pin || "1234";
+
+      const proto = req.headers.get("x-forwarded-proto") || "https";
+      const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
+      const origin = `${proto}://${host}`;
       
       const isAdminPhone = fromPhone === "+18455524744" || fromPhone === "+18457092022";
       const isPinProvided = msgBody.startsWith(pin + " ") || msgBody.trim() === pin;
@@ -1885,15 +1889,16 @@ Guidelines:
 14. SENDING VOICEMAILS / AUDIO FILES: If the admin asks you to send them a voicemail or audio file (e.g. "send me the voicemail", "send me the audio", "שלח לי את ההודעה הקולית ב-SMS", "send recording"):
 - Look at the "Recent Recorded Voicemails" list.
 - If no recorded voicemail exists (or none for the requested date/caller), explain to the admin that no recorded voicemail exists to send (explain that the caller hung up without leaving an audio message).
-- If an actual recorded voicemail exists, you can set action="send_sms", customerPhone=fromPhone, message="Voicemail from " + vm.phone + " (" + vm.duration + "s):", and mediaUrl="${origin}/api/audio?url=" + encodeURIComponent(vm.url). This sends the actual audio file directly into their SMS thread as an MMS!
+- If an actual recorded voicemail exists, you can set action="send_sms", customerPhone=fromPhone, message="Voicemail from " + vm_phone + " (" + vm_duration + "s):", and mediaUrl="${origin}/api/audio?url=" + encodeURIComponent(vm_url) (or set voicemailUrl to the url). This sends the actual audio file directly into their SMS thread as an MMS!
 15. APPOINTMENTS & SCHEDULING:
 You have complete, live real-time access to all scheduled appointments, bookings, and available open timeslots for today, tomorrow, and upcoming dates!
+- Note that common typos like "Apartments", "apts", "apointment" mean "appointments". Treat them as asking for appointments!
 - If the admin asks about available appointments or open slots for today, tomorrow, or a specific date (e.g. "Any appointments available for today?", "Are there open slots today?", "מתי יש פגישות פנויות היום?", "האם יש פגישות פנויות?", "מתי יש תורים?"):
   - Set action="none".
   - Look at "Today's Available Open Timeslots" (or tomorrow's if asked).
   - If open slots exist, list them clearly in "adminReply" (e.g., "Yes! We have available slots today at: 10:00 AM, 10:30 AM, 11:00 AM...").
   - If no open slots are left (or if the lab is closed for a holiday/weekend), clearly state that there are no remaining open slots today, and mention tomorrow's open slots if any are available.
-- If the admin asks who is coming, who booked, or what appointments exist (e.g. "Who has an appointment today?", "Do I have any appointments today?", "Any appointments scheduled for today?", "מי קבע פגישה להיום?", "איזה פגישות יש היום?"):
+- If the admin asks who is coming, who booked, or what appointments exist (e.g. "Who has an appointment today?", "Do I have any appointments today?", "Any appointments scheduled for today?", "Apartments", "מי קבע פגישה להיום?", "איזה פגישות יש היום?"):
   - Set action="none".
   - Check "Today's Scheduled Appointments".
   - If there are appointments, list each one with time, customer name, phone, garment count, and location.
@@ -1902,6 +1907,7 @@ You have complete, live real-time access to all scheduled appointments, bookings
 
             const modelsToTry = [
               "gemini-2.5-flash",
+              "gemini-2.5-flash-lite",
               "gemini-flash-latest"
             ];
 
@@ -1964,10 +1970,6 @@ You have complete, live real-time access to all scheduled appointments, bookings
             }
 
             if (aiJson) {
-              const proto = req.headers.get("x-forwarded-proto") || "https";
-              const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
-              const origin = `${proto}://${host}`;
-
               if (aiJson.action === "update_order") {
                 let order = aiJson.orderId ? await getOrderById(aiJson.orderId) : null;
                 if (!order && aiJson.orderId && aiJson.orderId.replace(/\D/g, "").length >= 7) {
@@ -2241,14 +2243,23 @@ You have complete, live real-time access to all scheduled appointments, bookings
         }
 
         if (
-          cmd === "appointment" || cmd === "appointments" || cmd === "schedule" || cmd === "slots" ||
-          /(appointment|appointments|schedule|timeslot|timeslots|פגישה|פגישות|תור|תורים|לוח\s*זמנים)/i.test(inputMsg)
+          cmd === "appointment" || cmd === "appointments" || cmd === "apartment" || cmd === "apartments" || cmd === "schedule" || cmd === "slots" ||
+          /(appointment|appointments|apartment|apartments|schedule|timeslot|timeslots|פגישה|פגישות|תור|תורים|לוח\s*זמנים)/i.test(inputMsg)
         ) {
           cmd = "appointments";
         }
 
         if (
-          cmd !== "call" && (
+          cmd === "update" ||
+          /^(update|change|set|עדכן|ערוך|שנה)\b/i.test(inputMsg) ||
+          /(change\s*phone|update\s*phone|change\s*status|update\s*status|change\s*number|שנה\s*טלפון|עדכן\s*טלפון|עדכן\s*סטטוס)/i.test(inputMsg) ||
+          (/(order|הזמנה)/i.test(inputMsg) && /(phone|number|status|change|update|טלפון|מספר|שנה|עדכן)/i.test(inputMsg))
+        ) {
+          cmd = "update";
+        }
+
+        if (
+          cmd !== "call" && cmd !== "update" && (
             /(robocall|רובוקול)/i.test(inputMsg) ||
             /(trigger\s*(a\s*)?(call|robocall|outbound)|send\s*(another\s*|a\s*)?(call|robocall|notification|notivation)|make\s*(another\s*|a\s*)?(ready\s*)?(notification|notivation)?\s*(phone\s*)?call|ready\s*phone\s*(notification|notivation)|הפעל\s*שיחה|שלח\s*.*(שיחה|רובוקול))/i.test(inputMsg)
           )
@@ -2701,12 +2712,17 @@ You have complete, live real-time access to all scheduled appointments, bookings
 
         if (cmd === "update") {
           let args = parts.slice(1);
-          const noiseWords = ["order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה"];
-          if (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
+          const noiseWords = [
+            "order", "id", "את", "ההזמנה", "הזמנה", "new", "חדש", "חדשה", "לקוח", "לקוחה",
+            "number", "מספר", "for", "please", "change", "שנה", "בבקשה", "the"
+          ];
+          while (args.length > 0 && noiseWords.includes(args[0].toLowerCase())) {
             args = args.slice(1);
           }
 
-          const orderId = args[0];
+          // Extract 4-7 digit order ID anywhere in inputMsg if args[0] is not a numeric order ID
+          const orderMatch = inputMsg.match(/\b\d{4,7}\b/);
+          const orderId = (args[0] && !isNaN(Number(args[0])) && args[0].length <= 7) ? args[0] : (orderMatch ? orderMatch[0] : args[0]);
           const statusDigit = args[1];
           const resultDigit = args[2];
           const locationDigit = args[3];
@@ -2767,9 +2783,15 @@ You have complete, live real-time access to all scheduled appointments, bookings
           else if (/(clinton|קלינטון)/i.test(inputMsg)) detectedLocation = "166 Clinton Lane";
 
           let detectedPhone: string | null = null;
-          const phonePatternMatch = inputMsg.match(/(?:phone|טלפון|מספר|number)[\s:]*([0-9\-+()]{7,15})/i) || inputMsg.match(/\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b/);
-          if (phonePatternMatch) {
-            detectedPhone = phonePatternMatch[1].trim();
+          const extractedPhones = extractPhoneNumbers(inputMsg);
+          const nonIdPhones = extractedPhones.filter(p => p.replace(/\D/g, "") !== (orderId || "").replace(/\D/g, ""));
+          if (nonIdPhones.length > 0) {
+            detectedPhone = nonIdPhones[0];
+          } else {
+            const phonePatternMatch = inputMsg.match(/(?:phone|טלפון|מספר|number|for)[\s:]*([0-9\-+()]{7,15})/i) || inputMsg.match(/\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b/);
+            if (phonePatternMatch && phonePatternMatch[1].replace(/\D/g, "") !== (orderId || "").replace(/\D/g, "")) {
+              detectedPhone = phonePatternMatch[1].trim();
+            }
           }
 
           if (order && (detectedStatus || detectedResult || detectedLocation || detectedPhone)) {
@@ -2781,10 +2803,6 @@ You have complete, live real-time access to all scheduled appointments, bookings
 
             order.customerName = sanitizeCustomerName(order.customerName, order.phone);
             await saveOrder(order);
-
-            const proto = req.headers.get("x-forwarded-proto") || "https";
-            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
-            const origin = `${proto}://${host}`;
 
             let callTriggered = false;
             if (order.status === "ready" && order.phone) {
