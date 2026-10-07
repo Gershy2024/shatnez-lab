@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest, saveAppointment, getAppointmentSettings, Appointment } from "@/lib/db";
+import { getOrderById, getOrdersByPhone, getAllOrders, saveOrder, getAdminSettings, logCallEvent, getAllCalls, getTwilioBalance, saveDeliveryRequest, saveAppointment, getAppointmentSettings, Appointment, getNextAppointmentId } from "@/lib/db";
 import { triggerOutboundCall, sendSms } from "@/lib/twilioCall";
 import { getAvailableSlots, getNyDateString, formatTime12h, calculateAppointmentDuration } from "@/lib/appointmentSlots";
 
@@ -868,7 +868,7 @@ export async function POST(req: NextRequest) {
       const aptSettings = await getAppointmentSettings();
       const duration = calculateAppointmentDuration(garments, aptSettings);
 
-      const aptId = `apt_${Date.now()}_${cleanPhone ? cleanPhone.slice(-4) : "0000"}`;
+      const aptId = await getNextAppointmentId();
       const newApt: Appointment = {
         id: aptId,
         phone: cleanPhone || fromPhoneNumber,
@@ -884,7 +884,7 @@ export async function POST(req: NextRequest) {
       };
 
       await saveAppointment(newApt);
-      await logCallEvent(callSid, fromPhoneNumber, `Scheduled Appointment: ${dateStr} at ${selectedTime} (${garments} garments)`);
+      await logCallEvent(callSid, fromPhoneNumber, `Scheduled Appointment ${aptId}: ${dateStr} at ${selectedTime} (${garments} garments)`);
 
       const { label: friendlyTime } = formatTime12h(selectedTime);
       const garmentWord = garments === 1 ? "garment" : "garments";
@@ -896,7 +896,7 @@ export async function POST(req: NextRequest) {
 
       if (targetPhone && targetPhone.replace(/\D/g, "").length >= 10 && targetPhone.replace(/\D/g, "") !== twilioFrom) {
         const locationAddress = aptSettings.locationText || "14 Buchanan Rd, North Square, NY";
-        const smsMsg = `The Shatnez Lab: Your appointment is confirmed for ${dayWord} (${dateStr}) at ${friendlyTime} for ${garments} ${garmentWord}.\nLocation: ${locationAddress}.\nPlease arrive on time. For assistance, call our 24/7 automated line. Thank you!`;
+        const smsMsg = `The Shatnez Lab: Your appointment (${aptId}) is confirmed for ${dayWord} (${dateStr}) at ${friendlyTime} for ${garments} ${garmentWord}.\nLocation: ${locationAddress}.\nPlease arrive on time. For assistance, call our 24/7 automated line. Thank you!`;
         smsPromises.push(
           sendSms(targetPhone, smsMsg)
             .then((res) => console.log(`[Appointment IVR] Customer SMS result:`, res))
@@ -918,7 +918,7 @@ export async function POST(req: NextRequest) {
         (p) => p.length >= 10 && p !== twilioFrom
       );
 
-      const adminSms = `📅 New Appointment Alert (Phone IVR)!\nDate: ${dateStr} at ${friendlyTime}\nGarments: ${garments} (${duration} mins)\nCaller: ${targetPhone || "Unknown"}`;
+      const adminSms = `📅 New Appointment Alert (${aptId} - Phone IVR)!\nDate: ${dateStr} at ${friendlyTime}\nGarments: ${garments} (${duration} mins)\nCaller: ${targetPhone || "Unknown"}`;
 
       for (const admPhone of validAdminPhones) {
         smsPromises.push(

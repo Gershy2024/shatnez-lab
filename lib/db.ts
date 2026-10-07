@@ -35,6 +35,7 @@ export interface Order {
   createdAt?: number;
   archived?: boolean;
   location?: string;
+  garmentsCount?: number;
 }
 
 export interface DeliveryRequest {
@@ -195,6 +196,12 @@ export async function getAllOrders(): Promise<Order[]> {
           if (o.customerName) {
             o.customerName = sanitizeCustomerName(o.customerName, o.phone);
           }
+          if ((o as any).isAppointment || String(o.id).toUpperCase().startsWith("APT")) {
+            if (!o.customerName) o.customerName = (o as any).customerName || "Appointment";
+            if (!o.dateReceived) o.dateReceived = (o as any).date || "";
+            if (!o.garmentsCount) o.garmentsCount = (o as any).garmentsCount || (o as any).items || 1;
+            if (!o.notes) o.notes = (o as any).notes || ((o as any).date ? `Appointment on ${(o as any).date} at ${(o as any).time}` : "");
+          }
           return o;
         })
         .filter((o) => !(o as any).isDelivery && !o.id.startsWith("DELIVERY_"));
@@ -204,6 +211,11 @@ export async function getAllOrders(): Promise<Order[]> {
   }
   return lsGet().map(o => {
     if (o.customerName) o.customerName = sanitizeCustomerName(o.customerName, o.phone);
+    if ((o as any).isAppointment || String(o.id).toUpperCase().startsWith("APT")) {
+      if (!o.customerName) o.customerName = (o as any).customerName || "Appointment";
+      if (!o.dateReceived) o.dateReceived = (o as any).date || "";
+      if (!o.garmentsCount) o.garmentsCount = (o as any).garmentsCount || (o as any).items || 1;
+    }
     return o;
   });
 }
@@ -227,13 +239,27 @@ export async function getOrderById(id: string): Promise<Order | null> {
     // Backup scanning method to ensure lookup always works under strict permissions
     try {
       const all = await getAllOrders();
-      const found = all.find((o) => String(o.id).toUpperCase() === String(id).toUpperCase());
+      const cleanInput = String(id).trim().toUpperCase();
+      const found = all.find((o) => {
+        const oId = String(o.id).toUpperCase();
+        return oId === cleanInput ||
+               oId === `APT-${cleanInput}` ||
+               oId === `APT_${cleanInput}` ||
+               (cleanInput.length >= 3 && oId.replace(/\D/g, "") === cleanInput);
+      });
       if (found) return found;
     } catch (e) {
       console.error("Firestore backup getAllOrders scan failed:", e);
     }
   }
-  const local = lsGet().find((o) => String(o.id).toUpperCase() === String(id).toUpperCase()) || null;
+  const cleanInput = String(id).trim().toUpperCase();
+  const local = lsGet().find((o) => {
+    const oId = String(o.id).toUpperCase();
+    return oId === cleanInput ||
+           oId === `APT-${cleanInput}` ||
+           oId === `APT_${cleanInput}` ||
+           (cleanInput.length >= 3 && oId.replace(/\D/g, "") === cleanInput);
+  }) || null;
   if (local && local.customerName) {
     local.customerName = sanitizeCustomerName(local.customerName, local.phone);
   }
@@ -384,6 +410,12 @@ export function subscribeToOrders(callback: (orders: Order[]) => void) {
               const o = d.data() as Order;
               if (o.customerName) {
                 o.customerName = sanitizeCustomerName(o.customerName, o.phone);
+              }
+              if ((o as any).isAppointment || String(o.id).toUpperCase().startsWith("APT")) {
+                if (!o.customerName) o.customerName = (o as any).customerName || "Appointment";
+                if (!o.dateReceived) o.dateReceived = (o as any).date || "";
+                if (!o.garmentsCount) o.garmentsCount = (o as any).garmentsCount || (o as any).items || 1;
+                if (!o.notes) o.notes = (o as any).notes || ((o as any).date ? `Appointment on ${(o as any).date} at ${(o as any).time}` : "");
               }
               return o;
             })
@@ -1569,14 +1601,94 @@ function lsSetAppointments(list: Appointment[]) {
   }
 }
 
-export async function saveAppointment(appointment: Appointment): Promise<void> {
+export async function getNextAppointmentId(): Promise<string> {
+  try {
+    const all = await getAllAppointments();
+    const existingNums = all.map((a) => {
+      const match = String(a.id).match(/^APT[-_]?(\d+)$/i);
+      if (match) {
+        return parseInt(match[1], 10);
+      }
+      return 0;
+    });
+    const max = existingNums.length > 0 ? Math.max(...existingNums) : 0;
+    let next = max < 100 ? 101 : max + 1;
+    while (all.some((a) => a.id === `APT-${next}` || a.id === `APT_${next}`)) {
+      next++;
+    }
+    return `APT-${next}`;
+  } catch (e) {
+    console.error("getNextAppointmentId failed:", e);
+    return `APT-${Math.floor(100 + Math.random() * 900)}`;
+  }
+}
+
+export async function migrateLegacyAppointmentIds(): Promise<void> {
   if (isConfigured && db) {
     try {
-      const docId = appointment.id.startsWith("APT_") ? appointment.id : `APT_${appointment.id}`;
+      const snapshot = await getDocs(query(collection(db, ORDERS_COLLECTION)));
+      for (const d of snapshot.docs) {
+        const data = d.data();
+        const id = String(d.id);
+        const isApt = data.isAppointment === true || id.toUpperCase().startsWith("APT");
+        // Legacy long ugly appointment ID pattern: e.g. APT_apt_web_..., APT_apt_..., or length > 12
+        if (isApt && (id.includes("apt_web_") || id.includes("apt_") || id.length > 12)) {
+          const cleanId = await getNextAppointmentId();
+          const updatedData = {
+            ...data,
+            id: cleanId,
+            isAppointment: true,
+            customerName: data.customerName || "Customer",
+            phone: data.phone || "",
+            status: data.status || "scheduled",
+            dateReceived: data.dateReceived || data.date || new Date().toISOString().split("T")[0],
+            items: data.items || data.garmentsCount || 1,
+            notes: data.notes || (data.date ? `Appointment on ${data.date} at ${data.time}` : "")
+          };
+          await setDoc(doc(db, ORDERS_COLLECTION, cleanId), cleanUndefined(updatedData));
+          await deleteDoc(doc(db, ORDERS_COLLECTION, id));
+          console.log(`[Migration] Migrated legacy appointment ID ${id} -> ${cleanId}`);
+        }
+      }
+    } catch (e) {
+      console.error("migrateLegacyAppointmentIds failed:", e);
+    }
+  }
+  // Also clean up in localStorage if present
+  const localList = lsGetAppointments();
+  let localChanged = false;
+  for (let i = 0; i < localList.length; i++) {
+    const item = localList[i];
+    if (item.id && (item.id.includes("apt_web_") || item.id.includes("apt_") || item.id.length > 12)) {
+      item.id = `APT-${101 + i}`;
+      localChanged = true;
+    }
+  }
+  if (localChanged) {
+    lsSetAppointments(localList);
+  }
+}
+
+export async function saveAppointment(appointment: Appointment): Promise<void> {
+  let docId = appointment.id;
+  if (!docId || docId.includes("apt_web_") || docId.startsWith("apt_") || docId.length > 12) {
+    docId = await getNextAppointmentId();
+  } else if (!docId.toUpperCase().startsWith("APT")) {
+    docId = `APT-${docId.replace(/^[-_]+/, "")}`;
+  }
+
+  if (isConfigured && db) {
+    try {
       const dataToSave = {
         ...appointment,
         id: docId,
-        isAppointment: true
+        isAppointment: true,
+        customerName: appointment.customerName || "Customer",
+        phone: appointment.phone || "",
+        status: appointment.status || "scheduled",
+        dateReceived: appointment.date || new Date().toISOString().split("T")[0],
+        items: appointment.garmentsCount || 1,
+        notes: appointment.notes || (appointment.date ? `Appointment on ${appointment.date} at ${appointment.time}` : "")
       };
       await setDoc(doc(db, ORDERS_COLLECTION, docId), cleanUndefined(dataToSave));
       return;
@@ -1585,11 +1697,12 @@ export async function saveAppointment(appointment: Appointment): Promise<void> {
     }
   }
   const list = lsGetAppointments();
-  const idx = list.findIndex((a) => a.id === appointment.id);
+  const normalizedApt = { ...appointment, id: docId };
+  const idx = list.findIndex((a) => a.id === docId || a.id === appointment.id);
   if (idx >= 0) {
-    list[idx] = appointment;
+    list[idx] = normalizedApt;
   } else {
-    list.push(appointment);
+    list.push(normalizedApt);
   }
   lsSetAppointments(list);
 }
@@ -1597,35 +1710,48 @@ export async function saveAppointment(appointment: Appointment): Promise<void> {
 export async function deleteAppointment(id: string): Promise<void> {
   if (isConfigured && db) {
     try {
-      const docId = id.startsWith("APT_") ? id : `APT_${id}`;
-      await deleteDoc(doc(db, ORDERS_COLLECTION, docId));
+      const docId = id.toUpperCase().startsWith("APT") ? id : `APT-${id}`;
+      await deleteDoc(doc(db, ORDERS_COLLECTION, docId)).catch(() => {});
+      if (docId !== id) {
+        await deleteDoc(doc(db, ORDERS_COLLECTION, id)).catch(() => {});
+      }
+      if (!id.startsWith("APT_")) {
+        await deleteDoc(doc(db, ORDERS_COLLECTION, `APT_${id}`)).catch(() => {});
+      }
       return;
     } catch (e) {
       console.error("Firestore deleteAppointment failed:", e);
     }
   }
-  const list = lsGetAppointments().filter((a) => a.id !== id);
+  const list = lsGetAppointments().filter((a) => a.id !== id && a.id !== `APT-${id}` && a.id !== `APT_${id}`);
   lsSetAppointments(list);
 }
 
 export async function updateAppointmentStatus(id: string, status: Appointment["status"]): Promise<void> {
   if (isConfigured && db) {
     try {
-      const docId = id.startsWith("APT_") ? id : `APT_${id}`;
-      const docRef = doc(db, ORDERS_COLLECTION, docId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        data.status = status;
-        await setDoc(docRef, data);
-        return;
+      const candidates = [
+        id, 
+        id.toUpperCase().startsWith("APT") ? id : `APT-${id}`, 
+        `APT_${id}`, 
+        `APT_${id.replace(/^APT[-_]?/i, "")}`
+      ];
+      for (const c of candidates) {
+        const docRef = doc(db, ORDERS_COLLECTION, c);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          data.status = status;
+          await setDoc(docRef, data);
+          return;
+        }
       }
     } catch (e) {
       console.error("Firestore updateAppointmentStatus failed:", e);
     }
   }
   const list = lsGetAppointments();
-  const idx = list.findIndex((a) => a.id === id);
+  const idx = list.findIndex((a) => a.id === id || a.id === `APT-${id}` || a.id === `APT_${id}`);
   if (idx >= 0) {
     list[idx].status = status;
     lsSetAppointments(list);
@@ -1638,7 +1764,7 @@ export async function getAllAppointments(): Promise<Appointment[]> {
       const snapshot = await getDocs(query(collection(db, ORDERS_COLLECTION)));
       return snapshot.docs
         .map((d) => d.data())
-        .filter((d) => d.isAppointment === true || String(d.id).startsWith("APT_"))
+        .filter((d) => d.isAppointment === true || String(d.id).toUpperCase().startsWith("APT"))
         .map((d) => ({
           id: d.id,
           phone: d.phone || "",
@@ -1682,7 +1808,7 @@ export function subscribeToAppointments(callback: (appointments: Appointment[]) 
         (snapshot) => {
           const list = snapshot.docs
             .map((d) => d.data())
-            .filter((d) => d.isAppointment === true || String(d.id).startsWith("APT_"))
+            .filter((d) => d.isAppointment === true || String(d.id).toUpperCase().startsWith("APT"))
             .map((d) => ({
               id: d.id,
               phone: d.phone || "",

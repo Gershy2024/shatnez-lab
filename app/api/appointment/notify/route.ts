@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
+      id,
       phone,
       customerName,
       date,
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Send customer confirmation SMS if requested
     if (sendCustomerSms && cleanPhone.length >= 10 && cleanPhone !== twilioFrom) {
-      const customerMsg = `The Shatnez Lab: Your appointment is confirmed for ${date} at ${timeLabel} for ${garmentsCount} ${garmentWord} (${duration} mins).\nLocation: ${location}.\nThank you!`;
+      const customerMsg = `The Shatnez Lab: Your appointment${id ? ` (${id})` : ""} is confirmed for ${date} at ${timeLabel} for ${garmentsCount} ${garmentWord} (${duration} mins).\nLocation: ${location}.\nThank you!`;
       smsPromises.push(
         sendSms(cleanPhone, customerMsg)
           .then((res) => {
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
           ? "Website / אתר"
           : "Admin Manual / ידני במערכת";
 
-      const adminSms = `📅 New Appointment Alert!\nDate: ${date} at ${timeLabel}\nGarments: ${garmentsCount} (${duration} mins)\nCustomer: ${customerName ? customerName.trim() : "None"} (${cleanPhone})\nSource: ${sourceLabel}${notes ? `\nNotes: ${notes.trim()}` : ""}`;
+      const adminSms = `📅 New Appointment Alert${id ? ` (${id})` : ""}!\nDate: ${date} at ${timeLabel}\nGarments: ${garmentsCount} (${duration} mins)\nCustomer: ${customerName ? customerName.trim() : "None"} (${cleanPhone})\nSource: ${sourceLabel}${notes ? `\nNotes: ${notes.trim()}` : ""}`;
 
       for (const admPhone of validAdminPhones) {
         smsPromises.push(

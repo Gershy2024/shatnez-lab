@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAvailableSlots, calculateAppointmentDuration, formatTime12h } from "@/lib/appointmentSlots";
-import { saveAppointment, getAppointmentSettings, getAdminSettings, Appointment } from "@/lib/db";
+import { saveAppointment, getAppointmentSettings, getAdminSettings, Appointment, getNextAppointmentId } from "@/lib/db";
 import { sendSms } from "@/lib/twilioCall";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     }
 
     const duration = calculateAppointmentDuration(garments, settings);
-    const aptId = `apt_web_${Date.now()}_${cleanPhone.slice(-4)}`;
+    const aptId = await getNextAppointmentId();
 
     const newApt: Appointment = {
       id: aptId,
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const garmentWord = garments === 1 ? "garment" : "garments";
     const location = settings.locationText || "14 Buchanan Rd, North Square, NY";
 
-    const smsMessage = `The Shatnez Lab: Your appointment is confirmed for ${date} at ${timeLabel} for ${garments} ${garmentWord} (${duration} mins).\nLocation: ${location}.\nSee you soon!`;
+    const smsMessage = `The Shatnez Lab: Your appointment (${aptId}) is confirmed for ${date} at ${timeLabel} for ${garments} ${garmentWord} (${duration} mins).\nLocation: ${location}.\nSee you soon!`;
 
     const twilioFrom = (adminSettings.twilioPhoneNumber || "").replace(/\D/g, "");
     const smsPromises: Promise<any>[] = [];
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       (p) => p.length >= 10 && p !== twilioFrom
     );
 
-    const adminSms = `📅 New Appointment Alert (Website)!\nDate: ${date} at ${timeLabel}\nGarments: ${garments} (${duration} mins)\nCustomer: ${customerName ? customerName.trim() : "None"} (${cleanPhone})${notes ? `\nNotes: ${notes.trim()}` : ""}`;
+    const adminSms = `📅 New Appointment Alert (${aptId} - Website)!\nDate: ${date} at ${timeLabel}\nGarments: ${garments} (${duration} mins)\nCustomer: ${customerName ? customerName.trim() : "None"} (${cleanPhone})${notes ? `\nNotes: ${notes.trim()}` : ""}`;
 
     for (const admPhone of validAdminPhones) {
       smsPromises.push(

@@ -13,7 +13,7 @@ import OrderAnalytics from "@/components/OrderAnalytics";
 import AppointmentsManager from "@/components/AppointmentsManager";
 import { subscribeToAllChatSessions, ChatSession } from "@/lib/liveChat";
 import Script from "next/script";
-import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest, extractPhoneNumbers, getOrderPhoneNumbers, hasAudioFile } from "@/lib/db";
+import { Order, OrderStatus, subscribeToOrders, saveOrder, deleteOrder, getAdminSettings, saveAdminSettings, getAudioFiles, uploadAudioFile, deleteAudioFile, AudioFileInfo, Voicemail, subscribeToVoicemails, markVoicemailRead, deleteVoicemail as dbDeleteVoicemail, CallRecord, subscribeToCalls, logCallEvent, SmsMessage, subscribeToSmsMessages, markSmsThreadRead, DeliveryRequest, subscribeToDeliveryRequests, saveDeliveryRequest, deleteDeliveryRequest, extractPhoneNumbers, getOrderPhoneNumbers, hasAudioFile, migrateLegacyAppointmentIds } from "@/lib/db";
 import { Settings, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, MessageSquare, Info, Microscope, ShieldCheck, MapPin, Mic, User, Paperclip, Image as ImageIcon, Loader2, Megaphone, Radio, Bell, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 
@@ -1370,6 +1370,9 @@ export default function AdminPage() {
 
     // Sync call costs silently in background on load
     fetch("/api/twilio/sync-prices").catch((err) => console.error("Silent sync error:", err));
+
+    // Migrate any legacy ugly appointment IDs (e.g. APT_apt_web_...) to clean format APT-101
+    migrateLegacyAppointmentIds().catch((err) => console.error("Silent appointment migration error:", err));
 
     const unsub = subscribeToOrders((data) => {
       setOrders(data);

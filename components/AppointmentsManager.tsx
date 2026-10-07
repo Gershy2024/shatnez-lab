@@ -44,7 +44,8 @@ import {
   updateAppointmentStatus,
   getAppointmentSettings,
   saveAppointmentSettings,
-  DEFAULT_APPOINTMENT_SETTINGS
+  DEFAULT_APPOINTMENT_SETTINGS,
+  getNextAppointmentId
 } from "@/lib/db";
 import { formatTime12h, getNyDateString, calculateAppointmentDuration } from "@/lib/appointmentSlots";
 import { getHebrewDayInfo, HebrewDayInfo } from "@/lib/hebrewCalendar";
@@ -402,9 +403,10 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
     setSavingNewApt(true);
     try {
       const duration = calculateAppointmentDuration(newGarments, settings);
+      const aptId = await getNextAppointmentId();
 
       const apt: Appointment = {
-        id: `apt_${Date.now()}_${newPhone.replace(/\D/g, "").slice(-4) || "0000"}`,
+        id: aptId,
         phone: newPhone.trim(),
         customerName: newName.trim(),
         date: newDate,
@@ -426,6 +428,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              id: aptId,
               phone: newPhone.trim(),
               customerName: newName.trim(),
               date: newDate,
@@ -873,6 +876,9 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     <tr key={apt.id} className={`hover:bg-primary-50/50 transition-colors ${isToday ? "bg-amber-50/30" : ""}`}>
                       <td className="py-3 px-4 font-semibold text-navy-900 whitespace-nowrap">
                         <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-navy-700 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md">
+                            {apt.id}
+                          </span>
                           <span>{apt.date} • {friendlyTime}</span>
                           {isToday && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs">
