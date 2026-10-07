@@ -865,7 +865,11 @@ export default function AdminPage() {
     }
   };
   
-  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string | null>(null);
+  const [originalCustomerPhone, setOriginalCustomerPhone] = useState<string | null>(null);
+  const [originalCustomerPhone2, setOriginalCustomerPhone2] = useState<string>("");
+  const [originalCustomerName, setOriginalCustomerName] = useState<string>("");
+
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string>("");
   const [selectedCustomerPhone2, setSelectedCustomerPhone2] = useState<string>("");
   const [selectedCustomerName, setSelectedCustomerName] = useState<string>("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -881,23 +885,48 @@ export default function AdminPage() {
 
   const openCustomerModal = (phone: string, customerName: string, phone2?: string) => {
     const extracted = extractPhoneNumbers(phone);
-    const p1 = extracted[0] || phone;
+    const p1 = extracted[0] || phone || "";
     let p2 = phone2 || (extracted.length > 1 ? extracted[1] : "");
-    if (!p2) {
+    if (!p2 && p1) {
       const cleanOldPhone = p1.replace(/\D/g, "");
       const match = orders.find(o => (o.phone && o.phone.replace(/\D/g, "") === cleanOldPhone) && o.phone2);
       if (match?.phone2) p2 = match.phone2;
     }
+    setOriginalCustomerPhone(p1);
+    setOriginalCustomerPhone2(p2 || "");
+    setOriginalCustomerName(customerName || "");
+
     setSelectedCustomerPhone(p1);
     setSelectedCustomerPhone2(p2 || "");
-    setSelectedCustomerName(customerName);
+    setSelectedCustomerName(customerName || "");
     setIsAddingOrderInModal(false);
     setShowCustomerModal(true);
   };
 
+  const modalCustomerOrders = useMemo(() => {
+    if (!showCustomerModal) return [];
+    const searchNums = [originalCustomerPhone, originalCustomerPhone2, selectedCustomerPhone, selectedCustomerPhone2]
+      .map(p => p?.replace(/\D/g, ""))
+      .filter(Boolean);
+    const cleanOrigName = (originalCustomerName || "").trim().toLowerCase();
+    const cleanSelName = (selectedCustomerName || "").trim().toLowerCase();
+
+    return orders.filter(o => {
+      const oNums = getOrderPhoneNumbers(o);
+      const matchesPhone = searchNums.length > 0 && oNums.some(n => searchNums.some(sn => n.includes(sn!) || sn!.includes(n)));
+      const matchesName = (!searchNums.length || !oNums.length) && (
+        (cleanOrigName && o.customerName && o.customerName.trim().toLowerCase() === cleanOrigName) ||
+        (cleanSelName && o.customerName && o.customerName.trim().toLowerCase() === cleanSelName)
+      );
+      return matchesPhone || matchesName;
+    });
+  }, [showCustomerModal, orders, originalCustomerPhone, originalCustomerPhone2, selectedCustomerPhone, selectedCustomerPhone2, originalCustomerName, selectedCustomerName]);
+
   const handleUpdateCustomerProfile = async (newName: string, newPhone: string, newPhone2?: string) => {
-    if (!selectedCustomerPhone) return;
-    const cleanOldPhone = selectedCustomerPhone.replace(/\D/g, "");
+    const cleanOldPhone = (originalCustomerPhone || "").replace(/\D/g, "");
+    const cleanOldPhone2 = (originalCustomerPhone2 || "").replace(/\D/g, "");
+    const oldName = (originalCustomerName || "").trim().toLowerCase();
+
     const allExtracted = [
       ...extractPhoneNumbers(newPhone),
       ...extractPhoneNumbers(newPhone2)
@@ -906,39 +935,65 @@ export default function AdminPage() {
     const p1 = uniquePhones[0] || newPhone.trim();
     const p2 = uniquePhones.length > 1 ? uniquePhones[1] : (newPhone2?.trim() || "");
 
-    if (!newName || !p1) {
+    if (!newName && !p1) {
       showToast(isRtl ? "שם ומספר טלפון לא יכולים להיות ריקים!" : "Name and phone number cannot be empty!", "error");
       return;
     }
     
-    // Find all orders matching the old phone number
+    // Find all orders matching the old phone number(s) or old customer name
     const matchingOrders = orders.filter(o => {
       const nums = getOrderPhoneNumbers(o);
-      return nums.some(n => n.includes(cleanOldPhone) || cleanOldPhone.includes(n));
+      const matchesPhone = cleanOldPhone && nums.some(n => n.includes(cleanOldPhone) || cleanOldPhone.includes(n));
+      const matchesPhone2 = cleanOldPhone2 && nums.some(n => n.includes(cleanOldPhone2) || cleanOldPhone2.includes(n));
+      const matchesName = oldName && (!cleanOldPhone || nums.length === 0) && o.customerName && o.customerName.trim().toLowerCase() === oldName;
+      return matchesPhone || matchesPhone2 || matchesName;
     });
 
     for (const o of matchingOrders) {
       await saveOrder({
         ...o,
-        customerName: newName,
+        customerName: newName.trim(),
         phone: p1,
         phone2: p2 || undefined
       });
     }
+
+    try {
+      const matchingDeliveries = deliveries.filter(d => {
+        const cleanP = (d.phone || "").replace(/\D/g, "");
+        return cleanOldPhone && cleanP && (cleanP.includes(cleanOldPhone) || cleanOldPhone.includes(cleanP));
+      });
+      for (const d of matchingDeliveries) {
+        await saveDeliveryRequest({
+          ...d,
+          customerName: newName.trim(),
+          phone: p1
+        });
+      }
+    } catch (delErr) {
+      console.warn("Error updating matching deliveries:", delErr);
+    }
+
+    setOriginalCustomerPhone(p1);
+    setOriginalCustomerPhone2(p2);
+    setOriginalCustomerName(newName.trim());
     setSelectedCustomerPhone(p1);
     setSelectedCustomerPhone2(p2);
-    setSelectedCustomerName(newName);
+    setSelectedCustomerName(newName.trim());
+
     showToast(isRtl ? "פרטי הלקוח עודכנו בהצלחה!" : "Customer profile updated successfully!", "success");
   };
 
   const handleCreateOrderInModal = async () => {
-    if (!selectedCustomerPhone || !selectedCustomerName) return;
+    const phoneToUse = selectedCustomerPhone || originalCustomerPhone || "";
+    const nameToUse = selectedCustomerName || originalCustomerName || "Customer";
+    if (!phoneToUse && !nameToUse) return;
     const nextId = generateNextId();
     const order: Order = {
       id: nextId,
-      customerName: selectedCustomerName,
-      phone: selectedCustomerPhone,
-      phone2: selectedCustomerPhone2 || undefined,
+      customerName: nameToUse,
+      phone: phoneToUse,
+      phone2: selectedCustomerPhone2 || originalCustomerPhone2 || undefined,
       status: (modalNewOrder.status as OrderStatus) || "received",
       dateReceived: modalNewOrder.dateReceived || new Date().toISOString().split("T")[0],
       estimatedCompletion: modalNewOrder.estimatedCompletion || "",
@@ -6576,7 +6631,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {showCustomerModal && selectedCustomerPhone && (
+        {showCustomerModal && (originalCustomerPhone || originalCustomerName || selectedCustomerPhone) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -6773,11 +6828,7 @@ export default function AdminPage() {
                       <Package className="w-4 h-4 text-gold-500" />
                       {isRtl ? "היסטוריית הזמנות של הלקוח" : "Customer Order History"}
                       <span className="text-xs bg-primary-100 text-primary-800 px-2 py-0.5 rounded-full font-bold">
-                        {orders.filter(o => {
-                          const oNums = getOrderPhoneNumbers(o);
-                          const searchNums = [selectedCustomerPhone, selectedCustomerPhone2].map(p => p?.replace(/\D/g, "")).filter(Boolean);
-                          return oNums.some(n => searchNums.some(sn => n.includes(sn!) || sn!.includes(n)));
-                        }).length}
+                        {modalCustomerOrders.length}
                       </span>
                     </h3>
 
@@ -6795,12 +6846,7 @@ export default function AdminPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {orders
-                            .filter(o => {
-                              const oNums = getOrderPhoneNumbers(o);
-                              const searchNums = [selectedCustomerPhone, selectedCustomerPhone2].map(p => p?.replace(/\D/g, "")).filter(Boolean);
-                              return oNums.some(n => searchNums.some(sn => n.includes(sn!) || sn!.includes(n)));
-                            })
+                          {modalCustomerOrders
                             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
                             .map((o) => (
                               <tr key={o.id} className="border-b border-primary-50 hover:bg-primary-50/20 transition-colors">
@@ -6892,7 +6938,7 @@ export default function AdminPage() {
                                 </td>
                               </tr>
                             ))}
-                          {orders.filter(o => o.phone && o.phone.replace(/\D/g, "") === selectedCustomerPhone?.replace(/\D/g, "")).length === 0 && (
+                          {modalCustomerOrders.length === 0 && (
                             <tr>
                               <td colSpan={7} className="px-6 py-6 text-center text-primary-400 italic font-medium">
                                 {isRtl ? "אין היסטוריית הזמנות ללקוח זה" : "No order history for this customer."}
