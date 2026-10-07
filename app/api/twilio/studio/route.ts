@@ -1621,42 +1621,42 @@ async function handleRequest(req: NextRequest) {
         if (apiKey) {
           try {
             console.log(`[Twilio Studio SMS AI] Invoking Google Gemini API for admin message: "${inputMsg}"`);
-            const ordersList = await getAllOrders();
+            const [ordersList, callsList, smsList, voicemailsList, balanceData, aptSettings, allAppointmentsList] = await Promise.all([
+              getAllOrders().catch(e => { console.warn("[Twilio Studio SMS AI] orders fetch error:", e); return []; }),
+              getRecentCalls(30).catch(e => { console.warn("[Twilio Studio SMS AI] calls fetch error:", e); return []; }),
+              getRecentSmsMessages(20).catch(e => { console.warn("[Twilio Studio SMS AI] sms fetch error:", e); return []; }),
+              getAllVoicemails().catch(e => { console.warn("[Twilio Studio SMS AI] voicemails fetch error:", e); return []; }),
+              getTwilioBalance().catch(e => { console.warn("[Twilio Studio SMS AI] balance fetch error:", e); return null; }),
+              getAppointmentSettings().catch(e => { console.warn("[Twilio Studio SMS AI] apt settings error:", e); return null; }),
+              getAllAppointments().catch(e => { console.warn("[Twilio Studio SMS AI] appointments fetch error:", e); return []; })
+            ]);
+
             const activeOrders = ordersList.filter(o => !o.archived);
-            const callsList = await getRecentCalls(30);
-            const smsList = await getRecentSmsMessages(20);
-            const voicemailsList = await getAllVoicemails();
-            const balanceData = await getTwilioBalance();
             const balanceStr = balanceData ? `${balanceData.balance} ${balanceData.currency}` : "Unavailable";
 
-            // Load live appointments & calendar data
             const todayNy = getNyDateString(0);
             const tomorrowNy = getNyDateString(1);
-            let aptSettings: any = null;
-            let allAppointmentsList: any[] = [];
             let todaySlotsList: any[] = [];
             let tomorrowSlotsList: any[] = [];
             let todayHebrew: any = null;
             let tomorrowHebrew: any = null;
 
             try {
-              aptSettings = await getAppointmentSettings();
-              allAppointmentsList = await getAllAppointments();
               todayHebrew = getHebrewDayInfo(todayNy.dateStr);
               tomorrowHebrew = getHebrewDayInfo(tomorrowNy.dateStr);
               if (aptSettings?.enabled) {
-                todaySlotsList = await getAvailableSlots(todayNy.dateStr, 1, aptSettings);
-                tomorrowSlotsList = await getAvailableSlots(tomorrowNy.dateStr, 1, aptSettings);
+                todaySlotsList = await getAvailableSlots(todayNy.dateStr, 1, aptSettings).catch(() => []);
+                tomorrowSlotsList = await getAvailableSlots(tomorrowNy.dateStr, 1, aptSettings).catch(() => []);
               }
             } catch (aptErr) {
-              console.warn("[Twilio Studio SMS AI] Error loading appointment data for prompt:", aptErr);
+              console.warn("[Twilio Studio SMS AI] Error loading appointment slots for prompt:", aptErr);
             }
 
             const todayApts = allAppointmentsList.filter(a => a.date === todayNy.dateStr && a.status !== "cancelled");
             const tomorrowApts = allAppointmentsList.filter(a => a.date === tomorrowNy.dateStr && a.status !== "cancelled");
             const upcomingApts = allAppointmentsList
-              .filter(a => a.date >= todayNy.dateStr && a.status !== "cancelled")
-              .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+              .filter(a => a.date && a.date >= todayNy.dateStr && a.status !== "cancelled")
+              .sort((a, b) => ((a.date || "") + (a.time || "")).localeCompare((b.date || "") + (b.time || "")))
               .slice(0, 15);
 
             // Format recent voicemails (first 10)
@@ -1706,6 +1706,32 @@ async function handleRequest(req: NextRequest) {
               }
             }
 
+            // Extract conversation thread with this specific admin phone for multi-turn understanding
+            const cleanAdminPhone = fromPhone.replace(/\D/g, "");
+            const adminThread = smsList
+              .filter(s => s.phone && s.phone.replace(/\D/g, "").endsWith(cleanAdminPhone.slice(-10)))
+              .slice(0, 8)
+              .map(s => {
+                let timeStr = "";
+                try {
+                  timeStr = new Intl.DateTimeFormat("en-US", {
+                    timeZone: "America/New_York",
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true
+                  }).format(new Date(s.timestamp));
+                } catch {
+                  timeStr = new Date(s.timestamp).toLocaleString();
+                }
+                return {
+                  sender: s.direction === "inbound" ? "Admin" : "System",
+                  body: s.body,
+                  time: timeStr
+                };
+              });
+
             const prompt = `You are a helpful admin assistant for The Shatnez Lab (a clothing testing laboratory).
 Your task is to analyze the admin's text message and determine their intent.
 
@@ -1738,6 +1764,10 @@ ${JSON.stringify(smsList.map(s => {
   }
   return { phone: s.phone, direction: s.direction, body: s.body, time: timeStr };
 }))}
+
+Recent Conversation Thread with This Admin (most recent first):
+${JSON.stringify(adminThread)}
+Note: If the admin says "this customer", "them", "that order", or asks a follow-up request, use this conversation history to know who they are referring to!
 
 Here is the list of actual recorded voicemails in the system (most recent first):
 ${JSON.stringify(recentVoicemails)}
@@ -1806,7 +1836,7 @@ You must respond with a JSON object ONLY, matching this schema:
 }
 
 Guidelines:
-1. If the admin is asking a question (e.g. "who called me?", "how many orders are ready?", "did order 102 get tested?", "what order number is 8459251395?", "Did you trigger automated call for order 100020?"), analyze the data, match orders/callers, set action="none" and put the detailed answer in "adminReply" (in the language they asked, Hebrew or English).
+1. If the admin is asking a question (e.g. "who called me?", "how many orders are ready?", "did order 102 get tested?", "what order number is 8459251395?", "Did you trigger automated call for order 100020?", "Any appointments scheduled for today?"): analyze the data, match orders/callers/appointments, set action="none" and put the detailed answer in "adminReply" (in the language they asked, Hebrew or English).
 2. If they want to trigger, initiate, or send an automated customer notification call / robocall (e.g. "trigger call for order 100020", "can you make another ready phone notivation for number 100121", "Make another notification phone call for order number 100120", "Send another robocall for order number 100077", "send robocall for order 100077", "send another call to 100077", "send another reminder call", "send robocall to swartz", "trigger authoring notification call for costomer 8459251395", "trigger outbound call for 100063", "so now trigger", "trigger outgoing call that order is ready for pickup", "שלח עוד רובוקול להזמנה 100077", "שלח עוד שיחה", "שלח עוד תזכורת", "תתקשר ללקוח שההזמנה מוכנה", "הפעל שיחה אוטומטית"):
    - Set action="trigger_call".
    - Match the target order by orderId, customer phone number (e.g. 8459251395), or customer name from the active orders list.
@@ -1829,12 +1859,24 @@ Guidelines:
    - "result": If clean is mentioned ("results clean", "clean", "נקי"), set result="Clean / No Shatnez". If shatnez found, set result="Shatnez Found". If not specified, set result="".
    - "triggerCall": set to true if status is "ready".
    - "customerName": Extract ONLY if an actual person's real name is explicitly provided (e.g. "Swartz" or "John Doe"). CRITICAL: NEVER include command words, status words, location names, prepositions, or sentence fragments in customerName! Phrases like "a is and ready pickup results clean", "and update results is clean and ready pickup", "order for location 166 Clinton Lane", "new order" are NOT names! If no person's real name was given in the message, you MUST leave customerName as "" or null.
-6. If the admin wants to make a live bridge call to talk to a customer (e.g. "call 845-376-6452", "dial 8453766452", "צלצל ל-8453766452", "התקשר לגליק", "חייג אל 845-376-6452"):
-   Set action="bridge_call", set customerPhone (find it from orders or recent callers if they specify a customer name like "גליק"), and optionally set customerName and orderId if associated with a matched order.
+6. If the admin wants to make a live bridge call to talk to a customer directly (e.g. "Call costomer +18483542703", "I want you to make a outgoing call for this customer I want to talk to them (not automatic finished call)", "call 845-376-6452", "dial 8453766452", "צלצל ל-8453766452", "התקשר לגליק", "חייג אל 845-376-6452", "connect me with this customer", "call them"):
+   - Set action="bridge_call".
+   - Find the customer phone number from:
+     a) The current message (e.g. "+18483542703"), or
+     b) The Recent Conversation Thread with this admin (if they mentioned a phone number in their previous text), or
+     c) Active orders / recent callers if they specify a customer name (e.g. "גליק").
+   - Set "customerPhone" to that phone number.
+   - Set "customerName" and "orderId" if matched to an order.
+   - In "adminReply", warmly confirm that you are connecting them with that customer right now (e.g. "Connecting you with 848-354-2703 now. We are dialing your phone first!").
+   - If no customer phone number or name can be identified anywhere, set action="none" and ask: "Sure! Which customer or phone number would you like me to call? Please provide their number and I will connect you right away."
 7. If the admin sends digits in shortcut update format (e.g. "100063 4 1 1 1" or "102 4 1 1 1"):
    Interpret as: orderId=first digits, status (1=received, 2=testing, 3=review, 4=ready, 5=delivered, 6=issue), result (1=Clean, 2=Shatnez Found, 3=Call to Discuss), location (1=Buchanan, 2=Clinton), notify (1=triggerCall true, 2=triggerCall false). Set action="update_order".
 8. IF YOU ARE UNSURE OR INTENT IS AMBIGUOUS:
-   Set action="none". Proactively use your AI intelligence in "adminReply" to politely ask the admin what they want, guessing their likely intention (e.g., "Hey Boss! I didn't quite catch that. Did you want me to trigger an order ready call, check recent calls, or update an order? Please let me know what you need!"). Never leave them without a clear, conversational answer.
+   Set action="none". Proactively use your AI intelligence in "adminReply" to politely ask a helpful, context-specific question.
+   - If they mentioned calling or contacting someone without a phone/name, ask: "Sure! Which customer or phone number would you like me to call?"
+   - If they mentioned updating without an order ID, ask: "Which order number would you like me to update?"
+   - If completely ambiguous, ask politely: "Hey Boss! How can I help you? You can ask me to call a customer, check appointments, trigger a ready notification call, or update an order."
+   NEVER use a repetitive or robotic refusal.
 9. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
 10. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
 11. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
@@ -1851,7 +1893,7 @@ You have complete, live real-time access to all scheduled appointments, bookings
   - Look at "Today's Available Open Timeslots" (or tomorrow's if asked).
   - If open slots exist, list them clearly in "adminReply" (e.g., "Yes! We have available slots today at: 10:00 AM, 10:30 AM, 11:00 AM...").
   - If no open slots are left (or if the lab is closed for a holiday/weekend), clearly state that there are no remaining open slots today, and mention tomorrow's open slots if any are available.
-- If the admin asks who is coming, who booked, or what appointments exist (e.g. "Who has an appointment today?", "Do I have any appointments today?", "מי קבע פגישה להיום?", "איזה פגישות יש היום?"):
+- If the admin asks who is coming, who booked, or what appointments exist (e.g. "Who has an appointment today?", "Do I have any appointments today?", "Any appointments scheduled for today?", "מי קבע פגישה להיום?", "איזה פגישות יש היום?"):
   - Set action="none".
   - Check "Today's Scheduled Appointments".
   - If there are appointments, list each one with time, customer name, phone, garment count, and location.
@@ -1860,9 +1902,7 @@ You have complete, live real-time access to all scheduled appointments, bookings
 
             const modelsToTry = [
               "gemini-2.5-flash",
-              "gemini-3.5-flash",
-              "gemini-3.5-flash-lite",
-              "gemini-3.1-flash-lite"
+              "gemini-flash-latest"
             ];
 
             let aiJson: any = null;
@@ -1887,6 +1927,7 @@ You have complete, live real-time access to all scheduled appointments, bookings
                   const geminiResponse = await fetch(geminiUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
+                    signal: AbortSignal.timeout(6500),
                     body: JSON.stringify({
                       contents: [{ parts: [{ text: prompt }] }],
                       generationConfig: genConfig
@@ -1896,6 +1937,10 @@ You have complete, live real-time access to all scheduled appointments, bookings
                   if (geminiResponse.ok) {
                     const resData = await geminiResponse.json();
                     let aiText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                    if (!aiText && resData.candidates?.[0]?.content?.parts) {
+                      const textPart = resData.candidates[0].content.parts.find((p: any) => p.text && !p.thought);
+                      if (textPart) aiText = textPart.text;
+                    }
                     const jsonMatch = aiText.match(/\{[\s\S]*\}/);
                     if (jsonMatch) {
                       aiJson = JSON.parse(jsonMatch[0]);
@@ -2188,8 +2233,25 @@ You have complete, live real-time access to all scheduled appointments, bookings
         else if (["עזרה", "מנהל", "היי", "hi"].includes(cmd)) cmd = "help";
 
         if (
-          /(robocall|רובוקול)/i.test(inputMsg) ||
-          /(trigger\s*(a\s*)?(call|robocall|outbound)|send\s*(another\s*|a\s*)?(call|robocall|notification|notivation)|make\s*(another\s*|a\s*)?(ready\s*)?(notification|notivation)?\s*(phone\s*)?call|ready\s*phone\s*(notification|notivation)|הפעל\s*שיחה|שלח\s*.*(שיחה|רובוקול))/i.test(inputMsg)
+          cmd === "call" || cmd === "dial" || cmd === "bridge" ||
+          /^(call|dial|bridge|צלצל|חייג|התקשר)\b/i.test(inputMsg) ||
+          /(make\s*(an?\s*)?(outgoing\s*)?call|outgoing\s*call|live\s*call|connect\s*(me\s*)?(to|with)|שיחה\s*יוצאת|רוצה\s*לדבר)/i.test(inputMsg)
+        ) {
+          cmd = "call";
+        }
+
+        if (
+          cmd === "appointment" || cmd === "appointments" || cmd === "schedule" || cmd === "slots" ||
+          /(appointment|appointments|schedule|timeslot|timeslots|פגישה|פגישות|תור|תורים|לוח\s*זמנים)/i.test(inputMsg)
+        ) {
+          cmd = "appointments";
+        }
+
+        if (
+          cmd !== "call" && (
+            /(robocall|רובוקול)/i.test(inputMsg) ||
+            /(trigger\s*(a\s*)?(call|robocall|outbound)|send\s*(another\s*|a\s*)?(call|robocall|notification|notivation)|make\s*(another\s*|a\s*)?(ready\s*)?(notification|notivation)?\s*(phone\s*)?call|ready\s*phone\s*(notification|notivation)|הפעל\s*שיחה|שלח\s*.*(שיחה|רובוקול))/i.test(inputMsg)
+          )
         ) {
           cmd = "trigger";
         }
@@ -2346,6 +2408,120 @@ You have complete, live real-time access to all scheduled appointments, bookings
               replyMessage: `Order not found or missing phone number. Usage: trigger [orderId] or trigger [phone]`
             });
           }
+        }
+
+        if (cmd === "call") {
+          // Syntax: call [phone or customer name]
+          const detectedPhones = extractPhoneNumbers(inputMsg);
+          let targetPhone = detectedPhones[0] || "";
+          if (!targetPhone) {
+            const rawMatch = inputMsg.match(/\+?\d[\d\s\-().]{8,}\d/);
+            if (rawMatch) targetPhone = rawMatch[0].replace(/\D/g, "");
+          }
+
+          // If no phone found in current message, look back at recent inbound messages from this admin
+          if (!targetPhone) {
+            const cleanFrom = fromPhone.replace(/\D/g, "");
+            const prevAdminMsgs = (await getRecentSmsMessages(10)).filter(s => s.direction === "inbound" && s.phone && s.phone.replace(/\D/g, "").endsWith(cleanFrom.slice(-10)));
+            for (const prev of prevAdminMsgs) {
+              const prevPhones = extractPhoneNumbers(prev.body);
+              if (prevPhones.length > 0) {
+                targetPhone = prevPhones[0];
+                break;
+              }
+            }
+          }
+
+          // Search active orders for matched order or customer name
+          let matchedOrder: any = null;
+          if (targetPhone) {
+            const cleanP = targetPhone.replace(/\D/g, "");
+            const searchP = cleanP.length === 11 && cleanP.startsWith("1") ? cleanP.substring(1) : cleanP;
+            const byPhone = await getOrdersByPhone(searchP);
+            if (byPhone.length > 0) {
+              byPhone.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+              matchedOrder = byPhone[0];
+            }
+          } else {
+            // Check if admin passed a customer name (e.g. "call Swartz" or "צלצל לשוורץ")
+            const noise = ["call", "dial", "bridge", "costomer", "customer", "ל", "אל", "צלצל", "התקשר", "חייג"];
+            const nameWords = parts.filter(p => !noise.includes(p.toLowerCase()));
+            if (nameWords.length > 0) {
+              const searchName = nameWords.join(" ").toLowerCase();
+              const allOrders = (await getAllOrders()).filter(o => !o.archived);
+              const match = allOrders.find(o => o.customerName && o.customerName.toLowerCase().includes(searchName));
+              if (match && match.phone) {
+                matchedOrder = match;
+                targetPhone = match.phone;
+              }
+            }
+          }
+
+          if (targetPhone) {
+            const proto = req.headers.get("x-forwarded-proto") || "https";
+            const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "shatnez-lab.vercel.app";
+            const origin = `${proto}://${host}`;
+
+            const bridgeResult = await triggerCallBridge(
+              targetPhone,
+              fromPhone,
+              origin,
+              matchedOrder?.customerName,
+              matchedOrder?.id
+            );
+
+            if (bridgeResult.success) {
+              const targetDesc = matchedOrder?.customerName ? `${matchedOrder.customerName} (${targetPhone})` : targetPhone;
+              return jsonResponse({
+                success: true,
+                replyMessage: `Initiating live outbound call. We will dial your admin phone number first, and connect you with ${targetDesc}.`
+              });
+            } else {
+              return jsonResponse({
+                success: true,
+                replyMessage: `Failed to initiate call to ${targetPhone}: ${bridgeResult.error || "Unknown error"}`
+              });
+            }
+          } else {
+            return jsonResponse({
+              success: true,
+              replyMessage: "Please provide the customer phone number to call (e.g. 'call 845-555-1234' or 'call +18483542703')."
+            });
+          }
+        }
+
+        if (cmd === "appointments") {
+          const todayNy = getNyDateString(0);
+          const tomorrowNy = getNyDateString(1);
+          const apts = await getAllAppointments().catch(() => []);
+          const todayBooked = apts.filter(a => a.date === todayNy.dateStr && a.status !== "cancelled");
+          const tomorrowBooked = apts.filter(a => a.date === tomorrowNy.dateStr && a.status !== "cancelled");
+
+          let reply = "";
+          if (/(tomorrow|מחר)/i.test(inputMsg)) {
+            reply = `Appointments for Tomorrow (${tomorrowNy.dateStr}):\n`;
+            if (tomorrowBooked.length === 0) {
+              reply += "None booked for tomorrow.";
+            } else {
+              tomorrowBooked.forEach((a, i) => {
+                reply += `${i + 1}. ${a.time} - ${a.customerName || a.phone} (${a.garmentsCount || 1} garments)\n`;
+              });
+            }
+          } else {
+            reply = `Appointments for Today (${todayNy.dateStr}):\n`;
+            if (todayBooked.length === 0) {
+              reply += "There are no appointments scheduled for today.";
+            } else {
+              todayBooked.forEach((a, i) => {
+                reply += `${i + 1}. ${a.time} - ${a.customerName || a.phone} (${a.garmentsCount || 1} garments)\n`;
+              });
+            }
+          }
+
+          return jsonResponse({
+            success: true,
+            replyMessage: reply.trim()
+          });
         }
 
         if (cmd === "sms") {
@@ -2762,7 +2938,12 @@ You have complete, live real-time access to all scheduled appointments, bookings
 
         // Fallback Help / Clarification
         if (apiKey) {
-          adminReply += "I'm not sure what you'd like me to do with that message. Did you want to trigger a ready notification call for an order, check recent calls, or update an order? Please let me know what you need!";
+          adminReply += "I'm here to help! What would you like to do?\n" +
+            "• Call a customer: call [phone or name]\n" +
+            "• Check appointments: appointments\n" +
+            "• Trigger ready robocall: trigger [order #]\n" +
+            "• Check recent calls/orders: recent calls / recent orders\n" +
+            "• Add or update order: add [phone] / update [order #]";
         } else {
           const prefix = isPinProvided ? pin + " " : "";
           adminReply += `Admin SMS Menu:\n\n` +

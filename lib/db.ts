@@ -59,6 +59,7 @@ export interface Appointment {
   notes?: string;
   createdAt: number;
   source?: "phone" | "admin" | "web";
+  location?: string;
 }
 
 export interface DateException {
@@ -1649,7 +1650,8 @@ export async function getAllAppointments(): Promise<Appointment[]> {
           status: d.status || "scheduled",
           notes: d.notes || "",
           createdAt: d.createdAt || Date.now(),
-          source: d.source || "phone"
+          source: d.source || "phone",
+          location: d.location || "14 Buchanan Rd"
         } as Appointment))
         .sort((a, b) => {
           const compDate = (a.date || "").localeCompare(b.date || "");
