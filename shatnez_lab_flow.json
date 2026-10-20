@@ -1348,25 +1348,28 @@
     },
     {
       "name": "connect_call_1",
+      "type": "add-twiml-redirect",
       "properties": {
-        "caller_id": "{{widgets.check_hours.parsed.callerId}}",
-        "noun": "number",
+        "method": "POST",
         "offset": {
           "x": 490,
           "y": -691
         },
-        "timeout": 30,
-        "to": "{{widgets.check_hours.parsed.forwardingNumber}}"
+        "timeout": "14400",
+        "url": "https://www.theshatnezlab.com/api/twilio/gather?step=office_forward_call"
       },
       "transitions": [
         {
-          "event": "callCompleted"
+          "event": "return",
+          "next": "welcome_menu"
         },
         {
-          "event": "hangup"
+          "event": "timeout"
+        },
+        {
+          "event": "fail"
         }
-      ],
-      "type": "connect-call-to"
+      ]
     },
     {
       "name": "play_closed_en",

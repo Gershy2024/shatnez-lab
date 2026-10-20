@@ -71,7 +71,7 @@ function playTtsEn(origin: string, en: string) {
 }
 
 function gather(action: string, numDigits: number | string, timeout = 10, innerXml: string) {
-  const escapedAction = action.replace(/&/g, "&amp;");
+  const escapedAction = action.replace(/&amp;/g, "&").replace(/&/g, "&amp;");
   return `<Gather action="${escapedAction}" method="POST" numDigits="${numDigits}" timeout="${timeout}">${innerXml}</Gather>`;
 }
 
@@ -493,7 +493,7 @@ export async function POST(req: NextRequest) {
         const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper&amp;parentCallSid=${encodeURIComponent(callSid)}`;
         const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed&amp;parentCallSid=${encodeURIComponent(callSid)}`;
 
-        const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20">
+        const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20" answerOnBridge="true">
   <Number url="${screenUrl}">${formattedNum}</Number>
 </Dial>`;
 
@@ -541,7 +541,7 @@ export async function POST(req: NextRequest) {
       const screenUrl = `${origin}/api/twilio/gather?step=office_call_screen_whisper&amp;parentCallSid=${encodeURIComponent(callSid)}`;
       const dialActionUrl = `${origin}/api/twilio/gather?step=office_forward_completed&amp;parentCallSid=${encodeURIComponent(callSid)}`;
 
-      const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20">
+      const dialTag = `<Dial${callerIdAttr} action="${dialActionUrl}" timeout="20" answerOnBridge="true">
   <Number url="${screenUrl}">${formattedNum}</Number>
 </Dial>`;
 
@@ -553,9 +553,9 @@ export async function POST(req: NextRequest) {
 
     // ── Office Forwarding Call Screening (Whisper Leg) ──
     if (step === "office_call_screen_whisper") {
-      const parentCallSid = url.searchParams.get("parentCallSid") || "";
+      const parentCallSid = url.searchParams.get("parentCallSid") || url.searchParams.get("amp;parentCallSid") || "";
       console.log(`[Twilio IVR Call Screening] Admin answered call leg. ParentCallSid: "${parentCallSid}", CallSid: "${callSid}". Playing whisper prompt.`);
-      const acceptUrl = `${origin}/api/twilio/gather?step=office_call_screen_accept&amp;parentCallSid=${encodeURIComponent(parentCallSid)}`;
+      const acceptUrl = `${origin}/api/twilio/gather?step=office_call_screen_accept&parentCallSid=${encodeURIComponent(parentCallSid)}`;
       return xmlResponse(
         gather(
           acceptUrl,
@@ -572,13 +572,14 @@ export async function POST(req: NextRequest) {
 
     // ── Office Forwarding Call Screening Accept / Reject ──
     if (step === "office_call_screen_accept") {
-      const parentCallSid = url.searchParams.get("parentCallSid") || "";
+      const parentCallSid = url.searchParams.get("parentCallSid") || url.searchParams.get("amp;parentCallSid") || "";
       const cleanInput = digits.replace(/[^0-9*]/g, "").trim();
       console.log(`[Twilio IVR Call Screening] Admin input on whisper leg: "${cleanInput}". ParentCallSid: "${parentCallSid}", CallSid: "${callSid}"`);
       if (cleanInput === "1") {
         console.log(`[Twilio IVR Call Screening] Admin accepted call (pressed 1). Bridging call to customer.`);
         if (parentCallSid) acceptedScreenCalls.add(parentCallSid);
         if (callSid) acceptedScreenCalls.add(callSid);
+        await logCallEvent(parentCallSid || callSid, fromPhoneNumber, "Representative Accepted Call (Pressed 1)", "active");
         return xmlResponse(
           say("Connecting.", "מחבר.")
         );
@@ -589,7 +590,7 @@ export async function POST(req: NextRequest) {
 
     // ── Office Forward Completed (Caller Leg Result) ──
     if (step === "office_forward_completed") {
-      const parentCallSid = url.searchParams.get("parentCallSid") || "";
+      const parentCallSid = url.searchParams.get("parentCallSid") || url.searchParams.get("amp;parentCallSid") || "";
       const finalStatus = dialCallStatus || url.searchParams.get("DialCallStatus") || "";
       const dialDuration = parseInt(dialCallDuration || "0", 10);
       
