@@ -197,6 +197,40 @@ export async function triggerCallBridge(
   }
 }
 
+function splitSmsText(text: string, maxLen = 1400): string[] {
+  if (!text || text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text.trim();
+
+  while (remaining.length > maxLen) {
+    let splitIdx = remaining.lastIndexOf("\n\n", maxLen);
+    if (splitIdx < maxLen * 0.4) {
+      splitIdx = remaining.lastIndexOf("\n", maxLen);
+    }
+    if (splitIdx < maxLen * 0.4) {
+      splitIdx = remaining.lastIndexOf(". ", maxLen);
+      if (splitIdx !== -1) splitIdx += 1;
+    }
+    if (splitIdx < maxLen * 0.4) {
+      splitIdx = remaining.lastIndexOf(" ", maxLen);
+    }
+    if (splitIdx <= 0) {
+      splitIdx = maxLen;
+    }
+
+    const chunk = remaining.slice(0, splitIdx).trim();
+    if (chunk) chunks.push(chunk);
+    remaining = remaining.slice(splitIdx).trim();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
 export async function sendSms(customerPhone: string, message: string, mediaUrl?: string | string[]) {
   try {
     const settings = await getAdminSettings();
@@ -222,42 +256,59 @@ export async function sendSms(customerPhone: string, message: string, mediaUrl?:
     const auth = Buffer.from(`${settings.twilioAccountSid}:${settings.twilioAuthToken}`).toString('base64');
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${settings.twilioAccountSid}/Messages.json`;
 
-    const body = new URLSearchParams();
-    body.append("To", cleanCustomer);
-    body.append("From", fromPhone);
-    if (message) {
-      body.append("Body", message);
-    }
-    if (mediaUrl) {
-      if (Array.isArray(mediaUrl)) {
-        mediaUrl.forEach(u => {
-          if (u) body.append("MediaUrl", u);
-        });
-      } else {
-        body.append("MediaUrl", mediaUrl);
+    // Split long messages to prevent Twilio Error 21617 (exceeds 1600 characters limit)
+    const textChunks = message ? splitSmsText(message, 1400) : [""];
+    let lastSid: string | undefined = undefined;
+
+    for (let i = 0; i < textChunks.length; i++) {
+      const chunkText = textChunks[i];
+      const isFirst = i === 0;
+
+      const body = new URLSearchParams();
+      body.append("To", cleanCustomer);
+      body.append("From", fromPhone);
+      if (chunkText) {
+        body.append("Body", chunkText);
+      }
+      // Attach media only to the first chunk
+      if (isFirst && mediaUrl) {
+        if (Array.isArray(mediaUrl)) {
+          mediaUrl.forEach(u => {
+            if (u) body.append("MediaUrl", u);
+          });
+        } else {
+          body.append("MediaUrl", mediaUrl);
+        }
+      }
+
+      console.log(`[Twilio SMS] Sending SMS/MMS chunk ${i + 1}/${textChunks.length} to ${cleanCustomer} from ${fromPhone}${isFirst && mediaUrl ? ` with media` : ""}`);
+
+      const res = await fetch(twilioUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: body.toString()
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`[Twilio SMS] Failed to send SMS chunk ${i + 1}: ${res.status} ${errorText}`);
+        return { success: false, error: `Twilio Error: ${res.status} ${errorText}` };
+      }
+
+      const data = await res.json();
+      lastSid = data.sid;
+      console.log(`[Twilio SMS] SMS chunk ${i + 1} sent successfully. Sid: ${data.sid}`);
+
+      // Small delay between chunks to ensure carrier order
+      if (i < textChunks.length - 1) {
+        await new Promise(r => setTimeout(r, 350));
       }
     }
 
-    console.log(`[Twilio SMS] Sending SMS/MMS to ${cleanCustomer} from ${fromPhone}${mediaUrl ? ` with media` : ""}`);
-
-    const res = await fetch(twilioUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: body.toString()
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`[Twilio SMS] Failed to send SMS: ${res.status} ${errorText}`);
-      return { success: false, error: `Twilio Error: ${res.status} ${errorText}` };
-    } else {
-      const data = await res.json();
-      console.log(`[Twilio SMS] SMS sent successfully. Sid: ${data.sid}`);
-      return { success: true, sid: data.sid };
-    }
+    return { success: true, sid: lastSid };
   } catch (error: any) {
     console.error("[Twilio SMS] Error sending SMS:", error);
     return { success: false, error: error.message || String(error) };

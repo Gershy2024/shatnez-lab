@@ -1681,7 +1681,7 @@ async function handleRequest(req: NextRequest) {
               return { id: v.id, phone: v.phone, duration: v.duration, timestamp: timeStr, url: v.url, read: v.read };
             });
 
-            // Format recent calls context (first 10 unique callers with actions)
+            // Format recent calls context (first 6 unique callers with concise actions)
             const uniqueCallers: { phone: string; timestamp: string; isSms: boolean; direction: string; actions: string[] }[] = [];
             const seenCallers = new Set<string>();
             for (const c of callsList) {
@@ -1691,6 +1691,16 @@ async function handleRequest(req: NextRequest) {
                   seenCallers.add(cleanPhone);
                   const actionsArr = Array.isArray(c.actions) ? c.actions : [];
                   const isSms = actionsArr.some(act => typeof act === "string" && (act.trim().startsWith("SMS:") || act.includes("SMS:")));
+                  // Clean and deduplicate actions, keep short summaries under 50 chars to avoid prompt bloat
+                  const cleanActions = Array.from(new Set(
+                    actionsArr
+                      .filter(a => typeof a === "string" && a.trim())
+                      .map(a => {
+                        let str = a.trim();
+                        if (str.length > 50) str = str.substring(0, 47) + "...";
+                        return str;
+                      })
+                  )).slice(-3); // Keep only the last 3 distinct actions
                   let timeStr = "";
                   try {
                     timeStr = new Intl.DateTimeFormat("en-US", {
@@ -1704,8 +1714,8 @@ async function handleRequest(req: NextRequest) {
                   } catch {
                     timeStr = new Date(c.timestamp).toLocaleString();
                   }
-                  uniqueCallers.push({ phone: cleanPhone, timestamp: timeStr, isSms, direction: c.direction || "inbound", actions: c.actions || [] });
-                  if (uniqueCallers.length >= 10) break;
+                  uniqueCallers.push({ phone: cleanPhone, timestamp: timeStr, isSms, direction: c.direction || "inbound", actions: cleanActions });
+                  if (uniqueCallers.length >= 6) break;
                 }
               }
             }
@@ -1900,7 +1910,11 @@ Guidelines:
    NEVER use a repetitive or robotic refusal.
 9. Never write raw contiguous phone numbers (like 18457092022 or +18457092022) in the adminReply. Always format them with dashes (e.g., 845-709-2022) or omit the country code, as raw contiguous numbers can be blocked by carrier spam filters.
 10. If the admin asks about the key press options or IVR menu selections of recent callers/calls, look at the "actions" field in the recent callers data. If the actions array has no menu press events (e.g. only "Call started", "Call ended"), tell the admin that the caller did not press any menu keys during the call. Do NOT state that you do not have access to keypress options, because you do.
-11. When listing recent calls in the adminReply, always specify whether each call was incoming (inbound) or outgoing (outbound). You can use clear indicators or terms like "(Incoming)" / "(נכנס)" or "(Outgoing)" / "(יוצא)".
+11. When listing recent calls in the adminReply:
+- Keep the reply concise and compact (under 800 characters total)!
+- List at most the 5 most recent callers/calls.
+- For each call, provide a SINGLE concise line with time, dashed phone number, direction, and brief outcome (e.g. "1. 10/29, 7:23 PM: 845-709-2022 (Incoming) - Admin Request").
+- NEVER dump long action histories, repeated callback logs, or raw multi-line logs. Always specify whether each call was incoming (inbound) or outgoing (outbound).
 12. CRITICAL - CALL TRIGGERING CAPABILITY: You HAVE full capability to trigger automated customer notification calls / robocalls through the backend system. Whenever an order is updated to "ready", or whenever the admin mentions triggering a call (e.g., "trigger outgoing call yes", "trigger call", "הפעל שיחה יוצאת", "תתקשר ללקוח"), you MUST set "triggerCall": true. In your "adminReply", confirm that the order has been updated and that the automated customer call has been triggered! NEVER state that you cannot trigger calls or that calls only happen automatically.
 13. CRITICAL - VOICEMAILS VS REDIRECTS: Look at the "Recent Recorded Voicemails" list. An actual recorded voicemail ONLY exists if it is present in that list! A call log action like "Representative Unavailable - Redirected to Company Voicemail" or "Redirected to Voicemail" ONLY means the caller was redirected to the voicemail greeting/beep — it does NOT mean they left or recorded an audio message. If a caller was redirected to voicemail but does not appear in "Recent Recorded Voicemails", tell the admin that the caller was redirected to voicemail but hung up without leaving a recorded message. Never claim a voicemail exists unless it is in the Recorded Voicemails list!
 14. SENDING VOICEMAILS / AUDIO FILES: If the admin asks you to send them a voicemail or audio file (e.g. "send me the voicemail", "send me the audio", "שלח לי את ההודעה הקולית ב-SMS", "send recording"):
@@ -1927,7 +1941,9 @@ If the admin asks whether an automated notification / ready robocall went throug
 - If the call was answered by a customer/human (status: "completed", answeredBy: "human"), answer: "The ready call for Order #[ID] was answered by the customer (Answered)."
 - If it went to voicemail (answeredBy starts with "machine" or "voicemail"), answer: "The ready call for Order #[ID] reached customer voicemail and left a message (Left on Voicemail)."
 - If it was not answered, busy, or failed (status: "no-answer", "busy", or "failed"), answer: "The ready call for Order #[ID] did not go through (Result: [No Answer / Busy / Failed])."
-- If no call has been made yet, answer: "No notification call has been placed yet for Order #[ID]."`;
+- If no call has been made yet, answer: "No notification call has been placed yet for Order #[ID]."
+17. STRICT SMS CONCISENESS & LENGTH LIMIT:
+SMS messages must NEVER exceed 1000 characters. Keep all responses brief and to the point.`;
 
             const modelsToTry = [
               "gemini-2.5-flash",

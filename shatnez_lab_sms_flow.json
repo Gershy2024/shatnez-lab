@@ -1,5 +1,9 @@
 {
   "description": "Shatnez Laboratory SMS Auto-responder",
+  "flags": {
+    "allow_concurrent_calls": true
+  },
+  "initial_state": "Trigger",
   "states": [
     {
       "name": "Trigger",
@@ -30,13 +34,13 @@
       "name": "handle_incoming_sms",
       "type": "make-http-request",
       "properties": {
-        "offset": {
-          "x": 0,
-          "y": 250
-        },
+        "add_twilio_auth": false,
+        "content_type": "application/x-www-form-urlencoded;charset=utf-8",
         "method": "POST",
-        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=incoming_sms",
-        "content_type": "application/x-www-form-urlencoded",
+        "offset": {
+          "x": 40,
+          "y": 150
+        },
         "parameters": [
           {
             "key": "phone",
@@ -46,42 +50,17 @@
             "key": "msg",
             "value": "{{trigger.message.Body}}"
           }
-        ]
+        ],
+        "url": "https://shatnez-lab.vercel.app/api/twilio/studio?action=incoming_sms"
       },
       "transitions": [
         {
-          "event": "success",
-          "next": "reply_sms"
-        },
-        {
-          "event": "failed"
-        }
-      ]
-    },
-    {
-      "name": "reply_sms",
-      "type": "send-message",
-      "properties": {
-        "offset": {
-          "x": 0,
-          "y": 500
-        },
-        "from": "{{flow.channel.address}}",
-        "to": "{{contact.channel.address}}",
-        "body": "{{widgets.handle_incoming_sms.parsed.replyMessage}}"
-      },
-      "transitions": [
-        {
-          "event": "sent"
+          "event": "success"
         },
         {
           "event": "failed"
         }
       ]
     }
-  ],
-  "initial_state": "Trigger",
-  "flags": {
-    "allow_bypassing_constraints": false
-  }
+  ]
 }
