@@ -61,6 +61,13 @@ export interface Appointment {
   createdAt: number;
   source?: "phone" | "admin" | "web";
   location?: string;
+  // ── 10-Minute SMS Reminder tracking ──
+  adminReminderSent?: boolean;
+  adminReminderSentAt?: number;
+  customerReminderSent?: boolean;
+  customerReminderSentAt?: number;
+  reminderSent?: boolean;
+  reminderSentAt?: number;
 }
 
 export interface DateException {
@@ -86,6 +93,12 @@ export interface AppointmentSettings {
   dateOverrides?: Record<string, DateException>; // Specific holiday & closure dates
   locationText?: string;
   adminNotificationPhone?: string; // Phone number to receive SMS notifications on new bookings
+  // ── Appointment SMS Reminders (10 minutes before) ──
+  reminderEnabled?: boolean; // default true
+  reminderMinutesBefore?: number; // default 10 (approx 10 minutes before appointment)
+  sendAdminReminder?: boolean; // default true (sends reminder to admin phone)
+  sendCustomerReminder?: boolean; // default true (sends reminder to customer phone)
+  adminReminderPhone?: string; // Optional custom admin phone override (defaults to adminNotificationPhone || forwardingNumber || "8455524744")
 }
 
 
@@ -1589,7 +1602,11 @@ export const DEFAULT_APPOINTMENT_SETTINGS: AppointmentSettings = {
   },
   blackoutDates: [],
   locationText: "14 Buchanan Rd, North Square, NY",
-  adminNotificationPhone: "8455524744"
+  adminNotificationPhone: "8455524744",
+  reminderEnabled: true,
+  reminderMinutesBefore: 10,
+  sendAdminReminder: true,
+  sendCustomerReminder: true
 };
 
 function lsGetAppointments(): Appointment[] {
@@ -1787,7 +1804,13 @@ export async function getAllAppointments(): Promise<Appointment[]> {
           notes: d.notes || "",
           createdAt: d.createdAt || Date.now(),
           source: d.source || "phone",
-          location: d.location || "14 Buchanan Rd"
+          location: d.location || "14 Buchanan Rd",
+          adminReminderSent: !!d.adminReminderSent,
+          adminReminderSentAt: d.adminReminderSentAt || undefined,
+          customerReminderSent: !!d.customerReminderSent,
+          customerReminderSentAt: d.customerReminderSentAt || undefined,
+          reminderSent: !!d.reminderSent,
+          reminderSentAt: d.reminderSentAt || undefined
         } as Appointment))
         .sort((a, b) => {
           const compDate = (a.date || "").localeCompare(b.date || "");
@@ -1830,7 +1853,13 @@ export function subscribeToAppointments(callback: (appointments: Appointment[]) 
               status: d.status || "scheduled",
               notes: d.notes || "",
               createdAt: d.createdAt || Date.now(),
-              source: d.source || "phone"
+              source: d.source || "phone",
+              adminReminderSent: !!d.adminReminderSent,
+              adminReminderSentAt: d.adminReminderSentAt || undefined,
+              customerReminderSent: !!d.customerReminderSent,
+              customerReminderSentAt: d.customerReminderSentAt || undefined,
+              reminderSent: !!d.reminderSent,
+              reminderSentAt: d.reminderSentAt || undefined
             } as Appointment))
             .sort((a, b) => {
               const compDate = (a.date || "").localeCompare(b.date || "");
@@ -1902,3 +1931,54 @@ export async function saveAppointmentSettings(settings: AppointmentSettings): Pr
 
 
 
+
+export async function markAppointmentReminderSent(
+  id: string,
+  details: {
+    adminSent?: boolean;
+    customerSent?: boolean;
+  } = { adminSent: true, customerSent: true }
+): Promise<void> {
+  const now = Date.now();
+  const updateData: Record<string, any> = {
+    reminderSent: true,
+    reminderSentAt: now
+  };
+  if (details.adminSent) {
+    updateData.adminReminderSent = true;
+    updateData.adminReminderSentAt = now;
+  }
+  if (details.customerSent) {
+    updateData.customerReminderSent = true;
+    updateData.customerReminderSentAt = now;
+  }
+
+  if (isConfigured && db) {
+    try {
+      const candidates = [
+        id,
+        id.toUpperCase().startsWith("APT") ? id : `APT-${id}`,
+        `APT_${id}`,
+        `APT_${id.replace(/^APT[-_]?/i, "")}`
+      ];
+      for (const c of candidates) {
+        const docRef = doc(db, ORDERS_COLLECTION, c);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const existing = snap.data();
+          await setDoc(docRef, cleanUndefined({ ...existing, ...updateData }));
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Firestore markAppointmentReminderSent failed:", e);
+    }
+  }
+
+  const list = lsGetAppointments();
+  const idx = list.findIndex((a) => a.id === id || a.id === `APT-${id}` || a.id === `APT_${id}`);
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...updateData };
+    lsSetAppointments(list);
+  }
+}

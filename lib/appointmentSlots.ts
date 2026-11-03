@@ -62,6 +62,28 @@ export function getNyDateString(offsetDays = 0): { dateStr: string; dayOfWeek: n
 }
 
 /**
+ * Calculates how many minutes remain from now (America/New_York) until the appointment time.
+ * Positive number = appointment is in the future (e.g. 10 means 10 minutes from now).
+ * Negative number = appointment was in the past (e.g. -5 means 5 minutes ago).
+ */
+export function getMinutesUntilAppointment(dateStr: string, timeStr: string): number {
+  try {
+    if (!dateStr || !timeStr) return 999999;
+    const now = new Date();
+    const nyNow = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const [y, m, d] = dateStr.trim().split("-").map((v) => parseInt(v, 10));
+    const [hh, mm] = timeStr.trim().split(":").map((v) => parseInt(v, 10));
+    if (isNaN(y) || isNaN(m) || isNaN(d) || isNaN(hh) || isNaN(mm)) {
+      return 999999;
+    }
+    const aptDate = new Date(y, m - 1, d, hh, mm, 0);
+    return (aptDate.getTime() - nyNow.getTime()) / 60000;
+  } catch {
+    return 999999;
+  }
+}
+
+/**
  * Calculates appointment duration based on garment count:
  * - 1 garment: 5 minutes (or configurable minutesPerGarment)
  * - 2 to 3 garments: 10 minutes (minimum appointment slot)

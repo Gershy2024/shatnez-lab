@@ -32,7 +32,9 @@ import {
   CalendarCheck,
   BookOpen,
   Globe,
-  ShieldCheck
+  ShieldCheck,
+  Bell,
+  BellRing
 } from "lucide-react";
 import {
   Appointment,
@@ -47,7 +49,7 @@ import {
   DEFAULT_APPOINTMENT_SETTINGS,
   getNextAppointmentId
 } from "@/lib/db";
-import { formatTime12h, getNyDateString, calculateAppointmentDuration } from "@/lib/appointmentSlots";
+import { formatTime12h, getNyDateString, calculateAppointmentDuration, getMinutesUntilAppointment } from "@/lib/appointmentSlots";
 import { getHebrewDayInfo, HebrewDayInfo } from "@/lib/hebrewCalendar";
 
 interface Props {
@@ -91,6 +93,109 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
   const [sendConfirmationSms, setSendConfirmationSms] = useState(true);
   const [savingNewApt, setSavingNewApt] = useState(false);
   const [isClientMounted, setIsClientMounted] = useState(false);
+  const [checkingReminders, setCheckingReminders] = useState(false);
+  const [reminderToast, setReminderToast] = useState<{ message: string; type: "success" | "info" | "error" } | null>(null);
+
+  const showReminderToast = (message: string, type: "success" | "info" | "error" = "success") => {
+    setReminderToast({ message, type });
+    setTimeout(() => setReminderToast(null), 4500);
+  };
+
+  const handleRunRemindersCheck = async () => {
+    setCheckingReminders(true);
+    try {
+      const res = await fetch("/api/appointment/reminders", { method: "POST" });
+      const data = await res.json();
+      if (data.sentCount > 0) {
+        showReminderToast(
+          isRtl
+            ? `נשלחו ${data.sentCount} תזכורות SMS בהצלחה!`
+            : `Successfully sent ${data.sentCount} SMS reminders!`,
+          "success"
+        );
+      } else {
+        showReminderToast(
+          isRtl
+            ? "נבדקו פגישות: אין תזכורות הממתינות לשליחה כרגע (נשלח כ-10 דק' לפני כל מועד)."
+            : "Checked appointments: no reminders due at this moment (sent ~10 mins before).",
+          "info"
+        );
+      }
+    } catch (e: any) {
+      showReminderToast(
+        isRtl ? `שגיאה בבדיקת תזכורות: ${e.message}` : `Error checking reminders: ${e.message}`,
+        "error"
+      );
+    } finally {
+      setCheckingReminders(false);
+    }
+  };
+
+  const handleSendReminderNow = async (aptId: string) => {
+    try {
+      const res = await fetch(`/api/appointment/reminders?appointmentId=${aptId}&force=true`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (data.sentCount > 0) {
+        showReminderToast(
+          isRtl ? `תזכורת SMS נשלחה בהצלחה עבור ${aptId}!` : `SMS reminder sent successfully for ${aptId}!`,
+          "success"
+        );
+      } else {
+        showReminderToast(
+          isRtl ? `התזכורת עבור ${aptId} עודכנה במערכת.` : `Reminder processed for ${aptId}.`,
+          "info"
+        );
+      }
+    } catch (e: any) {
+      showReminderToast(
+        isRtl ? `שגיאה בשליחת תזכורת: ${e.message}` : `Failed to send reminder: ${e.message}`,
+        "error"
+      );
+    }
+  };
+
+  // ── Automated SMS Reminders Watcher (Visibility-aware, Rule 13) ──
+  useEffect(() => {
+    let checkInterval: NodeJS.Timeout | null = null;
+
+    const runCheck = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return; // Pause when tab is hidden to save egress and battery
+      }
+      try {
+        await fetch("/api/appointment/reminders", { method: "POST" });
+      } catch (err) {
+        console.warn("[AppointmentsManager] Reminder background tick error:", err);
+      }
+    };
+
+    const initTimer = setTimeout(runCheck, 3000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        runCheck();
+        if (!checkInterval) {
+          checkInterval = setInterval(runCheck, 60000);
+        }
+      } else {
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    checkInterval = setInterval(runCheck, 60000);
+
+    return () => {
+      clearTimeout(initTimer);
+      if (checkInterval) clearInterval(checkInterval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   // Subscribe to real-time appointments
   useEffect(() => {
@@ -646,6 +751,17 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
             New Appointment
           </button>
 
+          {/* Check Reminders Button */}
+          <button
+            onClick={handleRunRemindersCheck}
+            disabled={checkingReminders}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 hover:border-amber-300 text-amber-900 rounded-xl text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+            title={isRtl ? "בדוק ושלח תזכורות SMS (10 דקות לפני הפגישה)" : "Check & dispatch due 10-min appointment SMS reminders"}
+          >
+            <BellRing className={`w-3.5 h-3.5 text-amber-600 ${checkingReminders ? "animate-spin" : ""}`} />
+            <span>{checkingReminders ? (isRtl ? "בודק..." : "Checking...") : (isRtl ? "בדיקת תזכורות SMS" : "Check Reminders")}</span>
+          </button>
+
           {/* Settings Button */}
           <button
             onClick={() => setShowSettingsModal(true)}
@@ -657,6 +773,30 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Reminder Action Feedback Banner */}
+      {reminderToast && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-sm ${
+            reminderToast.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : reminderToast.type === "error"
+              ? "bg-rose-50 border-rose-200 text-rose-800"
+              : "bg-blue-50 border-blue-200 text-blue-800"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <BellRing className="w-4 h-4" />
+            <span>{reminderToast.message}</span>
+          </div>
+          <button onClick={() => setReminderToast(null)} className="opacity-70 hover:opacity-100">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </motion.div>
+      )}
 
       {/* ── Main View Content ── */}
       {viewMode === "holidays" ? null : loading ? (
@@ -759,6 +899,12 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                           <span>{isRtl ? "היום!" : "TODAY!"}</span>
                         </span>
                       )}
+                      {(apt.adminReminderSent || apt.reminderSent) && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200" title={isRtl ? "תזכורת SMS נשלחה כ-10 דקות לפני הפגישה" : "10-minute SMS reminder sent"}>
+                          <BellRing className="w-2.5 h-2.5 text-purple-600" />
+                          <span>{isRtl ? "תזכורת נשלחה" : "Reminder Sent"}</span>
+                        </span>
+                      )}
                     </div>
 
                     <select
@@ -822,6 +968,13 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleSendReminderNow(apt.id)}
+                        className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-all"
+                        title={isRtl ? "שלח תזכורת SMS עכשיו (10 דקות לפני הפגישה)" : "Send SMS Reminder Now"}
+                      >
+                        <BellRing className="w-3.5 h-3.5" />
+                      </button>
                       <a
                         href={`sms:${apt.phone}`}
                         className="p-1.5 text-primary-500 hover:text-primary-800 hover:bg-primary-50 rounded-lg transition-all"
@@ -875,7 +1028,7 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                   return (
                     <tr key={apt.id} className={`hover:bg-primary-50/50 transition-colors ${isToday ? "bg-amber-50/30" : ""}`}>
                       <td className="py-3 px-4 font-semibold text-navy-900 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs font-bold text-navy-700 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md">
                             {apt.id}
                           </span>
@@ -883,6 +1036,12 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                           {isToday && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs">
                               {isRtl ? "היום" : "Today"}
+                            </span>
+                          )}
+                          {(apt.adminReminderSent || apt.reminderSent) && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200" title={isRtl ? "תזכורת SMS נשלחה בהצלחה" : "10-minute SMS reminder sent"}>
+                              <BellRing className="w-2.5 h-2.5 text-purple-600" />
+                              <span>{isRtl ? "תזכורת נשלחה" : "Sent"}</span>
                             </span>
                           )}
                         </div>
@@ -942,6 +1101,13 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
 
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleSendReminderNow(apt.id)}
+                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-100 rounded-lg transition-all"
+                            title={isRtl ? "שלח תזכורת SMS עכשיו" : "Send SMS Reminder Now"}
+                          >
+                            <BellRing className="w-3.5 h-3.5" />
+                          </button>
                           <a
                             href={`sms:${apt.phone}`}
                             className="p-1.5 text-primary-500 hover:text-primary-800 hover:bg-primary-100 rounded-lg"
@@ -1891,6 +2057,111 @@ export default function AppointmentsManager({ isRtl = false }: Props) {
                       ? "הודעת SMS תישלח למספר זה באופן אוטומטי בכל פעם שלקוח קובע פגישה באתר או בטלפון."
                       : "You will receive an instant text notification whenever a client schedules an appointment."}
                   </p>
+                </div>
+
+                {/* ── 10-Minute SMS Reminders Section ── */}
+                <div className="p-4 bg-gradient-to-r from-blue-50/60 via-purple-50/40 to-amber-50/40 border border-primary-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
+                        <BellRing className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-navy-900 text-sm">
+                          {isRtl ? "תזכורת SMS כ-10 דקות לפני כל פגישה" : "10-Minute Appointment SMS Reminders"}
+                        </h4>
+                        <p className="text-[11px] text-primary-600">
+                          {isRtl
+                            ? "שליחה אוטומטית של הודעת SMS עם כל פרטי הפגישה כ-10 דקות לפני המועד"
+                            : "Sends automated SMS with full details ~10 mins before each scheduled visit"}
+                        </p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.reminderEnabled !== false}
+                        onChange={(e) => setSettings({ ...settings, reminderEnabled: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-primary-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-primary-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                    </label>
+                  </div>
+
+                  {settings.reminderEnabled !== false && (
+                    <div className="pt-2 space-y-3 border-t border-primary-100/80">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-navy-800 mb-1">
+                            {isRtl ? "דקות לפני הפגישה לשליחה" : "Minutes before appointment"}
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="60"
+                            value={settings.reminderMinutesBefore ?? 10}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                reminderMinutesBefore: Math.max(1, parseInt(e.target.value, 10) || 10)
+                              })
+                            }
+                            className="w-full px-3 py-1.5 text-xs border border-primary-300 rounded-xl"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-navy-800 mb-1">
+                            {isRtl ? "טלפון מותאם לתזכורות מנהל" : "Custom Admin Reminder Phone"}
+                          </label>
+                          <input
+                            type="tel"
+                            placeholder="845-552-4744"
+                            value={settings.adminReminderPhone || ""}
+                            onChange={(e) => setSettings({ ...settings, adminReminderPhone: e.target.value })}
+                            className="w-full px-3 py-1.5 text-xs border border-primary-300 rounded-xl"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-navy-800">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={settings.sendAdminReminder !== false}
+                            onChange={(e) => setSettings({ ...settings, sendAdminReminder: e.target.checked })}
+                            className="rounded text-primary-600"
+                          />
+                          <span>{isRtl ? "שלח תזכורת למנהל (Gershy)" : "Send reminder to Admin"}</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={settings.sendCustomerReminder !== false}
+                            onChange={(e) => setSettings({ ...settings, sendCustomerReminder: e.target.checked })}
+                            className="rounded text-primary-600"
+                          />
+                          <span>{isRtl ? "שלח תזכורת ללקוח" : "Send reminder to Customer"}</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <button
+                          type="button"
+                          onClick={handleRunRemindersCheck}
+                          disabled={checkingReminders}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-primary-300 hover:bg-primary-50 rounded-xl text-xs font-semibold text-primary-700 disabled:opacity-50"
+                        >
+                          <BellRing className="w-3.5 h-3.5 text-primary-600" />
+                          <span>{checkingReminders ? (isRtl ? "בודק כעת..." : "Checking...") : (isRtl ? "בדוק תזכורות עכשיו" : "Test Reminders Now")}</span>
+                        </button>
+                        <span className="text-[11px] text-primary-500">
+                          {isRtl ? "מתבצע אוטומטית בענן Vercel וברקע של המערכת" : "Runs continuously via cloud & Vercel Crons"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {settingsSuccess && (
